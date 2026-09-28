@@ -26,7 +26,8 @@ export interface RewardsConfig {
   amount: number; // USDC per claim
   dailyCap: number; // claims per UTC day
   ipDailyLimit: number;
-  minWalletTxs: number;
+  /** Past transactions a wallet needs. Null means the default: none on a testnet, five on a mainnet. */
+  minWalletTxs: number | null;
   turnstileSecret: string | null;
   turnstileSiteKey: string | null;
 }
@@ -66,10 +67,12 @@ export function rewardsConfig(): RewardsConfig {
     amount: num(env.REWARD_USDC, 1.5),
     dailyCap: num(env.DAILY_CLAIM_CAP, 100),
     ipDailyLimit: num(env.IP_DAILY_LIMIT, 3),
-    minWalletTxs: num(env.MIN_WALLET_TXS, cluster === "mainnet-beta" ? 5 : 0),
+    minWalletTxs: env.MIN_WALLET_TXS ? num(env.MIN_WALLET_TXS, 0) : null,
     turnstileSecret: env.TURNSTILE_SECRET_KEY || null,
     turnstileSiteKey: env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || null,
   };
 }
 
-export const rewardsMode = (cfg: RewardsConfig): "live" | "demo" => (cfg.treasury ? "live" : "demo");
+
+/** Past transactions a wallet needs before it can claim, on a chain of the given kind. */
+export const minHistory = (cfg: RewardsConfig, testnet: boolean) => cfg.minWalletTxs ?? (testnet ? 0 : 5);

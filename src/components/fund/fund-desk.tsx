@@ -11,8 +11,8 @@ import { bonusFor, estimate, withdrawFee, type FundingTerms } from "@/lib/fundin
 import type { FundBonus, FundPosition, FundResult, FundStatus } from "@/lib/funding-types";
 import type { AgentId } from "@/lib/types";
 import { useFundStatus } from "@/lib/use-fund";
-import { cn, fmtSigned, shortHash, solscanTx } from "@/lib/utils";
-import { canSignTransactions, signMessage, signTransaction } from "@/lib/wallet";
+import { explorerLink, type PreparedDeposit } from "@/lib/chains";
+import { cn, fmtSigned, shortHash } from "@/lib/utils";
 
 const QUICK = [5, 10, 25, 50];
 const PERCENTS = [25, 50, 75, 100];
@@ -35,7 +35,7 @@ type Notice = { tone: "good" | "bad"; text: string; signature?: string };
 
 export function FundDesk() {
   const params = useSearchParams();
-  const { session, address, open } = useWallet();
+  const { address, chain: walletChain, open, signMessage, deposit: sendDeposit } = useWallet();
   const { status, failed, refresh } = useFundStatus(address);
 
   const asked = params.get("agent");
@@ -47,23 +47,22 @@ export function FundDesk() {
   const usd = Number(amount);
   const terms = status?.terms;
   const wallet = status?.wallet ?? null;
-  const cluster = status?.cluster ?? "devnet";
-  const symbol = status?.tokenSymbol ?? "USDC";
+  const chain = status?.chain;
+  const symbol = chain?.tokenSymbol ?? "USDC";
+  const link = (id: string) => (chain ? explorerLink(chain, id) : "#");
   const firstDeposit = wallet?.bonusAvailable ?? true;
 
   const problem = !status
     ? null
-    : !status.enabled
-      ? status.reason
+    : !status.chain.enabled
+      ? status.chain.reason
       : !terms || !isFinite(usd) || usd <= 0
         ? "Enter an amount."
         : usd < terms.minDeposit
           ? `The smallest deposit is ${money(terms.minDeposit)}.`
           : wallet && usd > wallet.balance
             ? `Your wallet holds ${wallet.balance.toFixed(2)} ${symbol}.`
-            : session && !canSignTransactions(session.wallet)
-              ? `${session.wallet.name} can't sign transactions for this app. Try another wallet.`
-              : null;
+            : null;
 
   async function run(label: string, work: () => Promise<Notice>) {
     setNotice(null);
@@ -87,17 +86,13 @@ export function FundDesk() {
 
   const deposit = () =>
     run("deposit", async () => {
-      if (!session || !address) throw new Error("Connect a wallet first.");
-      const prep = await post<{ intentId: string; transaction: string }>("/api/fund/deposit", { step: "prepare", wallet: address, agent, usd });
+      if (!address) throw new Error("Connect a wallet first.");
+      const prep = await post<{ intentId: string; deposit: PreparedDeposit }>("/api/fund/deposit", { step: "prepare", wallet: address, agent, usd });
       if (!prep.ok) throw new Error(prep.error);
       setBusy("sign");
-      const signed = await signTransaction(session.wallet, session.account, prep.transaction, cluster);
+      const proof = await sendDeposit(prep.deposit);
       setBusy("confirm");
-      const done = await post<{ signature: string; usd: number; bonus: FundBonus | null }>("/api/fund/deposit", {
-        step: "confirm",
-        intentId: prep.intentId,
-        transaction: signed,
-      });
+      const done = await post<{ signature: string; usd: number; bonus: FundBonus | null }>("/api/fund/deposit", { step: "confirm", intentId: prep.intentId, proof });
       if (!done.ok) throw new Error(done.error);
       const bonus =
         done.bonus?.status === "paid"
@@ -110,7 +105,7 @@ export function FundDesk() {
 
   const withdraw = (from: AgentId, percent: number) =>
     run(`withdraw-${from}`, async () => {
-      if (!session || !address) throw new Error("Connect a wallet first.");
+      if (!address) throw new Error("Connect a wallet first.");
       const res = await fetch("/api/fund/withdraw", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -118,7 +113,7 @@ export function FundDesk() {
       });
       const ch = (await res.json()) as { message?: string; token?: string; error?: string };
       if (!ch.message || !ch.token) throw new Error(ch.error ?? "Could not start the withdrawal.");
-      const signature = await signMessage(session.wallet, session.account, ch.message);
+      const signature = await signMessage(ch.message);
       const done = await post<{ signature: string; gross: number; fee: number; received: number; pending: boolean }>("/api/fund/withdraw", {
         step: "submit",
         wallet: address,
@@ -149,13 +144,14 @@ export function FundDesk() {
       </header>
 
       {failed && !status && <Banner tone="bad">Can&apos;t reach the funding server. Reload to try again.</Banner>}
-      {status && !status.enabled && <Banner tone="warn">{status.reason}</Banner>}
-      {status?.enabled && cluster === "devnet" && (
+      {status && !chain?.enabled && <Banner tone="warn">{chain?.reason}</Banner>}
+      {chain?.enabled && chain.testnet && (
         <Banner tone="info">
-          <strong className="font-semibold">Devnet.</strong> Everything here uses test tokens with no real value, and the agents&apos; trades are paper
-          trades.
+          <strong className="font-semibold">{chain.network}.</strong> Everything here uses test tokens with no real value, and the agents&apos; trades are
+          paper trades.
         </Banner>
       )}
+      {status && <Networks status={status} active={walletChain} />}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {/* 1. choose */}
@@ -208,7 +204,7 @@ export function FundDesk() {
 
           <label className="mt-4 block">
             <span className="sr-only">Amount in {symbol}</span>
-            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 focus-within:border-sky-400/60">
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 focus-within:border-white/60">
               <span className="font-display text-2xl text-white/40">$</span>
               <input
                 inputMode="decimal"
@@ -222,7 +218,7 @@ export function FundDesk() {
           </label>
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
             {QUICK.map((q) => (
-              <button key={q} onClick={() => setAmount(String(q))} className={cn("btn-ghost px-3 py-1 font-mono text-xs", usd === q && "border-sky-400/60 text-white")}>
+              <button key={q} onClick={() => setAmount(String(q))} className={cn("btn-ghost px-3 py-1 font-mono text-xs", usd === q && "border-white/60 text-white")}>
                 ${q}
               </button>
             ))}
@@ -236,7 +232,7 @@ export function FundDesk() {
           {terms && isFinite(usd) && usd > 0 && <Estimate terms={terms} usd={usd} first={firstDeposit} />}
 
           <div className="mt-5 grid gap-2">
-            {!session ? (
+            {!address ? (
               <button onClick={open} className="btn-primary py-3.5 text-sm">
                 Connect wallet
               </button>
@@ -247,14 +243,14 @@ export function FundDesk() {
                   : busy === "sign"
                     ? "Check your wallet…"
                     : busy === "confirm"
-                      ? "Confirming on Solana…"
+                      ? `Confirming on ${chain?.network ?? "the network"}…`
                       : `Fund ${AGENTS[agent].name.replace("The ", "")} with ${isFinite(usd) ? money(usd) : "$0"}`}
               </button>
             )}
-            {session && problem && <p className="text-center text-xs text-amber-200/80">{problem}</p>}
-            {session && status?.faucet && (
+            {address && problem && <p className="text-center text-xs text-white/80">{problem}</p>}
+            {address && chain?.faucet && (
               <button onClick={getTokens} disabled={busy !== null} className="btn-ghost py-2.5 text-xs">
-                {busy === "faucet" ? "Sending test tokens…" : `Get ${status.faucetAmount} free ${symbol}`}
+                {busy === "faucet" ? "Sending test tokens…" : `Get ${chain.faucetAmount} free ${symbol}`}
               </button>
             )}
           </div>
@@ -267,7 +263,7 @@ export function FundDesk() {
             <Banner tone={notice.tone === "good" ? "good" : "bad"}>
               {notice.text}{" "}
               {notice.signature && (
-                <a href={solscanTx(notice.signature, cluster)} target="_blank" rel="noreferrer" className="font-mono underline underline-offset-2">
+                <a href={link(notice.signature)} target="_blank" rel="noreferrer" className="font-mono underline underline-offset-2">
                   {shortHash(notice.signature)} ↗
                 </a>
               )}
@@ -282,7 +278,7 @@ export function FundDesk() {
           <h2 className="panel-title">Your funding</h2>
           {wallet?.bonus && <BonusLine bonus={wallet.bonus} />}
         </div>
-        {!session ? (
+        {!address ? (
           <p className="py-8 text-center text-sm text-white/40">Connect a wallet to see and withdraw your funding.</p>
         ) : !wallet || wallet.positions.length === 0 ? (
           <p className="py-8 text-center text-sm text-white/40">You have not funded an agent yet.</p>
@@ -301,12 +297,31 @@ export function FundDesk() {
   );
 }
 
+/** Which networks funding works on, so a user knows what each kind of wallet will use. */
+function Networks({ status, active }: { status: FundStatus; active: string | null }) {
+  return (
+    <ul className="flex flex-wrap gap-2 text-xs" aria-label="Networks">
+      {status.chains.map((c) => (
+        <li
+          key={c.id}
+          title={c.reason ?? undefined}
+          className={cn("flex items-center gap-2 rounded-full border px-3 py-1", c.id === active ? "border-white/50 text-white" : "border-white/10 text-white/55")}
+        >
+          <span className={cn("size-1.5 rounded-full", c.enabled ? "bg-white" : "bg-white/25")} />
+          {c.network}
+          <span className="text-white/35">{c.enabled ? (c.id === active ? "connected" : "ready") : "not set up"}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Banner({ tone, children }: { tone: "good" | "bad" | "warn" | "info"; children: React.ReactNode }) {
   const tones = {
-    good: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100",
-    bad: "border-red-400/30 bg-red-400/10 text-red-100",
-    warn: "border-amber-400/30 bg-amber-400/10 text-amber-100",
-    info: "border-sky-400/30 bg-sky-400/10 text-sky-100",
+    good: "border-white/30 bg-white/10 text-white/90",
+    bad: "border-white/30 bg-white/10 text-red-300",
+    warn: "border-white/30 bg-white/10 text-white/90",
+    info: "border-white/30 bg-white/10 text-white/90",
   };
   return <div className={cn("rounded-2xl border px-4 py-3 text-sm leading-relaxed", tones[tone])}>{children}</div>;
 }
@@ -323,7 +338,7 @@ function Estimate({ terms, usd, first }: { terms: FundingTerms; usd: number; fir
       <dl className="grid gap-2">
         <div className="flex justify-between">
           <dt className="text-white/55">First-deposit bonus</dt>
-          <dd className={cn("font-mono", flat.bonus > 0 ? "text-emerald-300" : "text-white/40")}>{flat.bonus > 0 ? `+${money(flat.bonus)}` : first ? "none at this size" : "already used"}</dd>
+          <dd className={cn("font-mono", flat.bonus > 0 ? "text-white/80" : "text-white/40")}>{flat.bonus > 0 ? `+${money(flat.bonus)}` : first ? "none at this size" : "already used"}</dd>
         </div>
         {flat.bonus > 0 && (
           <div className="flex justify-between text-xs">
@@ -366,7 +381,7 @@ function BonusLine({ bonus }: { bonus: FundBonus }) {
           ? `Bonus of ${money(bonus.usd)} given up by withdrawing early`
           : `Bonus of ${money(bonus.usd)} unlocks ${new Date(bonus.unlockAt).toLocaleString()}`;
   return (
-    <span className={cn("rounded-full px-3 py-1 text-xs", bonus.status === "forfeited" ? "bg-white/5 text-white/45" : "bg-emerald-400/10 text-emerald-200")}>{text}</span>
+    <span className={cn("rounded-full px-3 py-1 text-xs", bonus.status === "forfeited" ? "bg-white/5 text-white/45" : "bg-white/10 text-white/80")}>{text}</span>
   );
 }
 
@@ -449,13 +464,13 @@ function Activity({ status }: { status: FundStatus }) {
             <span className="w-28 text-white/50">{e.agent ? AGENTS[e.agent].name : "—"}</span>
             <span className="font-mono text-white">{money(e.usd)}</span>
             {e.fee > 0 && <span className="font-mono text-xs text-white/40">fee {money(e.fee)}</span>}
-            <span className={cn("text-xs", e.status === "done" ? "text-emerald-300/80" : e.status === "failed" ? "text-red-300/80" : "text-amber-200/80")}>
+            <span className={cn("text-xs", e.status === "done" ? "text-white/80" : e.status === "failed" ? "text-red-300/80" : "text-white/80")}>
               {e.status === "done" ? "confirmed" : e.status === "failed" ? "did not go through" : "confirming"}
             </span>
             <span className="ml-auto flex items-center gap-3 font-mono text-xs text-white/35">
               {new Date(e.ts).toLocaleString()}
               {e.signature && (
-                <a href={solscanTx(e.signature, status.cluster)} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
+                <a href={explorerLink(status.chain, e.signature)} target="_blank" rel="noreferrer" className="text-white/80 hover:underline">
                   {shortHash(e.signature)} ↗
                 </a>
               )}
@@ -524,7 +539,7 @@ function Terms({ terms, symbol }: { terms: FundingTerms; symbol: string }) {
                     <th scope="row" className="py-1.5 text-left font-normal">
                       {money(s)}
                     </th>
-                    <td className="py-1.5 text-emerald-300">+{money(bonusFor(terms, s))}</td>
+                    <td className="py-1.5 text-white/80">+{money(bonusFor(terms, s))}</td>
                     <td className="py-1.5">−{money(e.fee)}</td>
                     <td className="py-1.5">{money(e.received + e.bonus)}</td>
                     <td className={cn("py-1.5", e.net > -0.005 ? "text-emerald-400" : "text-red-400")}>{fmtSigned(e.net)}</td>

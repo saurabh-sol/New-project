@@ -1,21 +1,31 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { useAccountModal } from "@rainbow-me/rainbowkit";
+import { AnimatePresence } from "motion/react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { connectWallet, disconnectWallet, useSolanaWallets, type Wallet, type WalletAccount } from "@/lib/wallet";
-
-interface Session {
-  wallet: Wallet;
-  account: WalletAccount;
-}
+import { erc20Abi } from "viem";
+import { useAccount, useAccountEffect, useConnect, useDisconnect, useSignMessage, useSwitchChain, useWriteContract, type Connector } from "wagmi";
+import type { ChainId, DepositProof, PreparedDeposit } from "@/lib/chains";
+import { ConnectWindow, useDefaultLogos, type WalletOption } from "./connect-window";
+import { BASE_CHAIN } from "./web3-providers";
+import { connectWallet, disconnectWallet, signMessage as signSolanaMessage, signTransaction, useSolanaWallets, type Wallet, type WalletAccount } from "@/lib/wallet";
 
 interface WalletContext {
-  session: Session | null;
+  /** Which kind of wallet is connected, or null if none is. */
+  chain: ChainId | null;
   address: string | null;
+  walletName: string | null;
+  icon: string | null;
   connecting: boolean;
-  /** Opens the window that lists the installed wallets. */
+  /** Opens the window where the user picks a wallet. */
   open: () => void;
+  /** Opens the connected wallet's details. */
+  openAccount: () => void;
   disconnect: () => Promise<void>;
+  /** Asks the wallet to sign a text message. Free, and sends nothing. */
+  signMessage: (text: string) => Promise<string>;
+  /** Carries out a deposit the server prepared, and returns the evidence of it. */
+  deposit: (prepared: PreparedDeposit) => Promise<DepositProof>;
 }
 
 const Ctx = createContext<WalletContext | null>(null);
@@ -27,30 +37,51 @@ export function useWallet(): WalletContext {
   return ctx;
 }
 
-const GET_A_WALLET = [
-  { name: "Phantom", url: "https://phantom.com/download" },
-  { name: "MetaMask", url: "https://metamask.io/download" },
-  { name: "Solflare", url: "https://solflare.com/download" },
-  { name: "Backpack", url: "https://backpack.app/download" },
-];
+const METAMASK = "io.metamask";
+const INSTALL = { MetaMask: "https://metamask.io/download", Phantom: "https://phantom.com/download" };
 
-function readable(e: unknown): string {
-  const text = e instanceof Error ? e.message : String(e);
-  if (/reject|denied|cancel|declin/i.test(text)) return "You cancelled in your wallet.";
-  return text || "The wallet did not connect. Try again.";
-}
+/** A wallet that announced itself to the page, as opposed to a built-in fallback connector. */
+const announced = (c: Connector) => c.type === "injected" && c.id.includes(".");
 
+const forget = () => {
+  try {
+    localStorage.removeItem(LAST_WALLET);
+  } catch {}
+};
+
+/**
+ * One wallet at a time, of either kind: an Ethereum-type wallet on Base through
+ * RainbowKit, or a Solana wallet. Pages use this and never need to know which.
+ */
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const wallets = useSolanaWallets();
-  const [session, setSession] = useState<Session | null>(null);
+  const [solana, setSolana] = useState<{ wallet: Wallet; account: WalletAccount } | null>(null);
   const [showing, setShowing] = useState(false);
-  const [connecting, setConnecting] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const triedRestore = useRef(false);
+  const logos = useDefaultLogos();
 
-  // Bring back the wallet the user connected last time, without opening it.
+  const evm = useAccount();
+  const { connectors, connectAsync } = useConnect();
+  const { openAccountModal } = useAccountModal();
+  const { disconnectAsync } = useDisconnect();
+  const { signMessageAsync } = useSignMessage();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
+
+  // Connecting an Ethereum-type wallet replaces a Solana one.
+  useAccountEffect({
+    onConnect() {
+      setSolana((current) => {
+        if (current) void disconnectWallet(current.wallet);
+        return null;
+      });
+      forget();
+    },
+  });
+
+  // Bring back the Solana wallet the user connected last time, without opening it.
   useEffect(() => {
-    if (triedRestore.current || session || wallets.length === 0) return;
+    if (triedRestore.current || solana || evm.isConnected || evm.isReconnecting || wallets.length === 0) return;
     let last: string | null = null;
     try {
       last = localStorage.getItem(LAST_WALLET);
@@ -59,130 +90,115 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (!wallet) return;
     triedRestore.current = true;
     connectWallet(wallet, true)
-      .then((account) => setSession({ wallet, account }))
+      .then((account) => setSolana({ wallet, account }))
       .catch(() => {});
-  }, [wallets, session]);
+  }, [wallets, solana, evm.isConnected, evm.isReconnecting]);
 
-  const connect = useCallback(async (wallet: Wallet) => {
-    setError(null);
-    setConnecting(wallet.name);
-    try {
+  const connectSolana = useCallback(
+    async (wallet: Wallet) => {
       const account = await connectWallet(wallet);
-      setSession({ wallet, account });
-      setShowing(false);
+      if (evm.isConnected) await disconnectAsync().catch(() => {});
+      setSolana({ wallet, account });
       try {
         localStorage.setItem(LAST_WALLET, wallet.name);
       } catch {}
-    } catch (e) {
-      setError(readable(e));
-    } finally {
-      setConnecting(null);
-    }
-  }, []);
+    },
+    [evm.isConnected, disconnectAsync],
+  );
+
+  const connectEvm = useCallback(
+    async (connector: Connector) => {
+      await connectAsync({ connector, chainId: BASE_CHAIN.id });
+    },
+    [connectAsync],
+  );
+
+  // MetaMask and Phantom are always offered. Every other installed wallet is listed under them.
+  const { popular, installed } = useMemo(() => {
+    const metamask = connectors.find((c) => c.id === METAMASK);
+    const phantom = wallets.find((w) => w.name === "Phantom");
+    const popular: WalletOption[] = [
+      {
+        key: "base:metamask",
+        name: "MetaMask",
+        network: "Base",
+        icon: metamask?.icon ?? logos.MetaMask ?? null,
+        connect: metamask ? () => connectEvm(metamask) : undefined,
+        installUrl: INSTALL.MetaMask,
+      },
+      {
+        key: "solana:phantom",
+        name: "Phantom",
+        network: "Solana",
+        icon: phantom?.icon ?? logos.Phantom ?? null,
+        connect: phantom ? () => connectSolana(phantom) : undefined,
+        installUrl: INSTALL.Phantom,
+      },
+    ];
+    const installed: WalletOption[] = [
+      ...connectors
+        .filter((c) => announced(c) && c.id !== METAMASK)
+        .map((c): WalletOption => ({ key: `base:${c.id}`, name: c.name, network: "Base", icon: c.icon ?? null, connect: () => connectEvm(c) })),
+      ...wallets
+        .filter((w) => w.name !== "Phantom")
+        .map((w): WalletOption => ({ key: `solana:${w.name}`, name: w.name, network: "Solana", icon: w.icon, connect: () => connectSolana(w) })),
+    ];
+    return { popular, installed };
+  }, [connectors, wallets, logos, connectEvm, connectSolana]);
 
   const disconnect = useCallback(async () => {
-    if (session) await disconnectWallet(session.wallet);
-    setSession(null);
-    try {
-      localStorage.removeItem(LAST_WALLET);
-    } catch {}
-  }, [session]);
+    if (solana) await disconnectWallet(solana.wallet);
+    if (evm.isConnected) await disconnectAsync().catch(() => {});
+    setSolana(null);
+    forget();
+  }, [solana, evm.isConnected, disconnectAsync]);
 
-  const open = useCallback(() => {
-    setError(null);
-    setShowing(true);
-  }, []);
+  const open = useCallback(() => setShowing(true), []);
+  const close = useCallback(() => setShowing(false), []);
 
-  useEffect(() => {
-    if (!showing) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setShowing(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [showing]);
-
-  const value = useMemo<WalletContext>(
-    () => ({ session, address: session?.account.address ?? null, connecting: connecting !== null, open, disconnect }),
-    [session, connecting, open, disconnect],
+  const signMessage = useCallback(
+    async (text: string) => {
+      if (solana) return signSolanaMessage(solana.wallet, solana.account, text);
+      if (evm.isConnected) return signMessageAsync({ message: text });
+      throw new Error("Connect a wallet first.");
+    },
+    [solana, evm.isConnected, signMessageAsync],
   );
+
+  const deposit = useCallback(
+    async (prepared: PreparedDeposit): Promise<DepositProof> => {
+      if (prepared.kind === "solana") {
+        if (!solana) throw new Error("Connect a Solana wallet first.");
+        return { kind: "solana", transaction: await signTransaction(solana.wallet, solana.account, prepared.transaction, prepared.cluster) };
+      }
+      if (!evm.isConnected) throw new Error("Connect an Ethereum-type wallet first.");
+      if (evm.chainId !== prepared.chainId) await switchChainAsync({ chainId: prepared.chainId });
+      const hash = await writeContractAsync({
+        chainId: prepared.chainId,
+        address: prepared.token,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [prepared.to, BigInt(prepared.units)],
+      });
+      return { kind: "base", hash };
+    },
+    [solana, evm.isConnected, evm.chainId, switchChainAsync, writeContractAsync],
+  );
+
+  const value = useMemo<WalletContext>(() => {
+    // The picker shows its own progress, so the button stays usable: a wallet that never answers can't lock it.
+    const shared = { connecting: false, open, openAccount: () => openAccountModal?.(), disconnect, signMessage, deposit };
+    if (solana) return { ...shared, chain: "solana", address: solana.account.address, walletName: solana.wallet.name, icon: solana.wallet.icon };
+    if (evm.isConnected && evm.address) {
+      return { ...shared, chain: "base", address: evm.address, walletName: evm.connector?.name ?? "Wallet", icon: evm.connector?.icon ?? null };
+    }
+    return { ...shared, chain: null, address: null, walletName: null, icon: null };
+  }, [solana, evm.isConnected, evm.address, evm.connector, open, openAccountModal, disconnect, signMessage, deposit]);
 
   return (
     <Ctx.Provider value={value}>
       {children}
-      <AnimatePresence>
-        {showing && (
-          <motion.div
-            className="fixed inset-0 z-[5000] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowing(false)}
-          >
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Connect a wallet"
-              className="panel panel-strong w-full max-w-md overflow-hidden"
-              initial={{ opacity: 0, y: 24, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 320, damping: 26 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-6 pt-5">
-                <h2 className="font-display text-xl font-semibold text-white">Connect a wallet</h2>
-                <button onClick={() => setShowing(false)} aria-label="Close" className="grid size-8 place-items-center rounded-full text-white/50 hover:bg-white/10 hover:text-white">
-                  ✕
-                </button>
-              </div>
-              <p className="px-6 pt-1 text-sm text-white/50">Connecting only shares your public address.</p>
-
-              <div className="grid gap-2 p-6">
-                {wallets.map((w) => (
-                  <button
-                    key={w.name}
-                    onClick={() => connect(w)}
-                    disabled={connecting !== null}
-                    className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left transition hover:border-white/50 hover:bg-white/[0.08] disabled:opacity-50"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element -- wallet icons are inline data URIs */}
-                    <img src={w.icon} alt="" className="size-9 rounded-xl" />
-                    <span className="flex-1 font-medium text-white">{w.name}</span>
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/80">
-                      {connecting === w.name ? "Opening…" : "Installed"}
-                    </span>
-                  </button>
-                ))}
-
-                {wallets.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-white/15 px-4 py-5 text-center text-sm text-white/55">
-                    No Solana wallet was found in this browser. Install one, then reload this page.
-                  </div>
-                )}
-
-                {error && (
-                  <p role="alert" className="rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm text-red-300">
-                    {error}
-                  </p>
-                )}
-              </div>
-
-              <div className="border-t border-white/5 px-6 py-4">
-                <div className="mb-2 text-[11px] uppercase tracking-widest text-white/35">Get a wallet</div>
-                <div className="flex flex-wrap gap-2">
-                  {GET_A_WALLET.filter((g) => !wallets.some((w) => w.name.toLowerCase().includes(g.name.toLowerCase()))).map((g) => (
-                    <a key={g.name} href={g.url} target="_blank" rel="noreferrer" className="btn-ghost px-3 py-1 text-xs">
-                      {g.name} ↗
-                    </a>
-                  ))}
-                </div>
-                <p className="mt-3 text-[11px] leading-relaxed text-white/35">
-                  This app runs on Solana. MetaMask works once its Solana account is switched on.
-                </p>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <AnimatePresence>{showing && <ConnectWindow popular={popular} installed={installed} onClose={close} />}</AnimatePresence>
     </Ctx.Provider>
   );
 }

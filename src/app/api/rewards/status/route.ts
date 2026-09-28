@@ -1,36 +1,38 @@
 import type { RewardsStatus } from "@/lib/rewards-types";
-import { parseWallet } from "@/server/rewards/challenge";
-import { rewardsConfig, rewardsMode } from "@/server/rewards/config";
+import { chainById, chainFor } from "@/server/chains";
+import { rewardsConfig } from "@/server/rewards/config";
 import { publicClaim } from "@/server/rewards/http";
 import { claimsToday, getClaim } from "@/server/rewards/ledger";
-import { connect, settlePending, treasuryBalance } from "@/server/rewards/payout";
+import { settlePending } from "@/server/rewards/payout";
 
 export async function GET(request: Request) {
   const cfg = rewardsConfig();
-  const address = new URL(request.url).searchParams.get("wallet");
-  const wallet = address ? parseWallet(address) : null;
+  const found = chainFor(new URL(request.url).searchParams.get("wallet"));
+  const chain = found?.chain ?? chainById("solana");
+  const info = await chain.status();
+  // Without a treasury the page still works as a demo. Any other problem is shown as it is.
+  const noTreasury = !!info.payoutReason && /No .* treasury is configured/.test(info.payoutReason);
 
   const status: RewardsStatus = {
-    mode: rewardsMode(cfg),
-    cluster: cfg.cluster,
+    mode: noTreasury ? "demo" : "live",
+    chain: info,
     amount: cfg.amount,
     remainingToday: Math.max(0, cfg.dailyCap - (await claimsToday())),
     captchaSiteKey: cfg.turnstileSecret ? cfg.turnstileSiteKey : null,
-    problem: cfg.treasuryError,
+    problem: noTreasury ? null : info.payoutReason,
     claim: null,
   };
 
-  if (cfg.treasury) {
+  if (status.mode === "live" && !status.problem) {
     try {
-      const conn = connect(cfg);
-      if ((await treasuryBalance(conn, cfg, cfg.treasury)) < cfg.amount) status.problem = "The reward pool is empty right now. Check back later.";
-      const claim = wallet ? await getClaim(wallet.toBase58()) : null;
-      const settled = claim ? await settlePending(conn, claim) : null;
+      if ((await chain.treasuryBalance()) < cfg.amount) status.problem = "The reward pool is empty right now. Check back later.";
+      const claim = found ? await getClaim(found.address) : null;
+      const settled = claim ? await settlePending(chain, claim) : null;
       status.claim = settled ? publicClaim(settled) : null;
     } catch {
-      status.problem = "Can't reach the Solana network right now. Try again in a moment.";
+      status.problem = `Can't reach ${info.network} right now. Try again in a moment.`;
     }
   }
 
-  return Response.json(status);
+  return Response.json(status, { headers: { "cache-control": "no-store" } });
 }

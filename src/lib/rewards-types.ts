@@ -1,6 +1,5 @@
+import type { ChainStatus } from "./chains";
 import type { AgentId } from "./types";
-
-export type RewardsCluster = "devnet" | "mainnet-beta";
 
 export interface ClaimRecord {
   status: "pending" | "sent";
@@ -11,9 +10,10 @@ export interface ClaimRecord {
 }
 
 export interface RewardsStatus {
-  /** demo: no treasury configured, nothing is ever sent. */
+  /** demo: no treasury is configured on this chain, so nothing is ever sent. */
   mode: "live" | "demo";
-  cluster: RewardsCluster;
+  /** The chain the reward would be paid on: the connected wallet's chain. */
+  chain: ChainStatus;
   amount: number;
   remainingToday: number;
   captchaSiteKey: string | null;
@@ -29,5 +29,5 @@ export interface ChallengeResponse {
 
 export type ClaimResponse =
   | { ok: true; mode: "demo"; amount: number }
-  | { ok: true; mode: "live"; cluster: RewardsCluster; claim: ClaimRecord }
+  | { ok: true; mode: "live"; claim: ClaimRecord }
   | { ok: false; error: string; claim?: ClaimRecord };

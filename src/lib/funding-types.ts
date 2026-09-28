@@ -1,3 +1,4 @@
+import type { ChainStatus } from "./chains";
 import type { FundingTerms } from "./funding";
 import type { AgentId } from "./types";
 
@@ -45,14 +46,10 @@ export interface FundEvent {
 }
 
 export interface FundStatus {
-  enabled: boolean;
-  /** Why funding is off, when it is. */
-  reason: string | null;
-  cluster: "devnet" | "mainnet-beta";
-  tokenSymbol: string;
-  /** Whether this server hands out free test tokens. Devnet only. */
-  faucet: boolean;
-  faucetAmount: number;
+  /** Every chain the app supports, and whether funding works on each. */
+  chains: ChainStatus[];
+  /** The chain these figures are for: the connected wallet's chain, or the first one that is ready. */
+  chain: ChainStatus;
   terms: FundingTerms;
   agents: AgentFunding[];
   wallet: null | {

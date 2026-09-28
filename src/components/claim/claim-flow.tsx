@@ -5,16 +5,17 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Character } from "@/components/arena/character";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
-import type { ChallengeResponse, ClaimRecord, ClaimResponse, RewardsCluster, RewardsStatus } from "@/lib/rewards-types";
+import { explorerLink, type ChainStatus } from "@/lib/chains";
+import type { ChallengeResponse, ClaimRecord, ClaimResponse, RewardsStatus } from "@/lib/rewards-types";
 import type { AgentId } from "@/lib/types";
-import { cn, shortHash, solscanTx } from "@/lib/utils";
+import { cn, shortHash } from "@/lib/utils";
 import { useWallet } from "@/components/wallet/wallet-provider";
-import { shortAddress, signMessage } from "@/lib/wallet";
+import { shortAddress } from "@/lib/wallet";
 import { Turnstile } from "./turnstile";
 
 type Outcome =
   | { kind: "demo"; amount: number; agent: AgentId }
-  | { kind: "live"; cluster: RewardsCluster; claim: ClaimRecord; earlier: boolean };
+  | { kind: "live"; chain: ChainStatus; claim: ClaimRecord; earlier: boolean };
 
 type Busy = "sign" | "send" | null;
 
@@ -35,7 +36,7 @@ function readable(e: unknown): string {
 }
 
 export function ClaimFlow() {
-  const { session, address, open, connecting } = useWallet();
+  const { address, walletName, open, connecting, signMessage } = useWallet();
   const [agent, setAgent] = useState<AgentId | null>(null);
   const [status, setStatus] = useState<RewardsStatus | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -50,7 +51,7 @@ export function ClaimFlow() {
       .then((s) => {
         if (!alive) return;
         setStatus(s);
-        setOutcome(s.claim ? { kind: "live", cluster: s.cluster, claim: s.claim, earlier: true } : null);
+        setOutcome(s.claim ? { kind: "live", chain: s.chain, claim: s.claim, earlier: true } : null);
         setError(null);
       })
       .catch(() => alive && setError("Can't reach the rewards server. Reload to try again."));
@@ -59,16 +60,16 @@ export function ClaimFlow() {
     };
   }, [address]);
 
-  const step = outcome ? 3 : !session ? 0 : !agent ? 1 : 2;
+  const step = outcome ? 3 : !address ? 0 : !agent ? 1 : 2;
 
   async function claim() {
-    if (!session || !agent || !address) return;
+    if (!agent || !address || !status) return;
     setError(null);
     setBusy("sign");
     try {
       const challenge = await api<ChallengeResponse & { error?: string }>("/api/rewards/challenge", { wallet: address, agent });
       if (challenge.status !== 200) throw new Error(challenge.data.error);
-      const signature = await signMessage(session.wallet, session.account, challenge.data.message);
+      const signature = await signMessage(challenge.data.message);
 
       setBusy("send");
       const { data } = await api<ClaimResponse>("/api/rewards/claim", {
@@ -80,9 +81,9 @@ export function ClaimFlow() {
         captcha,
       });
       if (data.ok) {
-        setOutcome(data.mode === "demo" ? { kind: "demo", amount: data.amount, agent } : { kind: "live", cluster: data.cluster, claim: data.claim, earlier: false });
+        setOutcome(data.mode === "demo" ? { kind: "demo", amount: data.amount, agent } : { kind: "live", chain: status.chain, claim: data.claim, earlier: false });
       } else if (data.claim) {
-        setOutcome({ kind: "live", cluster: status?.cluster ?? "mainnet-beta", claim: data.claim, earlier: true });
+        setOutcome({ kind: "live", chain: status.chain, claim: data.claim, earlier: true });
       } else {
         throw new Error(data.error);
       }
@@ -101,20 +102,20 @@ export function ClaimFlow() {
       <div className="mb-6 text-center">
         <h1 className="font-display text-4xl font-bold tracking-tight text-white">Arena Rewards</h1>
         <p className="mt-2 text-sm text-white/55">
-          Back an agent and claim <span className="font-semibold text-white/80">{status ? `${status.amount} USDC` : "USDC"}</span> on Solana. One
+          Back an agent and claim <span className="font-semibold text-white/80">{status ? `${status.amount} USDC` : "USDC"}</span>, paid on {status?.chain.network ?? "Solana or Base"}. One
           claim per wallet. You pay no fee.
         </p>
       </div>
 
       {status?.mode === "demo" && (
         <div className="mb-4 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-xs leading-relaxed text-white/80">
-          <span className="font-semibold">Demo mode.</span> No reward treasury is configured on this server, so you can try the whole flow but no USDC will
+          <span className="font-semibold">Demo mode.</span> No reward treasury is configured for {status.chain.network}, so you can try the whole flow but no USDC will
           be sent.
         </div>
       )}
-      {status?.mode === "live" && status.cluster === "devnet" && (
+      {status?.mode === "live" && status.chain.testnet && (
         <div className="mb-4 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-xs text-white/80">
-          <span className="font-semibold">Devnet.</span> Rewards are paid in devnet test USDC, which has no real value.
+          <span className="font-semibold">{status.chain.network}.</span> Rewards are paid in test tokens, which have no real value.
         </div>
       )}
 
@@ -125,8 +126,8 @@ export function ClaimFlow() {
           <AnimatePresence mode="wait">
             {step === 0 && (
               <Pane key="connect">
-                <h2 className="font-display text-lg font-semibold text-white">Connect your Solana wallet</h2>
-                <p className="mt-1 text-sm text-white/50">Phantom, MetaMask, Solflare, Backpack and other Solana wallets work. Connecting only shares your public address.</p>
+                <h2 className="font-display text-lg font-semibold text-white">Connect your wallet</h2>
+                <p className="mt-1 text-sm text-white/50">Use an Ethereum-type wallet on Base, or a Solana wallet. Connecting only shares your public address.</p>
                 <button onClick={open} disabled={connecting} className="btn-primary mt-5 w-full py-3.5 text-sm">
                   {connecting ? "Waiting for wallet…" : "Connect wallet"}
                 </button>
@@ -226,9 +227,9 @@ export function ClaimFlow() {
           </AnimatePresence>
         </div>
 
-        {session && address && (
+        {walletName && address && (
           <div className="border-t border-white/5 px-5 py-3 text-xs text-white/45 sm:px-7">
-            {session.wallet.name} · <span className="font-mono text-white/70">{shortAddress(address)}</span>
+            {walletName} · <span className="font-mono text-white/70">{shortAddress(address)}</span>
           </div>
         )}
       </div>
@@ -331,16 +332,16 @@ function Done({ outcome }: { outcome: Outcome }) {
           <p className="mt-2 text-sm text-white/50">
             {pending
               ? "The transfer was submitted and is waiting for confirmation. Reload in a minute to see the result."
-              : `Sent ${new Date(outcome.claim.ts).toLocaleString()}${outcome.cluster === "devnet" ? " on devnet" : ""}.`}
+              : `Sent ${new Date(outcome.claim.ts).toLocaleString()} on ${outcome.chain.network}.`}
           </p>
           {outcome.claim.signature && (
             <a
-              href={solscanTx(outcome.claim.signature, outcome.cluster)}
+              href={explorerLink(outcome.chain, outcome.claim.signature)}
               target="_blank"
               rel="noreferrer"
               className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 font-mono text-xs text-white/80 hover:bg-white/10"
             >
-              {shortHash(outcome.claim.signature)} · View on Solscan ↗
+              {shortHash(outcome.claim.signature)} · View transaction ↗
             </a>
           )}
         </>

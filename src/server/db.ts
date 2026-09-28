@@ -99,6 +99,7 @@ async function migrate(sql: Sql) {
   await sql`alter table fund_events add column if not exists principal numeric not null default 0`;
   await sql`alter table fund_bonuses add column if not exists last_valid_block_height bigint`;
   await sql`alter table fund_intents add column if not exists message_hash text`;
+  await sql`alter table fund_events add column if not exists intent text`;
 }
 
 /** The query function, once the tables exist. */

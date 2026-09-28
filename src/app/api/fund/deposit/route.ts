@@ -1,5 +1,6 @@
+import type { DepositProof } from "@/lib/chains";
 import { confirmDeposit, prepareDeposit } from "@/server/fund/service";
-import { isAgentId, parseWallet } from "@/server/rewards/challenge";
+import { isAgentId } from "@/server/rewards/challenge";
 import { fail } from "@/server/rewards/http";
 
 // Waits for the network to confirm the transfer.
@@ -11,26 +12,32 @@ interface Body {
   agent?: unknown;
   usd?: unknown;
   intentId?: unknown;
-  transaction?: unknown;
+  proof?: unknown;
 }
 
-/** Two steps: "prepare" returns a transfer for the wallet to sign, "confirm" sends it and credits the deposit. */
+function asProof(v: unknown): DepositProof | null {
+  const p = v as { kind?: unknown; transaction?: unknown; hash?: unknown } | null;
+  if (p?.kind === "solana" && typeof p.transaction === "string") return { kind: "solana", transaction: p.transaction };
+  if (p?.kind === "base" && typeof p.hash === "string") return { kind: "base", hash: p.hash as `0x${string}` };
+  return null;
+}
+
+/** Two steps: "prepare" says what the wallet must do, "confirm" checks that it happened and credits the deposit. */
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as Body | null;
 
   if (body?.step === "prepare") {
-    const wallet = parseWallet(body.wallet);
-    if (!wallet) return fail(400, "That doesn't look like a Solana wallet address.");
     if (!isAgentId(body.agent)) return fail(400, "Pick an agent to fund.");
     const usd = Number(body.usd);
     if (!isFinite(usd) || usd <= 0) return fail(400, "Enter an amount to deposit.");
-    const result = await prepareDeposit(wallet, body.agent, usd);
+    const result = await prepareDeposit(body.wallet, body.agent, usd);
     return Response.json(result, { status: result.ok ? 200 : 400 });
   }
 
   if (body?.step === "confirm") {
-    if (typeof body.intentId !== "string" || typeof body.transaction !== "string") return fail(400, "The signed transfer is missing. Start again.");
-    const result = await confirmDeposit(body.intentId, body.transaction);
+    const proof = asProof(body.proof);
+    if (typeof body.intentId !== "string" || !proof) return fail(400, "The proof of transfer is missing. Start again.");
+    const result = await confirmDeposit(body.intentId, proof);
     return Response.json(result, { status: result.ok ? 200 : 400 });
   }
 

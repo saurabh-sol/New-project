@@ -1,5 +1,4 @@
-import { PublicKey } from "@solana/web3.js";
-import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { AGENTS } from "@/lib/agents";
 import type { AgentId } from "@/lib/types";
 
@@ -11,17 +10,6 @@ const SECRET = process.env.CLAIM_SECRET || randomBytes(32).toString("hex");
 const mac = (message: string) => createHmac("sha256", SECRET).update(message).digest("base64url");
 
 export const isAgentId = (v: unknown): v is AgentId => typeof v === "string" && v in AGENTS;
-
-/** Returns the wallet's public key, or null if the address isn't a normal wallet address. */
-export function parseWallet(address: unknown): PublicKey | null {
-  if (typeof address !== "string" || address.length < 32 || address.length > 44) return null;
-  try {
-    const key = new PublicKey(address);
-    return PublicKey.isOnCurve(key.toBytes()) ? key : null;
-  } catch {
-    return null;
-  }
-}
 
 /** The human-readable text the wallet shows the user, plus a token proving we issued it. */
 export function issueChallenge(wallet: string, agent: AgentId, amount: number) {
@@ -51,20 +39,6 @@ export function checkChallenge(message: string, token: string, wallet: string, a
   const issued = Date.parse(field(message, "Issued") ?? "");
   if (!isFinite(issued) || Date.now() - issued > TTL_MS) return "This sign-in request expired. Start again.";
   return null;
-}
-
-const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
-
-/** Verifies an ed25519 signature made by the wallet over the message. */
-export function verifySignature(wallet: PublicKey, message: string, signatureBase64: string): boolean {
-  try {
-    const signature = Buffer.from(signatureBase64, "base64");
-    if (signature.length !== 64) return false;
-    const key = createPublicKey({ key: Buffer.concat([ED25519_SPKI_PREFIX, wallet.toBytes()]), format: "der", type: "spki" });
-    return verify(null, Buffer.from(message, "utf8"), key, signature);
-  } catch {
-    return false;
-  }
 }
 
 /**
