@@ -31,7 +31,8 @@ export const clamp = (n: number, lo: number, hi: number) => (isFinite(n) ? Math.
 export const STOP_RANGE = [2, 10] as const;
 export const TARGET_RANGE = [3, 20] as const;
 
-const MAX_SAY = 240;
+/** Desk talk is short. Anything longer is cut at the last full sentence that fits. */
+const MAX_SAY = 120;
 
 /** Makes model text safe to show in a speech bubble: one line, no markdown, bounded length. */
 export function cleanSay(text: unknown): string {
@@ -42,7 +43,7 @@ export function cleanSay(text: unknown): string {
   if (s.length <= MAX_SAY) return s;
   const cut = s.slice(0, MAX_SAY);
   const stop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
-  return stop > 80 ? cut.slice(0, stop + 1) : `${cut.slice(0, cut.lastIndexOf(" "))}…`;
+  return stop > 40 ? cut.slice(0, stop + 1) : `${cut.slice(0, cut.lastIndexOf(" "))}…`;
 }
 
 export const asEmotion = (v: unknown): Emotion => ((EMOTIONS as readonly string[]).includes(String(v)) ? (v as Emotion) : "neutral");

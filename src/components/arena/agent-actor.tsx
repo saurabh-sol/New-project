@@ -2,7 +2,6 @@
 
 import { animate, AnimatePresence, motion, useMotionValue, useMotionValueEvent, useTransform } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { AGENTS } from "@/lib/agents";
 import { facingAt, homePoint, inward, routeBetween, routeDuration, routeTimes, sameSpot } from "@/lib/layout";
 import type { AgentId, AgentState, Spot } from "@/lib/types";
 import { useArena } from "@/store/arena";
@@ -22,7 +21,6 @@ const POSE: Record<AgentState, Pose> = {
 
 /** A character that walks across the floor whenever its spot changes. */
 export function AgentActor({ id, index }: { id: AgentId; index: number }) {
-  const agent = AGENTS[id];
   const spot = useArena((s) => s.agents[id].spot);
   const state = useArena((s) => s.agents[id].state);
   const walking = useArena((s) => s.agents[id].walking);
@@ -91,7 +89,7 @@ export function AgentActor({ id, index }: { id: AgentId; index: number }) {
                 <motion.span
                   key={i}
                   className="absolute left-1/2 top-1/2 size-1.5 rounded-full"
-                  style={{ background: state === "win" ? (i % 2 ? "#4ade80" : "#fde047") : "#f87171" }}
+                  style={{ background: state === "win" ? "#4ade80" : "#f87171" }}
                   initial={{ x: 0, y: 0, opacity: 1 }}
                   animate={{ x: Math.cos(a) * 60, y: Math.sin(a) * 60 - 10, opacity: 0 }}
                   transition={{ duration: 1, ease: "easeOut", repeat: state === "win" ? 2 : 0 }}
@@ -107,7 +105,7 @@ export function AgentActor({ id, index }: { id: AgentId; index: number }) {
         {(walking || spot.kind !== "home") && (
           <motion.div
             className="absolute left-1/2 top-full mt-0.5 -translate-x-1/2 whitespace-nowrap rounded-full border bg-black/70 px-1.5 py-px font-mono text-[9px] font-semibold tracking-wider"
-            style={{ color: agent.color, borderColor: `${agent.color}55` }}
+            style={{ color: "#fff", borderColor: "rgba(255,255,255,0.35)" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

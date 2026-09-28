@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "Four AI agents (GPT, Claude, Grok and Jev) debate, negotiate and paper trade together on live prices.",
 };
 
-export const viewport: Viewport = { themeColor: "#05070c" };
+export const viewport: Viewport = { themeColor: "#000000" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

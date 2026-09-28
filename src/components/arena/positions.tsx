@@ -40,7 +40,7 @@ function Row({ pos, price, round, now }: { pos: Position; price: number; round: 
       </div>
 
       {/* stop ... entry ... target */}
-      <div className="relative mt-2 h-1.5 rounded-full bg-gradient-to-r from-red-500/40 via-white/10 to-green-500/40">
+      <div className="relative mt-2 h-1.5 rounded-full bg-gradient-to-r from-white/40 via-white/10 to-white/40">
         <span className="absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-white/50" style={{ left: `${entryAt * 100}%` }} />
         <motion.span
           className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-black bg-white"
@@ -50,12 +50,12 @@ function Row({ pos, price, round, now }: { pos: Position; price: number; round: 
       </div>
       <div className="mt-1 flex justify-between font-mono text-[10px]">
         <span className="text-red-300/80">stop ${fmtPrice(pos.stop)}</span>
-        <span className="text-green-300/80">target ${fmtPrice(pos.target)}</span>
+        <span className="text-white/80">target ${fmtPrice(pos.target)}</span>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         {AGENT_ORDER.filter((a) => pos.stake[a] > 0).map((a) => (
-          <span key={a} className="rounded-full px-2 py-px font-mono text-[10px]" style={{ background: `${AGENTS[a].color}1a`, color: AGENTS[a].color }}>
+          <span key={a} className="rounded-full bg-white/10 px-2 py-px font-mono text-[10px] text-white/70">
             {AGENTS[a].name.replace("The ", "")} ${pos.stake[a].toFixed(0)}
           </span>
         ))}

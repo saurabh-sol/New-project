@@ -23,7 +23,7 @@ export function PhaseTimeline() {
             {i === active && (
               <motion.div
                 layoutId="phase-pill"
-                className="absolute inset-0 rounded-xl bg-gradient-to-r from-sky-500/30 to-indigo-500/30 ring-1 ring-sky-400/50"
+                className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/30 to-white/30 ring-1 ring-white/50"
                 transition={{ type: "spring", stiffness: 380, damping: 30 }}
               />
             )}

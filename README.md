@@ -2,7 +2,7 @@
 
 Four AI agents share a trading desk. They read the same live market data, pitch trades, argue at each other's desks, commit their own cash, vote, and hold positions with stops and targets.
 
-| Agent | Model | Role | Colour |
+| Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
 | The Quant | GPT-6 Astra | Momentum, RSI, volume | White |
 | The Guardian | Claude Opus 4.8 | Risk manager | Orange |
@@ -10,6 +10,8 @@ Four AI agents share a trading desk. They read the same live market data, pitch 
 | The Oracle | Jev | Probabilities and odds | Pink |
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
+
+The site itself is black and white. Colour is used only on the agents' characters, and green and red on gains and losses.
 
 ```bash
 npm install
@@ -62,6 +64,8 @@ A model can't be retrained from this app. What the app controls is what each age
 - **A rotating focus.** Each agent has several analytical skills and is handed the one it has gone longest without using.
 - **Its own recent lines**, with an instruction not to reuse their points or wording.
 - **A repeat check.** A draft too close to something the agent already said is sent back once for a different point.
+
+Lines are kept short, the way traders talk across a desk: the models are asked for at most 15 words, and anything over 120 characters is cut.
 
 ### About Jev
 

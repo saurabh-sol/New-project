@@ -39,7 +39,7 @@ function AgentOverlay({ id }: { id: AgentId }) {
               key={String(rt.vote)}
               className={cn(
                 "relative whitespace-nowrap rounded-full px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider",
-                rt.vote ? "bg-green-500 text-green-950 shadow-[0_0_18px_#22c55e]" : "bg-red-500 text-red-950 shadow-[0_0_18px_#ef4444]",
+                rt.vote ? "bg-white text-black" : "border border-white/50 bg-black text-white",
               )}
               initial={{ opacity: 0, y: 14, scale: 0.3 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}

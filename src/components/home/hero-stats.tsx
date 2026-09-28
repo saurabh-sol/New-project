@@ -34,7 +34,7 @@ function useCountdown(): string | null {
 
 function Stat({ label, children, note, featured }: { label: string; children: React.ReactNode; note?: React.ReactNode; featured?: boolean }) {
   return (
-    <div className={cn("panel flex min-w-0 flex-col justify-between gap-2 px-5 py-4", featured && "panel-glow")}>
+    <div className={cn("panel flex min-w-0 flex-col justify-between gap-2 px-5 py-4", featured && "panel-strong")}>
       <div className="panel-title">{label}</div>
       <div className="font-display text-2xl font-bold leading-none text-white sm:text-3xl">{children}</div>
       <div className="min-h-4 truncate text-xs text-white/45">{note}</div>
@@ -61,7 +61,7 @@ export function HeroStats() {
   return (
     <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Desk summary">
       <Stat label="Pool equity" featured note={`on $${capital.toFixed(2)} of capital`}>
-        {ready ? <RollingNumber value={equity} format={(n) => `$${n.toFixed(2)}`} className="brand-text tabular-nums" /> : "…"}
+        {ready ? <RollingNumber value={equity} format={(n) => `$${n.toFixed(2)}`} className="tabular-nums" /> : "…"}
       </Stat>
       <Stat label="Council result" note="paper trades at live prices">
         <span className={cn("tabular-nums", up ? "text-emerald-400" : "text-red-400")}>
@@ -77,7 +77,7 @@ export function HeroStats() {
       </Stat>
       <Stat label={`Session ${round || "—"}`} note={phase === "monitor" && countdown ? `next session in ${countdown}` : "in progress"}>
         <span className="flex items-center gap-2.5 text-xl sm:text-2xl">
-          <span className={cn("size-2.5 shrink-0 rounded-full", phase === "monitor" ? "bg-white/30" : "animate-pulse bg-emerald-400")} />
+          <span className={cn("size-2.5 shrink-0 rounded-full", phase === "monitor" ? "bg-white/30" : "animate-pulse bg-white")} />
           <span className="truncate">{PHASE[phase]}</span>
         </span>
       </Stat>

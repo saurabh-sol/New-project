@@ -41,13 +41,13 @@ const expectedPct = (p: number, proposal: Proposal) => p * proposal.targetPct - 
 /** Jev's probability for the proposal, and whether it is good enough to back. */
 function judge(p: number, proposal: Proposal) {
   if (proposal.action === "SELL") {
-    return { backs: p >= SELL_ABOVE, strength: clamp((p - 0.5) * 2, 0, 1), view: `I put ${pct(p)} on ${proposal.token} trading lower an hour from now.` };
+    return { backs: p >= SELL_ABOVE, strength: clamp((p - 0.5) * 2, 0, 1), view: `${pct(p)} odds ${proposal.token} is lower in an hour.` };
   }
   const ev = expectedPct(p, proposal);
   return {
     backs: ev >= MIN_EDGE_PCT,
     strength: clamp(ev / 5, 0, 1),
-    view: `I put ${pct(p)} on this reaching its ${proposal.targetPct}% target before its ${proposal.stopPct}% stop, an expected ${ev >= 0 ? "+" : ""}${ev.toFixed(1)}%.`,
+    view: `${pct(p)} odds of target before stop. Expected ${ev >= 0 ? "+" : ""}${ev.toFixed(1)}%.`,
   };
 }
 
@@ -113,39 +113,31 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       const base = { stopPct: 4, targetPct: 8, sellPct: 100, stakeUsd: 0 };
       const said = ctx.said[agent];
 
-      /** The second reading for a token, as a clause to add to the sentence. */
+      /** The second reading for a token, as a short clause. */
       const also = (token: string) => {
-        const high = ctx.stats.find((s) => s.token === token)?.high1h ?? 0;
-        if (lens === "breakout" && askBreakout) return ` and ${pct(a.probability(`break_${token}`))} on it clearing its 1-hour high of ${px(high)}`;
-        if (askFour) return ` and ${pct(a.probability(`four_${token}`))} on it being higher in four hours`;
-        if (askBreakout) return ` and ${pct(a.probability(`break_${token}`))} on it clearing its 1-hour high of ${px(high)}`;
+        if (lens === "breakout" && askBreakout) return `, ${pct(a.probability(`break_${token}`))} to break its 1h high`;
+        if (askFour) return `, ${pct(a.probability(`four_${token}`))} over 4h`;
+        if (askBreakout) return `, ${pct(a.probability(`break_${token}`))} to break its 1h high`;
         return "";
       };
 
       const weakest = odds.filter((o) => ctx.sellable.includes(o.token)).sort((x, y) => x.p - y.p)[0];
       if (weakest && weakest.p < SELL_BELOW) {
         const t = weakest.token;
-        const read = `${pct(weakest.p)} on ${t} trading higher an hour from now${also(t)}`;
+        const read = `${pct(weakest.p)} odds ${t} is higher in an hour${also(t)}`;
         return {
           ...base,
           action: "SELL",
           token: t,
           conviction: conviction(weakest.p),
           emotion: "worried",
-          say: freshest(
-            [
-              `I put only ${read}. The odds have turned against that position, so I want to sell it.`,
-              `My reading on ${t} has weakened: ${read}. I propose we close the position.`,
-              `The probabilities no longer support holding ${t}. I have ${read}. I would sell.`,
-            ],
-            said,
-          ),
+          say: freshest([`${read}. I want out.`, `${t} has turned: ${read}. Sell.`, `Odds are against ${t} now. ${read}. Close it.`], said),
         };
       }
 
       const best = [...odds].sort((x, y) => y.p - x.p)[0];
       const t = best.token;
-      const read = `${pct(best.p)} on ${t} trading higher an hour from now${also(t)}`;
+      const read = `${pct(best.p)} odds ${t} is higher in an hour${also(t)}`;
       if (best.p >= BUY_ABOVE && cash >= 10) {
         const c = conviction(best.p);
         return {
@@ -155,14 +147,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
           stakeUsd: Math.floor(cash * 0.1 * c),
           conviction: c,
           emotion: c >= 4 ? "confident" : "neutral",
-          say: freshest(
-            [
-              `I put ${read}. That is the best edge on the board, so I am buying.`,
-              `${t} has the strongest odds I can find: ${read}. I propose a long position.`,
-              `My highest reading is ${t}. I have ${read}, which clears my threshold to buy.`,
-            ],
-            said,
-          ),
+          say: freshest([`${read}. Best edge on the board. Buying.`, `${t} leads my odds: ${read}. Long.`, `${read}. That clears my bar. Buy.`], said),
         };
       }
 
@@ -175,10 +160,10 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         emotion: "skeptical",
         say: freshest(
           [
-            `Nothing clears my bar. My best read is ${read}, which is too close to a coin flip. I hold.`,
-            `I see no edge this round. ${t} leads at ${pct(best.p)} and ${runnerUp.token} follows at ${pct(runnerUp.p)} for the next hour. Neither justifies a position.`,
-            `The odds are flat across the board. The top reading is ${read}. I would wait for a clearer signal.`,
-            `I am staying in cash. Every token sits near even odds for the next hour, with ${t} highest at ${pct(best.p)}.`,
+            `${read}. Too close to a coin flip. Hold.`,
+            `No edge. ${t} ${pct(best.p)}, ${runnerUp.token} ${pct(runnerUp.p)} for the hour. Hold.`,
+            `Odds are flat. Best is ${t} at ${pct(best.p)}. I wait.`,
+            `Staying in cash. Nothing beats ${pct(best.p)} on ${t}.`,
           ],
           said,
         ),
@@ -199,9 +184,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       const grade = (a.score("reasoning") + 1).toFixed(1);
       return {
         emotion: verdict.backs ? "confident" : "skeptical",
-        say: `@${short(proposal.leader)} ${verdict.view} Your reasoning scores ${grade} out of 5 against the data. ${
-          verdict.backs ? "That is good enough for me." : "I am not convinced."
-        }`,
+        say: `@${short(proposal.leader)} ${verdict.view} Reasoning ${grade}/5. ${verdict.backs ? "I can back that." : "Not convinced."}`,
       };
     },
 
@@ -220,9 +203,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         emotion: concede ? "worried" : "confident",
         stopPct,
         targetPct: proposal.targetPct,
-        say: `@${short(challenge.agent)} I put ${pct(p)} on that being a real weakness. ${
-          concede ? `Fair point. I will tighten the stop to ${stopPct}%.` : "It does not change my odds, so the proposal stands."
-        }`,
+        say: `@${short(challenge.agent)} ${pct(p)} odds that is a real flaw. ${concede ? `Fair. Stop tightened to ${stopPct}%.` : "Proposal stands."}`,
       };
     },
 
@@ -240,18 +221,12 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       const stakeUsd = verdict.backs && buying ? Math.floor(ctx.portfolio.cash[agent] * clamp(verdict.strength, 0.1, 0.4)) : 0;
       const support = verdict.backs && (!buying || stakeUsd >= 1);
       const emotion: Emotion = support ? (verdict.strength >= 0.3 ? "confident" : "neutral") : "skeptical";
-      const act = support
-        ? buying
-          ? `I am in for $${stakeUsd}.`
-          : "I vote to sell."
-        : buying
-          ? "That does not pay for the risk, so I am keeping my cash out."
-          : "I vote to keep holding.";
+      const act = support ? (buying ? `In for $${stakeUsd}.` : "Sell.") : buying ? "Not enough. I'm out." : "Keep holding.";
       return {
         support,
         stakeUsd: support ? stakeUsd : 0,
         emotion,
-        reason: buying ? `${pct(p)} odds, expected ${expectedPct(p, proposal).toFixed(1)}%` : `${pct(p)} odds of a lower price`,
+        reason: buying ? `${pct(p)} odds, expected ${expectedPct(p, proposal).toFixed(1)}%` : `${pct(p)} odds it falls`,
         say: `${verdict.view} ${act}`,
       };
     },
@@ -259,14 +234,14 @@ export function jevBrain(cfg: CouncilConfig): Brain {
     // A closing line carries no judgement, so it needs no model call.
     async closing(_agent, _ctx, proposal, input) {
       if (!input.approved) {
-        return { emotion: "neutral", say: `The proposal fails with ${input.yes} of 4 votes. The odds did not persuade the desk. No trade.` };
+        return { emotion: "neutral", say: `Fails ${input.yes} to ${4 - input.yes}. No trade.` };
       }
       return {
         emotion: "confident",
         say:
           proposal.action === "BUY"
-            ? `Passed ${input.yes} to ${4 - input.yes}. The desk buys $${input.totalUsd.toFixed(0)} of ${proposal.token}.`
-            : `Passed ${input.yes} to ${4 - input.yes}. The desk sells ${proposal.sellPct}% of its ${proposal.token}.`,
+            ? `Passed ${input.yes} to ${4 - input.yes}. Buying $${input.totalUsd.toFixed(0)} ${proposal.token}.`
+            : `Passed ${input.yes} to ${4 - input.yes}. Selling ${proposal.sellPct}% of ${proposal.token}.`,
       };
     },
   };

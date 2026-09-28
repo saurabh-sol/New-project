@@ -172,14 +172,14 @@ export function FundDesk() {
                   onClick={() => setAgent(id)}
                   aria-pressed={picked}
                   className={cn("relative flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition", picked ? "bg-white/[0.07]" : "border-white/10 hover:bg-white/[0.04]")}
-                  style={picked ? { borderColor: a.color, boxShadow: `0 0 0 1px ${a.color}55, 0 12px 40px -20px ${a.color}` } : undefined}
+                  style={picked ? { borderColor: "#fff" } : undefined}
                 >
                   <div className="w-12 shrink-0">
                     <Character id={id} pose={picked ? "talk" : "idle"} emotion={picked ? "happy" : "neutral"} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-display truncate font-semibold text-white">{a.name}</div>
-                    <div className="truncate font-mono text-[10px] uppercase tracking-wider" style={{ color: a.color }}>
+                    <div className="truncate font-mono text-[10px] uppercase tracking-wider text-white/60">
                       {a.model}
                     </div>
                     {f && (
@@ -203,7 +203,7 @@ export function FundDesk() {
         </section>
 
         {/* 2. amount */}
-        <section className="panel panel-glow p-5 sm:p-6">
+        <section className="panel panel-strong p-5 sm:p-6">
           <h2 className="panel-title">2 · Choose an amount</h2>
 
           <label className="mt-4 block">
@@ -237,11 +237,11 @@ export function FundDesk() {
 
           <div className="mt-5 grid gap-2">
             {!session ? (
-              <button onClick={open} className="btn-brand py-3.5 text-sm">
+              <button onClick={open} className="btn-primary py-3.5 text-sm">
                 Connect wallet
               </button>
             ) : (
-              <button onClick={deposit} disabled={busy !== null || !!problem} className="btn-brand py-3.5 text-sm">
+              <button onClick={deposit} disabled={busy !== null || !!problem} className="btn-primary py-3.5 text-sm">
                 {busy === "deposit"
                   ? "Preparing…"
                   : busy === "sign"

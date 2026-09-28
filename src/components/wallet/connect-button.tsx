@@ -20,7 +20,7 @@ export function ConnectButton({ className }: { className?: string }) {
 
   if (!session || !address) {
     return (
-      <button onClick={open} disabled={connecting} className={cn("btn-brand px-4 py-2 text-sm", className)}>
+      <button onClick={open} disabled={connecting} className={cn("btn-primary px-4 py-2 text-sm", className)}>
         {connecting ? "Connecting…" : "Connect wallet"}
       </button>
     );
@@ -49,7 +49,7 @@ export function ConnectButton({ className }: { className?: string }) {
             {copied ? "Copied" : "Copy address"}
           </button>
           <button
-            className="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-red-400/10"
+            className="w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-white/10"
             onClick={() => {
               setMenu(false);
               void disconnect();

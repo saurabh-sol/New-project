@@ -59,11 +59,11 @@ function CoinFlight({ coin }: { coin: Coin }) {
           onAnimationComplete={i === COUNT - 1 ? () => removeCoin(coin.id) : undefined}
         >
           {i === 0 ? (
-            <div className="rounded-full bg-gradient-to-b from-yellow-300 to-amber-500 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-950 shadow-[0_0_16px_rgba(251,191,36,0.7)]">
+            <div className="rounded-full bg-gradient-to-b from-white/30 to-white/30 px-2 py-0.5 font-mono text-[11px] font-bold text-white shadow-[0_0_16px_rgba(251,191,36,0.7)]">
               ${coin.amount}
             </div>
           ) : (
-            <div className="size-3.5 rounded-full border border-yellow-200 bg-gradient-to-b from-yellow-300 to-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
+            <div className="size-3.5 rounded-full border border-white/30 bg-gradient-to-b from-white/30 to-white/30 shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
           )}
         </motion.div>
       ))}

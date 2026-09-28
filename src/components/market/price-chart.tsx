@@ -172,7 +172,7 @@ export function PriceChart() {
 
         <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
           <Tab active={pinned === null} onClick={() => setPinned(null)} title="Show whichever token the council is debating">
-            <span className={cn("mr-1 inline-block size-1.5 rounded-full", pinned === null ? "animate-pulse bg-sky-400" : "bg-white/30")} />
+            <span className={cn("mr-1 inline-block size-1.5 rounded-full", pinned === null ? "animate-pulse bg-white" : "bg-white/30")} />
             Follow council
           </Tab>
           {TOKENS.map((t) => (
@@ -210,7 +210,7 @@ export function PriceChart() {
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-4 py-2 text-[11px] text-white/40">
         <span className="flex items-center gap-1.5">
-          <span className={cn("size-1.5 rounded-full", status === "live" ? "animate-pulse bg-green-400" : "bg-white/30")} />
+          <span className={cn("size-1.5 rounded-full", status === "live" ? "animate-pulse bg-white" : "bg-white/30")} />
           {status === "live" ? "Live prices · Binance spot" : "Offline"}
         </span>
         <span>Arrows mark the council&apos;s paper trades</span>
@@ -226,7 +226,7 @@ function Tab({ active, onClick, title, children }: { active: boolean; onClick: (
       title={title}
       className={cn(
         "flex shrink-0 items-center whitespace-nowrap rounded-lg px-2.5 py-1 font-mono text-[11px] transition-colors",
-        active ? "bg-sky-500/20 text-white ring-1 ring-sky-400/50" : "text-white/45 hover:bg-white/5 hover:text-white/80",
+        active ? "bg-white/20 text-white ring-1 ring-white/50" : "text-white/45 hover:bg-white/5 hover:text-white/80",
       )}
     >
       {children}

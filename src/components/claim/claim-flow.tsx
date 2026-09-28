@@ -101,19 +101,19 @@ export function ClaimFlow() {
       <div className="mb-6 text-center">
         <h1 className="font-display text-4xl font-bold tracking-tight text-white">Arena Rewards</h1>
         <p className="mt-2 text-sm text-white/55">
-          Back an agent and claim <span className="font-semibold text-emerald-300">{status ? `${status.amount} USDC` : "USDC"}</span> on Solana. One
+          Back an agent and claim <span className="font-semibold text-white/80">{status ? `${status.amount} USDC` : "USDC"}</span> on Solana. One
           claim per wallet. You pay no fee.
         </p>
       </div>
 
       {status?.mode === "demo" && (
-        <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs leading-relaxed text-amber-200">
+        <div className="mb-4 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-xs leading-relaxed text-white/80">
           <span className="font-semibold">Demo mode.</span> No reward treasury is configured on this server, so you can try the whole flow but no USDC will
           be sent.
         </div>
       )}
       {status?.mode === "live" && status.cluster === "devnet" && (
-        <div className="mb-4 rounded-xl border border-sky-400/30 bg-sky-400/10 px-4 py-3 text-xs text-sky-200">
+        <div className="mb-4 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-xs text-white/80">
           <span className="font-semibold">Devnet.</span> Rewards are paid in devnet test USDC, which has no real value.
         </div>
       )}
@@ -127,7 +127,7 @@ export function ClaimFlow() {
               <Pane key="connect">
                 <h2 className="font-display text-lg font-semibold text-white">Connect your Solana wallet</h2>
                 <p className="mt-1 text-sm text-white/50">Phantom, MetaMask, Solflare, Backpack and other Solana wallets work. Connecting only shares your public address.</p>
-                <button onClick={open} disabled={connecting} className="btn-brand mt-5 w-full py-3.5 text-sm">
+                <button onClick={open} disabled={connecting} className="btn-primary mt-5 w-full py-3.5 text-sm">
                   {connecting ? "Waiting for wallet…" : "Connect wallet"}
                 </button>
               </Pane>
@@ -149,13 +149,12 @@ export function ClaimFlow() {
                         transition={{ delay: i * 0.07 }}
                         whileHover={{ y: -4 }}
                         className="group panel px-3 pb-3 pt-4 text-center transition-colors hover:bg-white/[0.07]"
-                        style={{ ["--c" as string]: a.color }}
                       >
                         <div className="mx-auto w-16">
                           <Character id={id} pose="idle" />
                         </div>
                         <div className="mt-2 text-sm font-semibold text-white">{a.name}</div>
-                        <div className="font-mono text-[10px] uppercase tracking-wider" style={{ color: a.color }}>
+                        <div className="font-mono text-[10px] uppercase tracking-wider text-white/60">
                           {a.model}
                         </div>
                         <div className="mt-1 text-[11px] leading-snug text-white/40">{a.role}</div>
@@ -174,7 +173,7 @@ export function ClaimFlow() {
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-white">You&apos;re backing {AGENTS[agent].name}</h2>
-                    <button onClick={() => setAgent(null)} disabled={busy !== null} className="text-xs text-sky-300 hover:underline disabled:opacity-40">
+                    <button onClick={() => setAgent(null)} disabled={busy !== null} className="text-xs text-white/80 hover:underline disabled:opacity-40">
                       Change agent
                     </button>
                   </div>
@@ -193,12 +192,12 @@ export function ClaimFlow() {
                   </div>
                 )}
 
-                {blocked && <p className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">{blocked}</p>}
+                {blocked && <p className="mt-5 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-sm text-white/80">{blocked}</p>}
 
                 <button
                   onClick={claim}
                   disabled={busy !== null || needsCaptcha || !!blocked}
-                  className="btn-brand mt-5 w-full px-5 py-3.5 text-sm"
+                  className="btn-primary mt-5 w-full px-5 py-3.5 text-sm"
                 >
                   {busy === "sign" ? "Check your wallet…" : busy === "send" ? "Sending your USDC…" : `Sign & claim ${status?.amount ?? ""} USDC`}
                 </button>
@@ -218,7 +217,7 @@ export function ClaimFlow() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mt-4 overflow-hidden rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200"
+                className="mt-4 overflow-hidden rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-sm text-red-300"
                 role="alert"
               >
                 {error}
@@ -257,14 +256,14 @@ function Stepper({ step }: { step: number }) {
           <span
             className={cn(
               "grid size-5 place-items-center rounded-full font-mono text-[10px] font-bold transition-colors",
-              i < step ? "bg-emerald-400 text-black" : i === step ? "bg-white text-black" : "bg-white/10 text-white/40",
+              i < step ? "bg-white text-black" : i === step ? "bg-white text-black" : "bg-white/10 text-white/40",
             )}
           >
             {i < step ? "✓" : i + 1}
           </span>
           <span className={cn("hidden text-xs sm:inline", i <= step ? "text-white" : "text-white/35")}>{label}</span>
           {i === Math.min(step, STEPS.length - 1) && (
-            <motion.span layoutId="claim-step" className="absolute inset-x-0 bottom-0 h-0.5" style={{ background: "var(--brand)" }} />
+            <motion.span layoutId="claim-step" className="absolute inset-x-0 bottom-0 h-0.5" style={{ background: "#fff" }} />
           )}
         </li>
       ))}
@@ -272,7 +271,7 @@ function Stepper({ step }: { step: number }) {
   );
 }
 
-const CONFETTI = ["#f4f4f5", "#38bdf8", "#fbbf24", "#f472b6"];
+const CONFETTI = ["#ffffff", "#d4d4d4", "#a3a3a3", "#737373"];
 
 function Done({ outcome }: { outcome: Outcome }) {
   const agent = outcome.kind === "demo" ? outcome.agent : outcome.claim.agent;
@@ -308,10 +307,10 @@ function Done({ outcome }: { outcome: Outcome }) {
         <>
           <h2 className="mt-3 text-xl font-semibold text-white">Wallet verified</h2>
           <p className="mx-auto mt-2 max-w-sm text-sm text-white/55">
-            Your signature checked out. This server is in demo mode, so <span className="text-amber-200">no USDC was sent</span>. With a funded treasury
+            Your signature checked out. This server is in demo mode, so <span className="text-white/80">no USDC was sent</span>. With a funded treasury
             this step pays {amount} USDC.
           </p>
-          <span className="mt-4 inline-block rounded bg-amber-400/10 px-2 py-1 font-mono text-[10px] tracking-wider text-amber-300 ring-1 ring-amber-400/30">
+          <span className="mt-4 inline-block rounded bg-white/10 px-2 py-1 font-mono text-[10px] tracking-wider text-white/80 ring-1 ring-white/30">
             DEMO · NO TRANSACTION
           </span>
         </>
@@ -321,7 +320,7 @@ function Done({ outcome }: { outcome: Outcome }) {
             {pending ? "Confirming your payment" : outcome.earlier ? "You already claimed" : "Reward sent"}
           </h2>
           <motion.div
-            className={cn("mt-1 font-mono text-4xl font-bold", paid ? "text-emerald-300" : "text-white/70")}
+            className={cn("mt-1 font-mono text-4xl font-bold", paid ? "text-white/80" : "text-white/70")}
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 220, damping: 12 }}
@@ -339,7 +338,7 @@ function Done({ outcome }: { outcome: Outcome }) {
               href={solscanTx(outcome.claim.signature, outcome.cluster)}
               target="_blank"
               rel="noreferrer"
-              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 font-mono text-xs text-sky-300 hover:bg-white/10"
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 font-mono text-xs text-white/80 hover:bg-white/10"
             >
               {shortHash(outcome.claim.signature)} · View on Solscan ↗
             </a>

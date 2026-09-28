@@ -48,7 +48,7 @@ export function Kiosk() {
   }, []);
 
   return (
-    <div className={cn("flex h-dvh w-screen flex-col overflow-hidden bg-[#05070c]", idle && "cursor-none")}>
+    <div className={cn("flex h-dvh w-screen flex-col overflow-hidden bg-black", idle && "cursor-none")}>
       <header className="flex shrink-0 items-center gap-4 px-5 py-2.5">
         <Logo className="size-10" />
         <div className="leading-none">
@@ -73,7 +73,7 @@ export function Kiosk() {
         <span
           className={cn(
             "rounded-full border px-3 py-1 font-mono text-[10px] tracking-wider",
-            mode === "live" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300" : "border-amber-400/30 bg-amber-400/10 text-amber-300",
+            mode === "live" ? "border-white/30 bg-white/10 text-white/80" : "border-white/30 bg-white/10 text-white/80",
           )}
         >
           {mode === "live" ? "LIVE AI MODELS" : "SCRIPTED AGENTS"} · PAPER TRADING

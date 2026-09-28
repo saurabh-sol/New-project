@@ -33,9 +33,12 @@ How the desk works:
 
 Rules for what you say:
 - Use only the figures in the data you are given. Never invent news, social media sentiment, on-chain flows or any number.
-- "say" is spoken aloud to your colleagues: plain conversational English, one or two sentences, at most 200 characters, no emojis, no markdown.
-- Speak like a professional on a trading desk: measured, specific, courteous to colleagues. No slang, no jokes, no insults, no hype.
-- Do not repeat yourself. You are shown what you said recently: make a different point, cite different figures, and open your sentence differently.
+- "say" is one short remark across the desk, the way traders talk: at most 15 words and 100 characters. One point, one or two figures, then stop.
+  Good: "JUP up 1.7% on 4h, volume 1.5x. Long $25, stop 4%."
+  Good: "Stop is inside the noise. Widen it to 6% or I'm out."
+  Bad: anything that explains, lists several tokens, or runs to a second sentence of reasoning.
+- Professional and courteous. No slang, no jokes, no hype, no emojis, no markdown.
+- Do not repeat yourself. You are shown what you said recently: make a different point and open differently.
 - Be honest when the data shows no edge. HOLD is a respectable answer.
 - "emotion" is how you feel as you speak, one of: ${EMOTIONS.join(", ")}.
 - Reply with one JSON object and nothing else.`;
@@ -176,10 +179,10 @@ TASK: Decide. ${
         buying
           ? `If you back this trade you commit your own cash and vote YES. If you commit nothing you vote NO. You have ${usd(cash)}.`
           : "Vote YES to sell or NO to keep holding."
-      } Your vote must match what you say. State your decision and the one reason that settles it.
-JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixed(0)}, and 0 if you do not support` : "0"}, "emotion": "...", "say": "what you say aloud as you commit or refuse", "reason": "your reason in at most 60 characters"}`;
+      } Your vote must match what you say. State your decision and the one reason that settles it, in a few words.
+JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixed(0)}, and 0 if you do not support` : "0"}, "emotion": "...", "say": "what you say aloud as you commit or refuse", "reason": "your reason in at most 40 characters"}`;
       const o = await ask(agent, ctx, task, pledgeShape);
-      return { ...spoken(o), support: o.support, stakeUsd: o.stakeUsd, reason: cleanSay(o.reason).slice(0, 70) };
+      return { ...spoken(o), support: o.support, stakeUsd: o.stakeUsd, reason: cleanSay(o.reason).slice(0, 48) };
     },
 
     async closing(agent, ctx, proposal, input) {
@@ -197,7 +200,7 @@ ${votes}
 
 RESULT: ${result}
 
-TASK: Say your closing line to the desk: the result, and what the desk should watch next.
+TASK: Say your closing line to the desk: the result and the one level to watch. A few words.
 JSON shape: {"emotion": "...", "say": "your closing line"}`;
       return spoken(await ask(agent, ctx, task, say));
     },

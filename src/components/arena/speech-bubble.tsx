@@ -30,16 +30,15 @@ function useTypewriter(text: string, msPerChar = 20) {
   return text.slice(0, n);
 }
 
-/** Renders "@Name" mentions highlighted in the target agent's color. */
+/** Renders "@Name" mentions in bold. */
 function Highlighted({ text }: { text: string }) {
   const parts = text.split(/(@\w+)/g);
   return (
     <>
       {parts.map((p, i) => {
         if (!p.startsWith("@")) return <span key={i}>{p}</span>;
-        const target = Object.values(AGENTS).find((a) => a.name.endsWith(p.slice(1)));
         return (
-          <span key={i} className="font-semibold" style={{ color: target?.color ?? "#fff" }}>
+          <span key={i} className="font-semibold text-white">
             {p}
           </span>
         );
@@ -56,19 +55,19 @@ export function SpeechBubble({ message, tail }: { message: ChatMessage; tail: nu
 
   return (
     <motion.div
-      className="relative rounded-2xl border bg-[#0b0f16]/95 px-3.5 py-2.5 text-[13px] leading-snug text-white/90 shadow-2xl backdrop-blur-xl"
-      style={{ borderColor: `${agent.color}88`, transformOrigin: `${tail}% 100%`, boxShadow: `0 8px 30px ${agent.color}33` }}
+      className="relative rounded-2xl border border-white/30 bg-black/95 px-3.5 py-2.5 text-[13px] leading-snug text-white/90 shadow-2xl backdrop-blur-xl"
+      style={{ transformOrigin: `${tail}% 100%` }}
       initial={{ opacity: 0, scale: 0.5, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.8 }}
       transition={{ type: "spring", stiffness: 320, damping: 24 }}
     >
-      <div className="mb-1 flex items-center gap-2 font-mono text-[9px] tracking-[0.2em]" style={{ color: agent.color }}>
+      <div className="mb-1 flex items-center gap-2 font-mono text-[9px] tracking-[0.2em] text-white">
         <span>{agent.name.toUpperCase()}</span>
         <span className="text-white/35">{KIND_LABEL[message.kind] ?? message.kind.toUpperCase()}</span>
         {message.to && (
           <span className="text-white/40">
-            → <span style={{ color: AGENTS[message.to].color }}>{AGENTS[message.to].name.replace("The ", "").toUpperCase()}</span>
+            → <span className="text-white/70">{AGENTS[message.to].name.replace("The ", "").toUpperCase()}</span>
           </span>
         )}
       </div>
@@ -77,15 +76,15 @@ export function SpeechBubble({ message, tail }: { message: ChatMessage; tail: nu
         {!done && (
           <motion.span
             className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5"
-            style={{ background: agent.color }}
+            style={{ background: "#fff" }}
             animate={{ opacity: [1, 0, 1] }}
             transition={{ duration: 0.8, repeat: Infinity }}
           />
         )}
       </p>
       <span
-        className="absolute top-full size-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r bg-[#0b0f16]"
-        style={{ left: `${tail}%`, borderColor: `${agent.color}88` }}
+        className="absolute top-full size-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-white/30 bg-black"
+        style={{ left: `${tail}%` }}
       />
     </motion.div>
   );

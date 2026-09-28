@@ -16,7 +16,7 @@ export function TradeFeed() {
     <section className="panel">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">
         <h2 className="panel-title">ORDER HISTORY</h2>
-        <span className="rounded bg-amber-400/10 px-2 py-0.5 font-mono text-[10px] tracking-wider text-amber-300 ring-1 ring-amber-400/30">
+        <span className="rounded bg-white/10 px-2 py-0.5 font-mono text-[10px] tracking-wider text-white/80 ring-1 ring-white/30">
           PAPER TRADING · REAL PRICES · NOT ON-CHAIN
         </span>
       </div>
@@ -49,7 +49,7 @@ export function TradeFeed() {
                   <motion.tr
                     key={f.id}
                     layout
-                    initial={{ opacity: 0, backgroundColor: `${a.color}40` }}
+                    initial={{ opacity: 0, backgroundColor: "#ffffff33" }}
                     animate={{ opacity: 1, backgroundColor: "#00000000" }}
                     transition={{ duration: 1.6 }}
                     className="border-t border-white/5"
@@ -57,7 +57,7 @@ export function TradeFeed() {
                     <td className="px-4 py-2.5 font-mono text-white/40">{new Date(f.ts).toLocaleTimeString()}</td>
                     <td className="px-4 py-2.5">
                       <span className="flex items-center gap-2">
-                        <span className="size-2 rounded-full" style={{ background: a.color }} />
+                        <span className="size-2 rounded-full bg-white/60" />
                         <span className="text-white/85">{a.name}</span>
                       </span>
                     </td>

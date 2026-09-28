@@ -121,7 +121,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
               role="dialog"
               aria-modal="true"
               aria-label="Connect a wallet"
-              className="panel panel-glow w-full max-w-md overflow-hidden"
+              className="panel panel-strong w-full max-w-md overflow-hidden"
               initial={{ opacity: 0, y: 24, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -142,12 +142,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
                     key={w.name}
                     onClick={() => connect(w)}
                     disabled={connecting !== null}
-                    className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left transition hover:border-sky-400/50 hover:bg-white/[0.08] disabled:opacity-50"
+                    className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left transition hover:border-white/50 hover:bg-white/[0.08] disabled:opacity-50"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- wallet icons are inline data URIs */}
                     <img src={w.icon} alt="" className="size-9 rounded-xl" />
                     <span className="flex-1 font-medium text-white">{w.name}</span>
-                    <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-emerald-300">
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/80">
                       {connecting === w.name ? "Opening…" : "Installed"}
                     </span>
                   </button>
@@ -160,7 +160,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
                 )}
 
                 {error && (
-                  <p role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-2.5 text-sm text-red-200">
+                  <p role="alert" className="rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm text-red-300">
                     {error}
                   </p>
                 )}

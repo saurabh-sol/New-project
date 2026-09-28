@@ -19,7 +19,7 @@ class Stopped extends Error {}
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 /** Time a speech bubble needs to type out, plus a beat to read it. */
-const readTime = (text: string) => Math.min(text.length * 24 + 1300, 7800);
+const readTime = (text: string) => Math.min(text.length * 26 + 1400, 5000);
 
 /** Reads a newline-delimited JSON response one stage at a time. */
 async function* readStages(res: Response): AsyncGenerator<Stage> {

@@ -33,40 +33,24 @@ function edge(agent: AgentId, s: TokenStats): number {
   }
 }
 
-const volume = (s: TokenStats) => (s.volRatio === null ? `a ${s.trend} trend` : `volume at ${s.volRatio}x average`);
-const facts = (s: TokenStats) => `${s.token} is ${signed(s.change1h)} in the last hour with RSI ${s.rsi14} and ${volume(s)}`;
 const statsFor = (ctx: RoundCtx, token: string) => ctx.stats.find((s) => s.token === token) ?? ctx.stats[0];
+const volume = (s: TokenStats) => (s.volRatio === null ? `trend ${s.trend}` : `volume ${s.volRatio}x`);
+const facts = (s: TokenStats) => `${s.token} ${signed(s.change1h)} 1h, RSI ${s.rsi14}, ${volume(s)}`;
+const swing = (s: TokenStats) => `${s.token} ${signed(s.change15m)} 15m, ${signed(s.change4h)} 4h`;
 
 const BUY_LINE: Record<AgentId, (s: TokenStats) => string> = {
-  quant: (s) => `${facts(s)}. Momentum and volume agree, so I want to buy it.`,
-  degen: (s) => `${s.token} is the strongest mover on the board: ${signed(s.change1h)} this hour with ${volume(s)}. I want meaningful size on this.`,
-  guardian: (s) => `${facts(s)}. The risk is acceptable if we keep it small and the stop tight.`,
-  oracle: (s) => `${facts(s)}. The balance of evidence favours the upside, so I am buying.`,
+  quant: (s) => `${facts(s)}. Momentum and volume agree. Long.`,
+  degen: (s) => `${s.token} leads: ${signed(s.change1h)} 1h, ${volume(s)}. I want size.`,
+  guardian: (s) => `${facts(s)}. Acceptable, small size, tight stop.`,
+  oracle: (s) => `${facts(s)}. Evidence favours the upside. Buy.`,
 };
-const swing = (s: TokenStats) => `${s.token} is ${signed(s.change15m)} over 15 minutes and ${signed(s.change4h)} over four hours, at ${s.rangePos}% of its daily range`;
 
 /** Several ways to say "no trade", each leaning on different figures. */
 const HOLD_LINES: Record<AgentId, (s: TokenStats) => string[]> = {
-  quant: (s) => [
-    `No signal clears my threshold. The best on the board, ${facts(s)}, is not enough. I hold.`,
-    `The timeframes disagree: ${swing(s)}. Without alignment I have no trade.`,
-    `${s.token} shows a ${s.trend} trend with RSI ${s.rsi14}. That is a neutral reading, so I stay in cash.`,
-  ],
-  degen: (s) => [
-    `There is no momentum to follow. The strongest name, ${s.token}, is only ${signed(s.change1h)} this hour. I will not force a trade.`,
-    `Nothing is breaking out. ${swing(s)}. I will wait for a move with volume behind it.`,
-    `The leader, ${s.token}, is ${signed(s.vsSol1h, "pp")} against SOL this hour. That is not enough relative strength to act on.`,
-  ],
-  guardian: (s) => [
-    `I see nothing worth the risk. ${facts(s)}. We hold and protect the pool.`,
-    `${s.token} moves about ${s.atrPct}% every five minutes. Against that noise, the edge on offer does not justify a position.`,
-    `With ${swing(s)}, the reward does not cover the risk. I recommend we stay in cash.`,
-  ],
-  oracle: (s) => [
-    `The evidence is balanced. ${facts(s)}. That is a coin flip, so I hold.`,
-    `I find no edge. ${swing(s)}. The odds are close to even.`,
-    `My readings are flat this round, with ${s.token} the least weak. I will wait.`,
-  ],
+  quant: (s) => [`Best is ${facts(s)}. Not enough. Hold.`, `Timeframes disagree: ${swing(s)}. No trade.`, `${s.token} trend ${s.trend}, RSI ${s.rsi14}. Neutral. Cash.`],
+  degen: (s) => [`No momentum. ${s.token} only ${signed(s.change1h)} 1h. Pass.`, `Nothing breaking out. ${swing(s)}. Waiting.`, `${s.token} ${signed(s.vsSol1h, "pp")} vs SOL. Too weak to chase.`],
+  guardian: (s) => [`Nothing pays for the risk. ${facts(s)}. Hold.`, `${s.token} moves ${s.atrPct}% per 5m. Edge is inside the noise.`, `${swing(s)}. Reward does not cover risk. Cash.`],
+  oracle: (s) => [`${facts(s)}. Coin flip. Hold.`, `No edge. ${swing(s)}. Even odds.`, `Readings flat, ${s.token} least weak. I wait.`],
 };
 
 export function scriptedBrain(): Brain {
@@ -89,7 +73,7 @@ export function scriptedBrain(): Brain {
           token: weak.s.token,
           conviction: Math.round(clamp(2 + Math.abs(weak.e) * 4, 1, 5)),
           emotion: "worried",
-          say: `${facts(weak.s)}. That position has turned against us and I want to sell it.`,
+          say: `${facts(weak.s)}. It has turned. Sell.`,
         };
       }
 
@@ -113,10 +97,10 @@ export function scriptedBrain(): Brain {
     async challenge(agent, ctx, proposal) {
       const { s, support } = verdict(agent, ctx, proposal);
       const to = `@${short(proposal.leader)}`;
-      if (support) return { emotion: "confident", say: `${to} I checked it myself: ${facts(s)}. The numbers back you.` };
+      if (support) return { emotion: "confident", say: `${to} ${facts(s)}. Numbers back you.` };
       return {
         emotion: agent === "guardian" ? "worried" : "skeptical",
-        say: `${to} I do not see it. ${facts(s)}. That is not enough to ${proposal.action === "BUY" ? "put money on" : "sell on"}.`,
+        say: `${to} ${facts(s)}. Not enough to ${proposal.action === "BUY" ? "buy" : "sell"} on.`,
       };
     },
 
@@ -129,7 +113,7 @@ export function scriptedBrain(): Brain {
         stopPct,
         targetPct: proposal.targetPct,
         say: `@${short(challenge.agent)} ${
-          tighten ? `Fair. I will tighten the stop to ${stopPct}% and keep the size modest.` : `The data has not changed: ${facts(s)}. My proposal stands.`
+          tighten ? `Fair. Stop tightened to ${stopPct}%.` : `${facts(s)}. Proposal stands.`
         }`,
       };
     },
@@ -140,7 +124,7 @@ export function scriptedBrain(): Brain {
       const stakeUsd = support && buying ? Math.floor(ctx.portfolio.cash[agent] * SIZE[agent] * 0.6) : 0;
       const emotion: Emotion = support ? "confident" : agent === "guardian" ? "worried" : "skeptical";
       if (support && buying && stakeUsd < 5) {
-        return { support: false, stakeUsd: 0, emotion: "neutral", reason: "no cash free to commit", say: "I like it, but I have no cash free. I cannot back it." };
+        return { support: false, stakeUsd: 0, emotion: "neutral", reason: "no cash free to commit", say: "No cash free. I can't back it." };
       }
       return {
         support,
@@ -149,22 +133,22 @@ export function scriptedBrain(): Brain {
         reason: support ? `${s.token} momentum supports it` : `${s.token} edge too weak (${e.toFixed(2)})`,
         say: support
           ? buying
-            ? `I am in for $${stakeUsd} on ${s.token}.`
-            : `Agreed. I vote to sell ${s.token}.`
+            ? `In for $${stakeUsd} on ${s.token}.`
+            : `Agreed. Sell ${s.token}.`
           : buying
-            ? `I am out. ${s.token} at RSI ${s.rsi14} does not pay for the risk.`
-            : `I vote to keep holding ${s.token}. The move against us is not confirmed.`,
+            ? `Out. ${s.token} RSI ${s.rsi14} does not pay for the risk.`
+            : `Keep holding ${s.token}. Move not confirmed.`,
       };
     },
 
     async closing(_agent, _ctx, proposal, input) {
-      if (!input.approved) return { emotion: "sad", say: `Only ${input.yes} of 4 votes. The desk passes on it. No trade this round.` };
+      if (!input.approved) return { emotion: "sad", say: `Fails ${input.yes} to ${4 - input.yes}. No trade.` };
       return {
         emotion: "happy",
         say:
           proposal.action === "BUY"
-            ? `Passed ${input.yes} to ${4 - input.yes}. We buy $${input.totalUsd.toFixed(0)} of ${proposal.token}. Sending the order.`
-            : `Passed ${input.yes} to ${4 - input.yes}. We sell ${proposal.sellPct}% of our ${proposal.token}. Sending the order.`,
+            ? `Passed ${input.yes} to ${4 - input.yes}. Buying $${input.totalUsd.toFixed(0)} ${proposal.token}.`
+            : `Passed ${input.yes} to ${4 - input.yes}. Selling ${proposal.sellPct}% of ${proposal.token}.`,
       };
     },
   };
