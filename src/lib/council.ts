@@ -11,9 +11,8 @@ import type { AgentId } from "./types";
 export const EMOTIONS = ["neutral", "confident", "excited", "skeptical", "worried", "annoyed", "happy", "sad"] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
-/** USDC each agent starts with. */
+/** USDC the house gives each agent to start with. */
 export const START_CASH = 100;
-export const POOL_START = START_CASH * AGENT_ORDER.length;
 /** Smallest order the desk will place. */
 export const MIN_ORDER_USD = 10;
 /** No single token may exceed this share of the pool. */
@@ -40,6 +39,10 @@ export interface Position {
 
 export interface Portfolio {
   cash: Stakes;
+  /** Money put into each agent and not taken out: the house's starting cash plus users' net funding. */
+  capital: Stakes;
+  /** Shares outstanding in each agent. The house holds START_CASH of them; users buy and redeem the rest. */
+  shares: Stakes;
   positions: Position[];
 }
 
@@ -65,9 +68,15 @@ export interface Fill {
 
 export const zeroStakes = (): Stakes => ({ quant: 0, degen: 0, guardian: 0, oracle: 0 });
 
-export const newPortfolio = (): Portfolio => ({
-  cash: { quant: START_CASH, degen: START_CASH, guardian: START_CASH, oracle: START_CASH },
-  positions: [],
+const startStakes = (): Stakes => ({ quant: START_CASH, degen: START_CASH, guardian: START_CASH, oracle: START_CASH });
+
+export const newPortfolio = (): Portfolio => ({ cash: startStakes(), capital: startStakes(), shares: startStakes(), positions: [] });
+
+/** Fills in fields that older saved portfolios don't have. */
+export const normalizePortfolio = (p: Portfolio): Portfolio => ({
+  ...p,
+  capital: p.capital ?? startStakes(),
+  shares: p.shares ?? startStakes(),
 });
 
 const sum = (s: Stakes) => AGENT_ORDER.reduce((t, a) => t + s[a], 0);
@@ -96,7 +105,16 @@ export function agentEquity(p: Portfolio, agent: AgentId, prices: Prices): numbe
   return total;
 }
 
-export const agentPnl = (p: Portfolio, agent: AgentId, prices: Prices) => agentEquity(p, agent, prices) - START_CASH;
+export const agentPnl = (p: Portfolio, agent: AgentId, prices: Prices) => agentEquity(p, agent, prices) - p.capital[agent];
+
+/** Value of one share of an agent. Starts at 1 and moves with the agent's results. */
+export const agentNav = (p: Portfolio, agent: AgentId, prices: Prices) =>
+  p.shares[agent] > 0 ? agentEquity(p, agent, prices) / p.shares[agent] : 1;
+
+/** Money users have put into an agent, beyond the house's starting cash. */
+export const userFunding = (p: Portfolio, agent: AgentId) => Math.max(0, p.capital[agent] - START_CASH);
+
+export const poolCapital = (p: Portfolio) => sum(p.capital);
 export const poolEquity = (p: Portfolio, prices: Prices) => AGENT_ORDER.reduce((t, a) => t + agentEquity(p, a, prices), 0);
 export const poolCash = (p: Portfolio) => sum(p.cash);
 
@@ -157,6 +175,7 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
 
   return {
     portfolio: {
+      ...p,
       cash: mapStakes((a) => round2(p.cash[a] - o.stakes[a])),
       positions: [...p.positions.filter((x) => x.token !== o.token), position],
     },
@@ -212,7 +231,7 @@ export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: 
   }
 
   return {
-    portfolio: { cash: mapStakes((a) => round2(p.cash[a] + payout[a])), positions: rest },
+    portfolio: { ...p, cash: mapStakes((a) => round2(p.cash[a] + payout[a])), positions: rest },
     fill: {
       id: o.id,
       round: o.round,
@@ -226,6 +245,48 @@ export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: 
       leader: o.leader,
       realized: round2(usd - costOut),
       stake: mapStakes((a) => round2(payout[a])),
+    },
+  };
+}
+
+/** A user funds an agent: the cash goes to the agent, and the user gets shares at the current value. */
+export function fundIn(p: Portfolio, agent: AgentId, usd: number, prices: Prices): { portfolio: Portfolio; shares: number; nav: number } {
+  const nav = agentNav(p, agent, prices);
+  const shares = usd / nav;
+  return {
+    nav,
+    shares,
+    portfolio: {
+      ...p,
+      cash: { ...p.cash, [agent]: round2(p.cash[agent] + usd) },
+      capital: { ...p.capital, [agent]: round2(p.capital[agent] + usd) },
+      shares: { ...p.shares, [agent]: p.shares[agent] + shares },
+    },
+  };
+}
+
+/**
+ * A user redeems shares for cash at the current value. Fails if the agent's cash is
+ * tied up in open positions; the user can redeem what is free or wait for the position to close.
+ */
+export function fundOut(
+  p: Portfolio,
+  agent: AgentId,
+  shares: number,
+  prices: Prices,
+): { ok: true; portfolio: Portfolio; usd: number; nav: number } | { ok: false; freeUsd: number; nav: number } {
+  const nav = agentNav(p, agent, prices);
+  const usd = Math.floor(shares * nav * 100) / 100;
+  if (usd > p.cash[agent]) return { ok: false, freeUsd: p.cash[agent], nav };
+  return {
+    ok: true,
+    nav,
+    usd,
+    portfolio: {
+      ...p,
+      cash: { ...p.cash, [agent]: round2(p.cash[agent] - usd) },
+      capital: { ...p.capital, [agent]: round2(p.capital[agent] - usd) },
+      shares: { ...p.shares, [agent]: Math.max(0, p.shares[agent] - shares) },
     },
   };
 }

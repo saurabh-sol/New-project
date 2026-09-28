@@ -1,11 +1,15 @@
 /**
  * The council's shared state: one portfolio that every viewer sees.
- * Stored as a JSON file, which is fine for a single server. Move it to a
- * database before deploying to serverless hosting, where local files don't persist.
+ *
+ * Kept in Postgres when DATABASE_URL is set, so it survives restarts and is shared
+ * between server instances. Without a database it falls back to a local JSON file,
+ * which only suits a single server.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { newPortfolio, type Fill, type Portfolio } from "@/lib/council";
+import { newPortfolio, normalizePortfolio, type Fill, type Portfolio } from "@/lib/council";
+import type { AgentId } from "@/lib/types";
+import { db, hasDb } from "../db";
 
 export interface CouncilState {
   round: number;
@@ -13,6 +17,8 @@ export interface CouncilState {
   fills: Fill[];
   /** One line per finished round, newest last, given to the agents as memory. */
   recent: string[];
+  /** The focus each agent was given in its latest rounds, newest last, so it is not handed the same one again. */
+  lenses: Record<AgentId, string[]>;
   lastRoundAt: number;
   lastRiskCheck: number;
   /** UTC date of `roundsToday`, e.g. "2026-09-28". */
@@ -20,53 +26,106 @@ export interface CouncilState {
   roundsToday: number;
 }
 
+export interface Versioned {
+  state: CouncilState;
+  version: number;
+}
+
 const FILE = path.join(process.cwd(), ".data", "council.json");
 const MAX_FILLS = 100;
 const MAX_RECENT = 5;
+const MAX_ATTEMPTS = 8;
+
+export const today = () => new Date().toISOString().slice(0, 10);
 
 const fresh = (): CouncilState => ({
   round: 0,
   portfolio: newPortfolio(),
   fills: [],
   recent: [],
+  lenses: { quant: [], degen: [], guardian: [], oracle: [] },
   lastRoundAt: 0,
   lastRiskCheck: Date.now(),
   day: today(),
   roundsToday: 0,
 });
 
-export const today = () => new Date().toISOString().slice(0, 10);
+const hydrate = (raw: Partial<CouncilState>): CouncilState => {
+  const base = { ...fresh(), ...raw };
+  return { ...base, portfolio: normalizePortfolio(base.portfolio) };
+};
 
-async function load(): Promise<CouncilState> {
+export const trimmed = (s: CouncilState): CouncilState => ({ ...s, fills: s.fills.slice(-MAX_FILLS), recent: s.recent.slice(-MAX_RECENT) });
+
+// --- file backend ---
+
+let fileVersion = 0;
+
+async function readFileState(): Promise<Versioned> {
   try {
-    return { ...fresh(), ...(JSON.parse(await readFile(FILE, "utf8")) as CouncilState) };
+    return { state: hydrate(JSON.parse(await readFile(FILE, "utf8")) as CouncilState), version: fileVersion };
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return fresh();
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return { state: fresh(), version: fileVersion };
     throw e;
   }
 }
 
-async function save(state: CouncilState) {
+async function writeFileState(state: CouncilState, version: number): Promise<boolean> {
+  if (version !== fileVersion) return false;
   await mkdir(path.dirname(FILE), { recursive: true });
   const tmp = `${FILE}.${process.pid}.tmp`;
   await writeFile(tmp, JSON.stringify(state, null, 2));
   await rename(tmp, FILE);
+  fileVersion++;
+  return true;
 }
 
-// Shared across route bundles, so every read-modify-write goes through one queue.
+// --- Postgres backend ---
+
+async function readDbState(): Promise<Versioned> {
+  const sql = await db();
+  await sql`insert into council_state (id, version, data) values (1, 0, ${JSON.stringify(fresh())}::jsonb) on conflict (id) do nothing`;
+  const [row] = await sql`select data, version from council_state where id = 1`;
+  return { state: hydrate(row.data as CouncilState), version: Number(row.version) };
+}
+
+async function writeDbState(state: CouncilState, version: number): Promise<boolean> {
+  const sql = await db();
+  const rows = await sql`
+    update council_state set data = ${JSON.stringify(state)}::jsonb, version = version + 1, updated_at = now()
+    where id = 1 and version = ${version}
+    returning version`;
+  return rows.length === 1;
+}
+
+export const readVersioned = (): Promise<Versioned> => (hasDb() ? readDbState() : readFileState());
+const write = (state: CouncilState, version: number) => (hasDb() ? writeDbState(state, version) : writeFileState(state, version));
+
+// Requests on this server take turns; the version check covers other servers.
 const shared = globalThis as typeof globalThis & { __councilQueue?: Promise<unknown> };
 
-/** Runs `fn` with exclusive access to the state and saves whatever it returns. */
-export function updateState(fn: (state: CouncilState) => Promise<CouncilState> | CouncilState): Promise<CouncilState> {
-  const run = (shared.__councilQueue ?? Promise.resolve()).then(async () => {
-    const next = await fn(await load());
-    next.fills = next.fills.slice(-MAX_FILLS);
-    next.recent = next.recent.slice(-MAX_RECENT);
-    await save(next);
-    return next;
-  });
+/** Runs `task` after every earlier state change on this server has finished. */
+export function inTurn<T>(task: () => Promise<T>): Promise<T> {
+  const run = (shared.__councilQueue ?? Promise.resolve()).then(task);
   shared.__councilQueue = run.catch(() => {});
   return run;
 }
 
-export const readState = () => updateState((s) => s);
+/**
+ * Changes the state and saves it. If another server saved in between, `fn` runs again
+ * on the newer state, so `fn` must not have side effects.
+ */
+export function updateState(fn: (state: CouncilState) => Promise<CouncilState> | CouncilState): Promise<CouncilState> {
+  return inTurn(async () => {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const { state, version } = await readVersioned();
+      const out = await fn(state);
+      if (out === state) return state;
+      const next = trimmed(out);
+      if (await write(next, version)) return next;
+    }
+    throw new Error("Could not save the council state: too many concurrent changes");
+  });
+}
+
+export const readState = async () => (await readVersioned()).state;

@@ -13,7 +13,7 @@ export function PhaseTimeline() {
   const active = PHASES.indexOf(phase);
 
   return (
-    <div className="flex items-center gap-3 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03] p-1.5 [scrollbar-width:none]">
+    <div className="flex items-center gap-3 overflow-x-auto panel p-1.5 [scrollbar-width:none]">
       <div className="shrink-0 pl-2 font-mono text-[11px] text-white/50">
         SESSION <span className="text-white">#{round}</span>
       </div>

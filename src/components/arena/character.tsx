@@ -233,13 +233,13 @@ function Headgear({ id, color }: { id: AgentId; color: string }) {
   }
 }
 
-function Chest({ id, color }: { id: AgentId; color: string }) {
+function Chest({ id }: { id: AgentId }) {
   switch (id) {
     case "quant":
       return (
         <>
-          <path d="M33 51 L40 58 L47 51" fill="none" stroke="#ecfdf5" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M40 57 L43.2 61.5 L40 75 L36.8 61.5 Z" fill="#064e3b" />
+          <path d="M33 51 L40 58 L47 51" fill="none" stroke="#71717a" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M40 57 L43.2 61.5 L40 75 L36.8 61.5 Z" fill="#18181b" />
         </>
       );
     case "degen":
@@ -252,7 +252,7 @@ function Chest({ id, color }: { id: AgentId; color: string }) {
     case "guardian":
       return <path d="M40 56 L48.5 59 V66.5 Q48.5 73.5 40 77.5 Q31.5 73.5 31.5 66.5 V59 Z" fill="#fff7ed" opacity="0.92" />;
     case "oracle":
-      return <path d="M40 56 Q41.6 64.4 50 66 Q41.6 67.6 40 76 Q38.4 67.6 30 66 Q38.4 64.4 40 56 Z" fill={color === "#60a5fa" ? "#eff6ff" : color} />;
+      return <path d="M40 56 Q41.6 64.4 50 66 Q41.6 67.6 40 76 Q38.4 67.6 30 66 Q38.4 64.4 40 56 Z" fill="#fff1f7" />;
   }
 }
 
@@ -405,7 +405,7 @@ export function Character({ id, pose, emotion = "neutral", thinking = false, fac
           <rect x="35" y="45" width="10" height="8" fill="#475569" />
           <rect x="22.5" y="50" width="35" height="39" rx="11" fill={`url(#body-${id})`} />
           <rect x="22.5" y="50" width="35" height="39" rx="11" fill="none" stroke={a.color} strokeOpacity="0.45" />
-          <Chest id={id} color={a.color} />
+          <Chest id={id} />
 
           {/* capital being carried over to another desk */}
           {pose === "carry" && (

@@ -11,9 +11,19 @@ export interface TokenStats {
   price: number;
   change24h: number; // percent
   change1h: number; // percent
+  change15m: number; // percent
+  change4h: number; // percent
   rsi14: number; // on 5-minute candles
-  /** Volume of the last 15 minutes against the average of the two hours before. */
-  volRatio: number;
+  /** Volume of the last 15 minutes against the average of the two hours before. Null when the source has no volume. */
+  volRatio: number | null;
+  /** Short moving average against the long one, on 5-minute candles. */
+  trend: "up" | "down" | "flat";
+  /** Average true range as a percent of price: how far the token typically moves in 5 minutes. */
+  atrPct: number;
+  /** Where the price sits in its 24-hour range, 0 (low) to 100 (high). */
+  rangePos: number;
+  /** 1-hour change minus SOL's 1-hour change, in percentage points. */
+  vsSol1h: number;
   high1h: number;
   low1h: number;
 }

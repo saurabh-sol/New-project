@@ -1,7 +1,7 @@
 /** Stop-loss and profit-target exits, checked against real 1-minute candles. */
 import { sell, type Fill } from "@/lib/council";
-import { fetchCandles } from "@/lib/market";
 import { nameOf, px, signed } from "./context";
+import { extremesSince } from "./stats";
 import type { CouncilState } from "./store";
 
 const MIN_GAP_MS = 20_000;
@@ -20,8 +20,7 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
 
   for (const pos of state.portfolio.positions) {
     const since = Math.max(state.lastRiskCheck, pos.openedAt);
-    const minutes = Math.min(Math.ceil((now - since) / 60_000) + 1, 1000);
-    const candles = await fetchCandles(pos.token, "1m", minutes, AbortSignal.timeout(10_000));
+    const candles = await extremesSince(pos.token, since, now);
     // Skip the candle the position was opened in: its low and high include prices from before the entry.
     const hit = candles.find((c) => c.time * 1000 > since && (c.low <= pos.stop || c.high >= pos.target));
     if (!hit) continue;

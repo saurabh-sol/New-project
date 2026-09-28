@@ -8,15 +8,16 @@ import { TOKENS } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { asEmotion, asToken, cleanSay, STOP_RANGE, TARGET_RANGE, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
-import { briefing, describeDebate, describePitches, describeProposal, nameOf, usd } from "./context";
+import { briefing, describeDebate, describePitches, describeProposal, nameOf, usd, type RoundCtx } from "./context";
+import { repeats } from "./skills";
 
 const PERSONA: Record<AgentId, string> = {
   quant:
-    "You are systematic and precise. You trust momentum, RSI and volume over stories, and you quote the numbers that drive your view.",
+    "You are systematic and precise. You trust momentum, RSI, trend and volume over stories, and you quote the numbers that drive your view.",
   guardian:
-    "You are the desk's risk manager. Position size, stops and drawdown matter more to you than upside. You are calm and direct, and you refuse trades whose risk is not paid for.",
+    "You are the desk's risk manager. Position size, stops, volatility and drawdown matter more to you than upside. You are calm and direct, and you refuse trades whose risk is not paid for.",
   degen:
-    "You are the aggressive momentum trader. You like the biggest movers and volume spikes, and you size up when you see them. You are blunt, funny and impatient, but you do not argue with the numbers.",
+    "You are the desk's momentum specialist. You look for the strongest movers and volume expansion, and you size up when the evidence is there. You are decisive and brief.",
   oracle: "You think in probabilities. You state your odds plainly and you do not trade coin flips.",
 };
 
@@ -33,16 +34,29 @@ How the desk works:
 Rules for what you say:
 - Use only the figures in the data you are given. Never invent news, social media sentiment, on-chain flows or any number.
 - "say" is spoken aloud to your colleagues: plain conversational English, one or two sentences, at most 200 characters, no emojis, no markdown.
-- Stay in character, and be honest when the data shows no edge. HOLD is a respectable answer.
+- Speak like a professional on a trading desk: measured, specific, courteous to colleagues. No slang, no jokes, no insults, no hype.
+- Do not repeat yourself. You are shown what you said recently: make a different point, cite different figures, and open your sentence differently.
+- Be honest when the data shows no edge. HOLD is a respectable answer.
 - "emotion" is how you feel as you speak, one of: ${EMOTIONS.join(", ")}.
 - Reply with one JSON object and nothing else.`;
 
-/** Pulls the first JSON object out of a model reply, tolerating code fences and stray text. */
-function extractJson(text: string): unknown {
+/**
+ * Pulls the first JSON object out of a model reply, tolerating code fences and stray text.
+ * Models sometimes leave a word unquoted ("emotion": skeptical) or a trailing comma; both are repaired.
+ */
+export function extractJson(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("Model reply contained no JSON object");
-  return JSON.parse(text.slice(start, end + 1));
+  const raw = text.slice(start, end + 1);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const repaired = raw
+      .replace(/:\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(?=[,}])/g, (whole, word: string) => (/^(true|false|null)$/.test(word) ? whole : `: "${word}"`))
+      .replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(repaired);
+  }
 }
 
 const say = z.object({ emotion: z.unknown(), say: z.string().min(1) });
@@ -60,19 +74,41 @@ const pledgeShape = say.extend({ support: z.boolean(), stakeUsd: z.coerce.number
 
 const heard = (debate: Exchange[]) => (debate.length ? `\nALREADY SAID IN THIS DEBATE\n${describeDebate(debate)}\n` : "");
 
+/** The agent's own recent lines, so it can steer away from them. */
+function memo(ctx: RoundCtx, agent: AgentId): string {
+  const lines = ctx.said[agent];
+  if (lines.length === 0) return "";
+  return `\n\nWHAT YOU SAID RECENTLY (do not repeat these points or reuse their wording)\n${lines.map((l) => `- "${l}"`).join("\n")}`;
+}
+
 export function llmBrain(cfg: CouncilConfig): Brain {
-  async function ask<T>(agent: AgentId, task: string, shape: z.ZodType<T>, ctxText: string): Promise<T> {
+  async function generate<T extends { say: string }>(agent: AgentId, ctx: RoundCtx, prompt: string, shape: z.ZodType<T>): Promise<T> {
     const { text } = await generateText({
       model: cfg.modelIds[agent],
       system: system(agent),
-      prompt: `${ctxText}\n\n${task}`,
+      prompt,
       // Reasoning models spend output tokens on thinking before they write.
-      maxOutputTokens: 2000,
-      maxRetries: 1,
+      maxOutputTokens: 3000,
+      maxRetries: 2,
       abortSignal: AbortSignal.timeout(cfg.callTimeoutMs),
-      providerOptions: { openai: { reasoningEffort: "low" } },
+      // How hard the agent thinks is set by how much users have funded it.
+      reasoning: ctx.effort[agent],
     });
     return shape.parse(extractJson(text));
+  }
+
+  /** Asks the model, and asks once more if the answer repeats something the agent already said. */
+  async function ask<T extends { say: string }>(agent: AgentId, ctx: RoundCtx, task: string, shape: z.ZodType<T>): Promise<T> {
+    const prompt = `${briefing(ctx, agent)}${memo(ctx, agent)}\n\n${task}`;
+    const first = await generate(agent, ctx, prompt, shape);
+    const echo = repeats(first.say, ctx.said[agent]);
+    if (!echo) return first;
+    try {
+      const again = `${prompt}\n\nYour draft was: "${cleanSay(first.say)}"\nThat is too close to something you already said: "${echo}"\nKeep the same decision, but make a different point in different words.`;
+      return await generate(agent, ctx, again, shape);
+    } catch {
+      return first;
+    }
   }
 
   const spoken = (o: { emotion: unknown; say: string }) => ({ emotion: asEmotion(o.emotion), say: cleanSay(o.say) });
@@ -80,7 +116,11 @@ export function llmBrain(cfg: CouncilConfig): Brain {
   return {
     async pitch(agent, ctx) {
       const cash = ctx.portfolio.cash[agent];
-      const task = `TASK: Pitch your trade for this round.
+      const lens = ctx.lens[agent];
+      const task = `YOUR FOCUS THIS ROUND: ${lens.name}
+${lens.brief} Build your pitch on this angle.
+
+TASK: Pitch your trade for this round.
 You may SELL only these tokens: ${ctx.sellable.length ? ctx.sellable.join(", ") : "none this round"}.
 JSON shape:
 {"action": "BUY" | "SELL" | "HOLD",
@@ -92,7 +132,7 @@ JSON shape:
  "conviction": 1 to 5,
  "emotion": "...",
  "say": "your pitch"}`;
-      const o = await ask(agent, task, pitchShape, briefing(ctx, agent));
+      const o = await ask(agent, ctx, task, pitchShape);
       return { ...o, ...spoken(o), token: asToken(o.token, ctx.stats[0].token) };
     },
 
@@ -103,9 +143,9 @@ ${describePitches(pitches)}
 THE LEAD PROPOSAL, AS IT STANDS NOW
 ${describeProposal(proposal)}
 ${heard(debate)}
-TASK: You walk over to ${nameOf(proposal.leader)}'s desk. Challenge the proposal or back it, speaking to them directly. If you disagree, say exactly what is wrong with it.
+TASK: You walk over to ${nameOf(proposal.leader)}'s desk. Challenge the proposal or back it, speaking to them directly. If you disagree, say exactly what is wrong with it. Raise a point nobody has made yet in this debate.
 JSON shape: {"stance": "challenge" | "support", "emotion": "...", "say": "what you say to them"}`;
-      return spoken(await ask(agent, task, say, briefing(ctx, agent)));
+      return spoken(await ask(agent, ctx, task, say));
     },
 
     async reply(agent, ctx, proposal, challenge, debate) {
@@ -116,7 +156,7 @@ ${nameOf(challenge.agent)} came to your desk and said: "${challenge.say}"
 
 TASK: Answer them directly. If they have a point, you may change your stop or target. Stay consistent with what you already agreed earlier in the debate.
 JSON shape: {"emotion": "...", "say": "your answer", "stopPct": ${STOP_RANGE[0]} to ${STOP_RANGE[1]}, "targetPct": ${TARGET_RANGE[0]} to ${TARGET_RANGE[1]}}`;
-      const o = await ask(agent, task, replyShape, briefing(ctx, agent));
+      const o = await ask(agent, ctx, task, replyShape);
       return { ...spoken(o), stopPct: o.stopPct ?? proposal.stopPct, targetPct: o.targetPct ?? proposal.targetPct };
     },
 
@@ -136,9 +176,9 @@ TASK: Decide. ${
         buying
           ? `If you back this trade you commit your own cash and vote YES. If you commit nothing you vote NO. You have ${usd(cash)}.`
           : "Vote YES to sell or NO to keep holding."
-      } Your vote must match what you say.
+      } Your vote must match what you say. State your decision and the one reason that settles it.
 JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixed(0)}, and 0 if you do not support` : "0"}, "emotion": "...", "say": "what you say aloud as you commit or refuse", "reason": "your reason in at most 60 characters"}`;
-      const o = await ask(agent, task, pledgeShape, briefing(ctx, agent));
+      const o = await ask(agent, ctx, task, pledgeShape);
       return { ...spoken(o), support: o.support, stakeUsd: o.stakeUsd, reason: cleanSay(o.reason).slice(0, 70) };
     },
 
@@ -157,9 +197,9 @@ ${votes}
 
 RESULT: ${result}
 
-TASK: Say your closing line to the desk.
+TASK: Say your closing line to the desk: the result, and what the desk should watch next.
 JSON shape: {"emotion": "...", "say": "your closing line"}`;
-      return spoken(await ask(agent, task, say, briefing(ctx, agent)));
+      return spoken(await ask(agent, ctx, task, say));
     },
   };
 }

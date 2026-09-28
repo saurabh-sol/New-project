@@ -8,6 +8,7 @@ import type { Proposal, TokenStats } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 import { clamp, type Brain } from "./brain";
 import { nameOf, signed, type RoundCtx } from "./context";
+import { freshest } from "./skills";
 
 const BUY_ABOVE: Record<AgentId, number> = { quant: 0.35, degen: 0.25, guardian: 0.5, oracle: 0.4 };
 const SELL_BELOW: Record<AgentId, number> = { quant: -0.3, degen: -0.4, guardian: -0.15, oracle: -0.3 };
@@ -19,7 +20,7 @@ const unit = (n: number, scale: number) => clamp(n / scale, -1, 1);
 
 /** How much this agent likes a token right now, from -1 (sell) to 1 (buy). */
 function edge(agent: AgentId, s: TokenStats): number {
-  const momentum = unit(s.change1h, 1.5) * 0.5 + unit(s.rsi14 - 50, 25) * 0.3 + unit(s.volRatio - 1, 1.5) * 0.2;
+  const momentum = unit(s.change1h, 1.5) * 0.5 + unit(s.rsi14 - 50, 25) * 0.3 + unit((s.volRatio ?? 1) - 1, 1.5) * 0.2;
   switch (agent) {
     case "quant":
       return momentum - (s.rsi14 > 72 ? 0.4 : 0);
@@ -32,20 +33,40 @@ function edge(agent: AgentId, s: TokenStats): number {
   }
 }
 
-const facts = (s: TokenStats) => `${s.token} is ${signed(s.change1h)} in the last hour with RSI ${s.rsi14} and volume at ${s.volRatio}x average`;
+const volume = (s: TokenStats) => (s.volRatio === null ? `a ${s.trend} trend` : `volume at ${s.volRatio}x average`);
+const facts = (s: TokenStats) => `${s.token} is ${signed(s.change1h)} in the last hour with RSI ${s.rsi14} and ${volume(s)}`;
 const statsFor = (ctx: RoundCtx, token: string) => ctx.stats.find((s) => s.token === token) ?? ctx.stats[0];
 
 const BUY_LINE: Record<AgentId, (s: TokenStats) => string> = {
   quant: (s) => `${facts(s)}. Momentum and volume agree, so I want to buy it.`,
-  degen: (s) => `${s.token} is the mover on the board: ${signed(s.change1h)} this hour, volume ${s.volRatio}x average. I want size on this.`,
+  degen: (s) => `${s.token} is the strongest mover on the board: ${signed(s.change1h)} this hour with ${volume(s)}. I want meaningful size on this.`,
   guardian: (s) => `${facts(s)}. The risk is acceptable if we keep it small and the stop tight.`,
   oracle: (s) => `${facts(s)}. The balance of evidence favours the upside, so I am buying.`,
 };
-const HOLD_LINE: Record<AgentId, (s: TokenStats) => string> = {
-  quant: (s) => `No signal clears my threshold. The best on the board, ${facts(s)}, is not enough. I hold.`,
-  degen: (s) => `Dead tape. Even ${s.token} is only ${signed(s.change1h)} this hour. I am not forcing a trade into that.`,
-  guardian: (s) => `I see nothing worth the risk. ${facts(s)}. We hold and protect the pool.`,
-  oracle: (s) => `The evidence is balanced. ${facts(s)}. That is a coin flip, so I hold.`,
+const swing = (s: TokenStats) => `${s.token} is ${signed(s.change15m)} over 15 minutes and ${signed(s.change4h)} over four hours, at ${s.rangePos}% of its daily range`;
+
+/** Several ways to say "no trade", each leaning on different figures. */
+const HOLD_LINES: Record<AgentId, (s: TokenStats) => string[]> = {
+  quant: (s) => [
+    `No signal clears my threshold. The best on the board, ${facts(s)}, is not enough. I hold.`,
+    `The timeframes disagree: ${swing(s)}. Without alignment I have no trade.`,
+    `${s.token} shows a ${s.trend} trend with RSI ${s.rsi14}. That is a neutral reading, so I stay in cash.`,
+  ],
+  degen: (s) => [
+    `There is no momentum to follow. The strongest name, ${s.token}, is only ${signed(s.change1h)} this hour. I will not force a trade.`,
+    `Nothing is breaking out. ${swing(s)}. I will wait for a move with volume behind it.`,
+    `The leader, ${s.token}, is ${signed(s.vsSol1h, "pp")} against SOL this hour. That is not enough relative strength to act on.`,
+  ],
+  guardian: (s) => [
+    `I see nothing worth the risk. ${facts(s)}. We hold and protect the pool.`,
+    `${s.token} moves about ${s.atrPct}% every five minutes. Against that noise, the edge on offer does not justify a position.`,
+    `With ${swing(s)}, the reward does not cover the risk. I recommend we stay in cash.`,
+  ],
+  oracle: (s) => [
+    `The evidence is balanced. ${facts(s)}. That is a coin flip, so I hold.`,
+    `I find no edge. ${swing(s)}. The odds are close to even.`,
+    `My readings are flat this round, with ${s.token} the least weak. I will wait.`,
+  ],
 };
 
 export function scriptedBrain(): Brain {
@@ -82,11 +103,11 @@ export function scriptedBrain(): Brain {
           token: best.s.token,
           stakeUsd: Math.floor(cash * SIZE[agent] * clamp(best.e + 0.4, 0.4, 1)),
           conviction: c,
-          emotion: agent === "degen" ? "excited" : "confident",
+          emotion: "confident",
           say: BUY_LINE[agent](best.s),
         };
       }
-      return { ...base, action: "HOLD", token: best.s.token, conviction: 3, emotion: agent === "degen" ? "annoyed" : "neutral", say: HOLD_LINE[agent](best.s) };
+      return { ...base, action: "HOLD", token: best.s.token, conviction: 3, emotion: "neutral", say: freshest(HOLD_LINES[agent](best.s), ctx.said[agent]) };
     },
 
     async challenge(agent, ctx, proposal) {

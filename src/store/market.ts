@@ -35,8 +35,28 @@ export const liveQuote = (token: string): Quote | undefined =>
 
 const POLL_MS = 10_000;
 
-/** Polls 24h quotes for every token. Returns a stop function. */
+let watchers = 0;
+let stopPolling: (() => void) | null = null;
+
+/**
+ * Polls 24h quotes for every token while anything on the page needs them.
+ * Safe to call from several components: polling starts with the first and stops with the last.
+ */
 export function startQuotes(): () => void {
+  watchers++;
+  if (!stopPolling) stopPolling = poll();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--watchers === 0) {
+      stopPolling?.();
+      stopPolling = null;
+    }
+  };
+}
+
+function poll(): () => void {
   const ctrl = new AbortController();
   const tick = async () => {
     try {

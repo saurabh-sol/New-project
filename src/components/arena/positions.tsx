@@ -76,9 +76,9 @@ export function Positions() {
   }, []);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+    <section className="panel p-4">
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="font-mono text-[11px] tracking-[0.25em] text-white/50">OPEN POSITIONS</h2>
+        <h2 className="panel-title">OPEN POSITIONS</h2>
         <span className="font-mono text-[11px] text-white/40">cash ${poolCash(portfolio).toFixed(2)}</span>
       </div>
       <ul className="space-y-1.5">

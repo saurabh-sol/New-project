@@ -27,14 +27,19 @@ export async function hasEnoughHistory(conn: Connection, wallet: PublicKey, min:
   return (await conn.getSignaturesForAddress(wallet, { limit: min })).length >= min;
 }
 
+export interface SignedTransfer {
+  tx: Transaction;
+  signature: string;
+  blockhash: string;
+  lastValidBlockHeight: number;
+}
+
 /**
- * Sends the reward from the treasury, which also pays the network fee and, if the
- * user has never held USDC, the rent for their token account.
- *
- * The signature is written to the ledger before the transaction is broadcast, so a
- * crash or timeout can never lead to paying the same wallet twice.
+ * Builds and signs a payment from the treasury, which also pays the network fee and,
+ * if the recipient has never held the token, the rent for their token account.
+ * Nothing is sent yet: the caller records the signature first, then broadcasts.
  */
-export async function payReward(conn: Connection, cfg: RewardsConfig, treasury: Keypair, to: PublicKey, amount: number) {
+export async function signTransfer(conn: Connection, cfg: RewardsConfig, treasury: Keypair, to: PublicKey, amount: number): Promise<SignedTransfer> {
   const from = getAssociatedTokenAddressSync(cfg.mint, treasury.publicKey);
   const dest = getAssociatedTokenAddressSync(cfg.mint, to);
   const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
@@ -44,13 +49,34 @@ export async function payReward(conn: Connection, cfg: RewardsConfig, treasury: 
     createTransferCheckedInstruction(from, cfg.mint, dest, treasury.publicKey, toUnits(amount), USDC_DECIMALS),
   );
   tx.sign(treasury);
-  const signature = bs58.encode(tx.signature!);
+  return { tx, signature: bs58.encode(tx.signature!), blockhash, lastValidBlockHeight };
+}
 
-  await updateClaim(to.toBase58(), { signature, lastValidBlockHeight });
-  await conn.sendRawTransaction(tx.serialize(), { maxRetries: 3 });
-  const result = await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+/** Sends a signed transaction and waits for the network to confirm it. */
+export async function broadcast(conn: Connection, t: SignedTransfer): Promise<void> {
+  await conn.sendRawTransaction(t.tx.serialize(), { maxRetries: 3 });
+  const result = await conn.confirmTransaction({ signature: t.signature, blockhash: t.blockhash, lastValidBlockHeight: t.lastValidBlockHeight }, "confirmed");
   if (result.value.err) throw new Error(`Transfer failed on-chain: ${JSON.stringify(result.value.err)}`);
-  return signature;
+}
+
+/** Whether a transaction landed, provably never will, or is still undecided. */
+export async function fate(conn: Connection, signature: string, lastValidBlockHeight: number): Promise<"landed" | "dead" | "unknown"> {
+  const status = (await conn.getSignatureStatus(signature, { searchTransactionHistory: true })).value;
+  if (status?.err) return "dead";
+  if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return "landed";
+  if (!status && (await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) return "dead";
+  return "unknown";
+}
+
+/**
+ * Sends a reward. The signature is written to the ledger before the transaction is
+ * broadcast, so a crash or timeout can never lead to paying the same wallet twice.
+ */
+export async function payReward(conn: Connection, cfg: RewardsConfig, treasury: Keypair, to: PublicKey, amount: number) {
+  const signed = await signTransfer(conn, cfg, treasury, to, amount);
+  await updateClaim(to.toBase58(), { signature: signed.signature, lastValidBlockHeight: signed.lastValidBlockHeight });
+  await broadcast(conn, signed);
+  return signed.signature;
 }
 
 /**
@@ -65,15 +91,9 @@ export async function settlePending(conn: Connection, claim: Claim): Promise<Cla
     await releaseClaim(claim.wallet);
     return null;
   }
-  const status = (await conn.getSignatureStatus(claim.signature, { searchTransactionHistory: true })).value;
-  if (status?.err) {
-    await releaseClaim(claim.wallet);
-    return null;
-  }
-  if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
-    return updateClaim(claim.wallet, { status: "sent" });
-  }
-  if (!status && (await conn.getBlockHeight("confirmed")) > claim.lastValidBlockHeight) {
+  const outcome = await fate(conn, claim.signature, claim.lastValidBlockHeight);
+  if (outcome === "landed") return updateClaim(claim.wallet, { status: "sent" });
+  if (outcome === "dead") {
     await releaseClaim(claim.wallet);
     return null;
   }

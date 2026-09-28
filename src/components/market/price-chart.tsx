@@ -153,7 +153,7 @@ export function PriceChart() {
   const decimals = quote ? priceDecimals(quote.price) : 2;
 
   return (
-    <section className="flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03]">
+    <section className="flex min-w-0 flex-col panel">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/5 px-4 py-3">
         <div className="flex items-baseline gap-2">
           <h2 className="text-base font-semibold text-white">

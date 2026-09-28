@@ -13,9 +13,9 @@ export function TradeFeed() {
   const fills = useArena((s) => s.fills);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.03]">
+    <section className="panel">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">
-        <h2 className="font-mono text-[11px] tracking-[0.25em] text-white/50">ORDER HISTORY</h2>
+        <h2 className="panel-title">ORDER HISTORY</h2>
         <span className="rounded bg-amber-400/10 px-2 py-0.5 font-mono text-[10px] tracking-wider text-amber-300 ring-1 ring-amber-400/30">
           PAPER TRADING · REAL PRICES · NOT ON-CHAIN
         </span>

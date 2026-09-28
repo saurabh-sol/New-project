@@ -3,7 +3,7 @@
  * do; this file decides how it is staged: who walks where, and how long each line is held.
  */
 import { AGENT_ORDER, AGENTS } from "./agents";
-import { agentEquity, START_CASH, type Emotion, type Fill } from "./council";
+import { agentPnl, type Emotion, type Fill } from "./council";
 import type { CouncilSnapshot, Line, RoundResponse, Stage } from "./council-types";
 import { walkSeconds } from "./layout";
 import type { AgentId, AgentState, ArenaEvent, MessageKind, Spot } from "./types";
@@ -124,7 +124,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
         feel(a, "neutral");
         continue;
       }
-      const pct = ((agentEquity(snapshot.portfolio, a, prices) - START_CASH) / invested) * 100;
+      const pct = (agentPnl(snapshot.portfolio, a, prices) / invested) * 100;
       feel(a, pct > 0.4 ? "happy" : pct < -0.4 ? "worried" : "neutral");
     }
   }

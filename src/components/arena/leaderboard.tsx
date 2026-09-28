@@ -7,7 +7,7 @@ import { agentPnl } from "@/lib/council";
 import type { AgentId } from "@/lib/types";
 import { useArena } from "@/store/arena";
 import { useModelName, usePrices } from "@/store/selectors";
-import { Character } from "./character";
+import { Face } from "./face";
 import { RollingNumber } from "./rolling-number";
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -39,12 +39,7 @@ function Row({ id, rank, pnl, history }: { id: AgentId; rank: number; pnl: numbe
   return (
     <motion.li layout transition={{ type: "spring", stiffness: 300, damping: 28 }} className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2">
       <span className="w-4 font-mono text-xs text-white/40">{rank}</span>
-      <span className="relative size-8 shrink-0 overflow-hidden rounded-full" style={{ background: `${a.color}1f`, boxShadow: `inset 0 0 0 1px ${a.color}66` }}>
-        {/* cropped to the character's face */}
-        <span className="absolute left-[-10px] top-[1px] block w-[52px]">
-          <Character id={id} pose="idle" />
-        </span>
-      </span>
+      <Face id={id} size={32} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-white">{a.name}</div>
         <div className="truncate text-[10px] uppercase tracking-wider text-white/40">{model}</div>
@@ -68,11 +63,11 @@ export function Leaderboard() {
   const total = AGENT_ORDER.reduce((sum, id) => sum + pnl[id], 0);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+    <section className="panel p-4">
       <div className="mb-3 flex items-baseline justify-between">
         <div>
-          <h2 className="font-mono text-[11px] tracking-[0.25em] text-white/50">LEADERBOARD</h2>
-          <p className="mt-1 text-[11px] text-white/35">Each agent started with $100</p>
+          <h2 className="panel-title">LEADERBOARD</h2>
+          <p className="mt-1 text-[11px] text-white/35">Result on each agent&apos;s capital</p>
         </div>
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wider text-white/40">Council PnL</div>

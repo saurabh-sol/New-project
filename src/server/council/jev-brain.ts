@@ -11,6 +11,8 @@ import type { AgentId } from "@/lib/types";
 import { clamp, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefingState, describeDebate, describePitches, describeProposal, nameOf, px, type RoundCtx } from "./context";
+import { freshest, fundingLevel } from "./skills";
+import { userFunding } from "@/lib/council";
 
 const BUY_ABOVE = 0.56;
 const SELL_BELOW = 0.44;
@@ -58,7 +60,8 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       model: gateway.evaluationModel(cfg.modelIds[agent]),
       state: state as Parameters<typeof evaluate>[0]["state"],
       questions,
-      maxRetries: 1,
+      // The provider occasionally answers 502. The SDK waits longer between each retry.
+      maxRetries: 3,
       abortSignal: AbortSignal.timeout(cfg.callTimeoutMs),
     });
     const all = answers as Record<string, { type: string; probability?: number; score?: number }>;
@@ -88,51 +91,97 @@ export function jevBrain(cfg: CouncilConfig): Brain {
 
   return {
     async pitch(agent, ctx) {
+      // Every decision rests on the one-hour question. The round's focus adds a second reading for colour.
+      const lens = ctx.lens[agent].id;
+      const deep = fundingLevel(userFunding(ctx.portfolio, agent)).level >= 2;
+      const askBreakout = lens === "breakout" || deep;
+      const askFour = lens === "four" || deep;
+
       const questions: Record<string, Question> = {};
       for (const s of ctx.stats) {
-        questions[`up_${s.token}`] = {
-          type: "boolean",
-          instructions: `Will ${s.token} trade higher one hour from now than its current price of ${px(s.price)}?`,
-        };
+        questions[`up_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade higher one hour from now than its current price of ${px(s.price)}?` };
+        if (askBreakout) {
+          questions[`break_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade above its 1-hour high of ${px(s.high1h)} at any point in the next hour?` };
+        }
+        if (askFour) {
+          questions[`four_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade higher four hours from now than its current price of ${px(s.price)}?` };
+        }
       }
       const a = await ask(agent, briefingState(ctx, agent), questions);
       const odds = ctx.stats.map((s) => ({ token: s.token, p: a.probability(`up_${s.token}`) }));
       const cash = ctx.portfolio.cash[agent];
       const base = { stopPct: 4, targetPct: 8, sellPct: 100, stakeUsd: 0 };
+      const said = ctx.said[agent];
+
+      /** The second reading for a token, as a clause to add to the sentence. */
+      const also = (token: string) => {
+        const high = ctx.stats.find((s) => s.token === token)?.high1h ?? 0;
+        if (lens === "breakout" && askBreakout) return ` and ${pct(a.probability(`break_${token}`))} on it clearing its 1-hour high of ${px(high)}`;
+        if (askFour) return ` and ${pct(a.probability(`four_${token}`))} on it being higher in four hours`;
+        if (askBreakout) return ` and ${pct(a.probability(`break_${token}`))} on it clearing its 1-hour high of ${px(high)}`;
+        return "";
+      };
 
       const weakest = odds.filter((o) => ctx.sellable.includes(o.token)).sort((x, y) => x.p - y.p)[0];
       if (weakest && weakest.p < SELL_BELOW) {
+        const t = weakest.token;
+        const read = `${pct(weakest.p)} on ${t} trading higher an hour from now${also(t)}`;
         return {
           ...base,
           action: "SELL",
-          token: weakest.token,
+          token: t,
           conviction: conviction(weakest.p),
           emotion: "worried",
-          say: `I put only ${pct(weakest.p)} on ${weakest.token} trading higher an hour from now. The odds have turned against that position, so I want to sell it.`,
+          say: freshest(
+            [
+              `I put only ${read}. The odds have turned against that position, so I want to sell it.`,
+              `My reading on ${t} has weakened: ${read}. I propose we close the position.`,
+              `The probabilities no longer support holding ${t}. I have ${read}. I would sell.`,
+            ],
+            said,
+          ),
         };
       }
 
       const best = [...odds].sort((x, y) => y.p - x.p)[0];
+      const t = best.token;
+      const read = `${pct(best.p)} on ${t} trading higher an hour from now${also(t)}`;
       if (best.p >= BUY_ABOVE && cash >= 10) {
         const c = conviction(best.p);
         return {
           ...base,
           action: "BUY",
-          token: best.token,
+          token: t,
           stakeUsd: Math.floor(cash * 0.1 * c),
           conviction: c,
           emotion: c >= 4 ? "confident" : "neutral",
-          say: `I put ${pct(best.p)} on ${best.token} trading higher an hour from now. That is the best edge on the board, so I am buying.`,
+          say: freshest(
+            [
+              `I put ${read}. That is the best edge on the board, so I am buying.`,
+              `${t} has the strongest odds I can find: ${read}. I propose a long position.`,
+              `My highest reading is ${t}. I have ${read}, which clears my threshold to buy.`,
+            ],
+            said,
+          ),
         };
       }
 
+      const runnerUp = [...odds].sort((x, y) => y.p - x.p)[1];
       return {
         ...base,
         action: "HOLD",
-        token: best.token,
+        token: t,
         conviction: 3,
         emotion: "skeptical",
-        say: `Nothing clears my bar. My best read is ${best.token} at ${pct(best.p)} to rise in the next hour, which is too close to a coin flip. I hold.`,
+        say: freshest(
+          [
+            `Nothing clears my bar. My best read is ${read}, which is too close to a coin flip. I hold.`,
+            `I see no edge this round. ${t} leads at ${pct(best.p)} and ${runnerUp.token} follows at ${pct(runnerUp.p)} for the next hour. Neither justifies a position.`,
+            `The odds are flat across the board. The top reading is ${read}. I would wait for a clearer signal.`,
+            `I am staying in cash. Every token sits near even odds for the next hour, with ${t} highest at ${pct(best.p)}.`,
+          ],
+          said,
+        ),
       };
     },
 

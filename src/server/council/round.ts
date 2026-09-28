@@ -3,7 +3,7 @@
  * The models supply opinions; this file decides what is allowed to happen.
  */
 import { AGENT_ORDER } from "@/lib/agents";
-import { buy, canSell, fitStakes, sell, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
+import { buy, canSell, fitStakes, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, Exchange, Line, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
 import type { Token } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
@@ -12,10 +12,11 @@ import { isEvaluationModel, type CouncilConfig } from "./config";
 import { nameOf, px, signed, usd, type RoundCtx } from "./context";
 import { jevBrain } from "./jev-brain";
 import { llmBrain } from "./llm-brain";
-import { applyRisk } from "./risk";
+import { recentLines, saveRound } from "./memory";
 import { scriptedBrain } from "./scripted-brain";
+import { fundingLevel, pickLens, type Effort, type Skill } from "./skills";
 import { fetchPrice, fetchStats } from "./stats";
-import { today, updateState } from "./store";
+import { updateState, type CouncilState } from "./store";
 
 const VOTES_TO_PASS = 3;
 
@@ -28,6 +29,14 @@ export class RoundRun {
   private waiting: Array<() => void> = [];
 
   constructor(readonly id: number) {}
+
+  /** A finished session loaded from storage, ready to replay. */
+  static replay(id: number, stages: Stage[]): RoundRun {
+    const run = new RoundRun(id);
+    run.stages.push(...stages);
+    run.done = true;
+    return run;
+  }
 
   push(stage: Stage) {
     this.stages.push(stage);
@@ -103,20 +112,29 @@ export interface MarketSource {
 
 const liveMarket: MarketSource = { stats: fetchStats, price: fetchPrice };
 
-export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilMode, market: MarketSource = liveMarket): Promise<void> {
+const LENS_MEMORY = 6;
+const perAgent = <T,>(fn: (a: AgentId) => T) => Object.fromEntries(AGENT_ORDER.map((a) => [a, fn(a)])) as Record<AgentId, T>;
+
+/**
+ * Runs the session that `opening` has already claimed (its round number and start
+ * time are saved), so no other server starts the same one.
+ */
+export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilMode, opening: CouncilState, market: MarketSource = liveMarket): Promise<void> {
   try {
-    const startedAt = Date.now();
+    const startedAt = opening.lastRoundAt;
     const stats = await market.stats();
     if (stats.length === 0) throw new Error("No market data available");
     const prices = Object.fromEntries(stats.map((s) => [s.token, s.price])) as Partial<Record<Token, number>>;
-
-    // Claim the round up front so the next one can't start while this one is running.
-    const opening = await updateState(async (s) => {
-      const settled = await applyRisk(s, startedAt).catch(() => s);
-      const day = today();
-      return { ...settled, round: run.id, lastRoundAt: startedAt, day, roundsToday: (settled.day === day ? settled.roundsToday : 0) + 1 };
-    });
     const before = opening.portfolio;
+
+    const lens: Record<AgentId, Skill> = perAgent((a) => pickLens(a, opening.lenses[a] ?? []));
+    const effort: Record<AgentId, Effort> = perAgent((a) => fundingLevel(userFunding(before, a)).effort);
+    const said = await recentLines().catch(() => perAgent<string[]>(() => []));
+    /** Remembers a line so the same agent won't repeat it later in this round. */
+    const heard = <T extends { agent: AgentId; say: string }>(line: T): T => {
+      said[line.agent].push(line.say);
+      return line;
+    };
 
     const ctx: RoundCtx = {
       round: run.id,
@@ -125,7 +143,11 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
       prices,
       sellable: before.positions.filter((p) => canSell(before, p.token, run.id)).map((p) => p.token),
       recent: opening.recent,
+      said,
+      lens,
+      effort,
     };
+    await updateState((s) => ({ ...s, lenses: perAgent((a) => [...(s.lenses[a] ?? []), lens[a].id].slice(-LENS_MEMORY)) }));
     run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt });
 
     const think = thinker(cfg, mode);
@@ -137,7 +159,7 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
         const raw = await think(agent, (b) => b.pitch(agent, ctx));
         const p = enforcePitch(agent, ctx, raw);
         sellPct[agent] = p.sellPct;
-        return { agent, action: p.action, token: p.token, stakeUsd: p.stakeUsd, stopPct: p.stopPct, targetPct: p.targetPct, conviction: p.conviction, emotion: p.emotion, say: p.say, source: raw.source };
+        return heard({ agent, action: p.action, token: p.token, stakeUsd: p.stakeUsd, stopPct: p.stopPct, targetPct: p.targetPct, conviction: p.conviction, emotion: p.emotion, say: p.say, source: raw.source });
       }),
     );
     let proposal = chooseProposal(pitches, sellPct);
@@ -159,10 +181,10 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
       const current = terms;
       const soFar = [...exchanges];
       const c = await think(agent, (b) => b.challenge(agent, ctx, current, pitches, soFar));
-      const challenge: Line = { agent, to: leader, emotion: c.emotion, say: c.say, source: c.source };
+      const challenge: Line = heard({ agent, to: leader, emotion: c.emotion, say: c.say, source: c.source });
       const r = await think(leader, (b) => b.reply(leader, ctx, current, challenge, soFar));
       terms = { ...current, stopPct: clamp(r.stopPct, ...STOP_RANGE), targetPct: clamp(r.targetPct, ...TARGET_RANGE) };
-      exchanges.push({ challenge, reply: { agent: leader, to: agent, emotion: r.emotion, say: r.say, source: r.source } });
+      exchanges.push({ challenge, reply: heard({ agent: leader, to: agent, emotion: r.emotion, say: r.say, source: r.source }) });
     }
     proposal = terms;
     const final = proposal;
@@ -175,7 +197,7 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
         const p = await think(agent, (b) => b.pledge(agent, ctx, final, pitches, exchanges));
         const stakeUsd = p.support && buying ? Math.floor(clamp(p.stakeUsd, 0, before.cash[agent])) : 0;
         const support = p.support && (!buying || stakeUsd >= 1);
-        return { agent, to: leader, emotion: p.emotion, say: p.say, source: p.source, support, stakeUsd: support ? stakeUsd : 0, reason: p.reason || (support ? "backs the trade" : "does not back the trade") };
+        return heard({ agent, to: leader, emotion: p.emotion, say: p.say, source: p.source, support, stakeUsd: support ? stakeUsd : 0, reason: p.reason || (support ? "backs the trade" : "does not back the trade") });
       }),
     );
 
@@ -238,5 +260,6 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
     run.push({ stage: "error", message: "The council could not complete this round. It will try again at the next session." });
   } finally {
     run.finish();
+    await saveRound(run.id, run.stages, run.failed).catch((e) => console.error("[council] could not save the round:", e));
   }
 }

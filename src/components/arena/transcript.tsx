@@ -3,9 +3,71 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { AGENTS } from "@/lib/agents";
+import type { ChatMessage } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { useArena } from "@/store/arena";
+import { Face } from "./face";
 
-export function Transcript() {
+const KIND: Record<string, string> = { pitch: "Pitch", debate: "Debate", negotiate: "Pledge", closing: "Closing", vote: "Vote" };
+const time = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+function Line({ m }: { m: ChatMessage }) {
+  const a = AGENTS[m.agent];
+
+  if (m.kind === "system") {
+    return (
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3 py-1 text-[11px] text-sky-200/70">
+        <span className="h-px flex-1 bg-sky-300/15" />
+        <span className="max-w-[80%] text-center font-mono">{m.text}</span>
+        <span className="h-px flex-1 bg-sky-300/15" />
+      </motion.div>
+    );
+  }
+
+  if (m.kind === "vote") {
+    const yes = m.text.startsWith("YES");
+    return (
+      <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2.5 pl-1 text-xs">
+        <Face id={m.agent} size={22} />
+        <span className="font-medium" style={{ color: a.color }}>
+          {a.name}
+        </span>
+        <span className={cn("rounded-full px-2 py-px font-mono text-[10px] font-bold", yes ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300")}>
+          {yes ? "YES" : "NO"}
+        </span>
+        <span className="truncate text-white/50">{m.text.replace(/^(YES|NO): /, "")}</span>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 260, damping: 24 }} className="flex gap-3">
+      <Face id={m.agent} size={34} emotion={m.emotion} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 text-xs">
+          <span className="font-semibold" style={{ color: a.color }}>
+            {a.name}
+          </span>
+          {m.to && (
+            <span className="text-white/40">
+              to <span style={{ color: AGENTS[m.to].color }}>{AGENTS[m.to].name}</span>
+            </span>
+          )}
+          <span className="font-mono text-[10px] uppercase tracking-wider text-white/30">{KIND[m.kind] ?? m.kind}</span>
+          {m.source === "scripted" && (
+            <span className="rounded bg-amber-400/10 px-1 font-mono text-[10px] text-amber-300/90" title="The model could not be reached, so a scripted stand-in spoke this line">
+              scripted
+            </span>
+          )}
+          <span className="ml-auto font-mono text-[10px] text-white/25">{time(m.ts)}</span>
+        </div>
+        <p className="mt-1 rounded-2xl rounded-tl-md border border-white/5 bg-white/[0.04] px-3.5 py-2 text-[13px] leading-relaxed text-white/85">{m.text}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+export function Transcript({ className = "h-96" }: { className?: string }) {
   const messages = useArena((s) => s.messages);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -14,62 +76,19 @@ export function Transcript() {
   }, [messages.length]);
 
   return (
-    <section className="flex min-h-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03]">
-      <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
-        <h2 className="font-mono text-[11px] tracking-[0.25em] text-white/50">COUNCIL TRANSCRIPT</h2>
-        <span className="flex items-center gap-1.5 text-[10px] text-white/40">
-          <span className="size-1.5 animate-pulse rounded-full bg-green-400" /> live
+    <section className="panel flex min-h-0 flex-col">
+      <div className="flex items-center justify-between border-b border-white/5 px-5 py-3.5">
+        <h2 className="panel-title">Desk conversation</h2>
+        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-white/40">
+          <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" /> live
         </span>
       </div>
-      <div ref={ref} className="h-80 space-y-2.5 overflow-y-auto px-4 py-3">
+      <div ref={ref} className={cn("space-y-3.5 overflow-y-auto px-5 py-4", className)}>
+        {messages.length === 0 && <p className="py-10 text-center text-sm text-white/30">The desk is quiet. The next session will appear here.</p>}
         <AnimatePresence initial={false}>
-          {messages.map((m) => {
-            const a = AGENTS[m.agent];
-            if (m.kind === "system") {
-              return (
-                <motion.div
-                  key={m.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-lg border border-sky-400/20 bg-sky-400/5 px-3 py-1.5 font-mono text-[11px] text-sky-200/80"
-                >
-                  {m.text}
-                </motion.div>
-              );
-            }
-            return (
-              <motion.div
-                key={m.id}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                className="border-l-2 pl-3"
-                style={{ borderColor: a.color }}
-              >
-                <div className="flex items-center gap-1.5 text-[11px]">
-                  <span className="font-semibold" style={{ color: a.color }}>
-                    {a.name}
-                  </span>
-                  {m.to && (
-                    <>
-                      <span className="text-white/30">→</span>
-                      <span style={{ color: AGENTS[m.to].color }}>{AGENTS[m.to].name}</span>
-                    </>
-                  )}
-                  <span className="ml-auto flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-white/30">
-                    {m.source === "scripted" && (
-                      <span className="rounded bg-amber-400/10 px-1 text-amber-300/90" title="The model could not be reached, so a scripted stand-in spoke this line">
-                        scripted
-                      </span>
-                    )}
-                    {m.emotion && m.emotion !== "neutral" && <span>{m.emotion}</span>}
-                    <span>{m.kind}</span>
-                  </span>
-                </div>
-                <p className="mt-0.5 text-[13px] leading-snug text-white/75">{m.text}</p>
-              </motion.div>
-            );
-          })}
+          {messages.map((m) => (
+            <Line key={m.id} m={m} />
+          ))}
         </AnimatePresence>
       </div>
     </section>

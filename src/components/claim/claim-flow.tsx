@@ -8,14 +8,15 @@ import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import type { ChallengeResponse, ClaimRecord, ClaimResponse, RewardsCluster, RewardsStatus } from "@/lib/rewards-types";
 import type { AgentId } from "@/lib/types";
 import { cn, shortHash, solscanTx } from "@/lib/utils";
-import { connectWallet, disconnectWallet, shortAddress, signMessage, useSolanaWallets, type Wallet, type WalletAccount } from "@/lib/wallet";
+import { useWallet } from "@/components/wallet/wallet-provider";
+import { shortAddress, signMessage } from "@/lib/wallet";
 import { Turnstile } from "./turnstile";
 
 type Outcome =
   | { kind: "demo"; amount: number; agent: AgentId }
   | { kind: "live"; cluster: RewardsCluster; claim: ClaimRecord; earlier: boolean };
 
-type Busy = "connect" | "sign" | "send" | null;
+type Busy = "sign" | "send" | null;
 
 const STEPS = ["Connect wallet", "Back an agent", "Sign & claim"];
 
@@ -34,8 +35,7 @@ function readable(e: unknown): string {
 }
 
 export function ClaimFlow() {
-  const wallets = useSolanaWallets();
-  const [session, setSession] = useState<{ wallet: Wallet; account: WalletAccount } | null>(null);
+  const { session, address, open, connecting } = useWallet();
   const [agent, setAgent] = useState<AgentId | null>(null);
   const [status, setStatus] = useState<RewardsStatus | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -43,42 +43,23 @@ export function ClaimFlow() {
   const [error, setError] = useState<string | null>(null);
   const [captcha, setCaptcha] = useState<string | null>(null);
 
+  // Reload whenever the wallet changes: a wallet that already claimed goes straight to its receipt.
   useEffect(() => {
     let alive = true;
-    fetchStatus()
-      .then((s) => alive && setStatus(s))
+    fetchStatus(address ?? undefined)
+      .then((s) => {
+        if (!alive) return;
+        setStatus(s);
+        setOutcome(s.claim ? { kind: "live", cluster: s.cluster, claim: s.claim, earlier: true } : null);
+        setError(null);
+      })
       .catch(() => alive && setError("Can't reach the rewards server. Reload to try again."));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [address]);
 
-  const address = session?.account.address;
   const step = outcome ? 3 : !session ? 0 : !agent ? 1 : 2;
-
-  async function connect(wallet: Wallet) {
-    setError(null);
-    setBusy("connect");
-    try {
-      const account = await connectWallet(wallet);
-      setSession({ wallet, account });
-      const s = await fetchStatus(account.address);
-      setStatus(s);
-      if (s.claim) setOutcome({ kind: "live", cluster: s.cluster, claim: s.claim, earlier: true });
-    } catch (e) {
-      setError(readable(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function disconnect() {
-    if (session) await disconnectWallet(session.wallet);
-    setSession(null);
-    setAgent(null);
-    setOutcome(null);
-    setError(null);
-  }
 
   async function claim() {
     if (!session || !agent || !address) return;
@@ -118,7 +99,7 @@ export function ClaimFlow() {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-16 sm:px-6">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-white">Arena Rewards</h1>
+        <h1 className="font-display text-4xl font-bold tracking-tight text-white">Arena Rewards</h1>
         <p className="mt-2 text-sm text-white/55">
           Back an agent and claim <span className="font-semibold text-emerald-300">{status ? `${status.amount} USDC` : "USDC"}</span> on Solana. One
           claim per wallet. You pay no fee.
@@ -137,49 +118,18 @@ export function ClaimFlow() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03]">
+      <div className="panel overflow-hidden">
         <Stepper step={step} />
 
         <div className="p-5 sm:p-7">
           <AnimatePresence mode="wait">
             {step === 0 && (
               <Pane key="connect">
-                <h2 className="text-lg font-semibold text-white">Connect your Solana wallet</h2>
-                <p className="mt-1 text-sm text-white/50">Connecting only shares your public address.</p>
-                <div className="mt-5 grid gap-2">
-                  {wallets.map((w) => (
-                    <button
-                      key={w.name}
-                      onClick={() => connect(w)}
-                      disabled={busy !== null}
-                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left transition hover:border-sky-400/50 hover:bg-white/[0.07] disabled:opacity-50"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- wallet icons are inline data URIs */}
-                      <img src={w.icon} alt="" className="size-8 rounded-lg" />
-                      <span className="flex-1 font-medium text-white">{w.name}</span>
-                      <span className="text-xs text-white/40">{busy === "connect" ? "Waiting for wallet…" : "Connect"}</span>
-                    </button>
-                  ))}
-                  {wallets.length === 0 && (
-                    <div className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-white/50">
-                      No Solana wallet found in this browser.
-                      <br />
-                      Install{" "}
-                      <a href="https://phantom.com/download" target="_blank" rel="noreferrer" className="text-sky-300 underline">
-                        Phantom
-                      </a>
-                      ,{" "}
-                      <a href="https://solflare.com/download" target="_blank" rel="noreferrer" className="text-sky-300 underline">
-                        Solflare
-                      </a>{" "}
-                      or{" "}
-                      <a href="https://backpack.app/download" target="_blank" rel="noreferrer" className="text-sky-300 underline">
-                        Backpack
-                      </a>
-                      , then reload this page.
-                    </div>
-                  )}
-                </div>
+                <h2 className="font-display text-lg font-semibold text-white">Connect your Solana wallet</h2>
+                <p className="mt-1 text-sm text-white/50">Phantom, MetaMask, Solflare, Backpack and other Solana wallets work. Connecting only shares your public address.</p>
+                <button onClick={open} disabled={connecting} className="btn-brand mt-5 w-full py-3.5 text-sm">
+                  {connecting ? "Waiting for wallet…" : "Connect wallet"}
+                </button>
               </Pane>
             )}
 
@@ -198,7 +148,7 @@ export function ClaimFlow() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.07 }}
                         whileHover={{ y: -4 }}
-                        className="group rounded-2xl border border-white/10 bg-white/[0.03] px-3 pb-3 pt-4 text-center transition-colors hover:bg-white/[0.07]"
+                        className="group panel px-3 pb-3 pt-4 text-center transition-colors hover:bg-white/[0.07]"
                         style={{ ["--c" as string]: a.color }}
                       >
                         <div className="mx-auto w-16">
@@ -248,7 +198,7 @@ export function ClaimFlow() {
                 <button
                   onClick={claim}
                   disabled={busy !== null || needsCaptcha || !!blocked}
-                  className="mt-5 w-full rounded-xl bg-gradient-to-r from-emerald-400 to-sky-400 px-5 py-3.5 text-sm font-semibold text-black transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="btn-brand mt-5 w-full px-5 py-3.5 text-sm"
                 >
                   {busy === "sign" ? "Check your wallet…" : busy === "send" ? "Sending your USDC…" : `Sign & claim ${status?.amount ?? ""} USDC`}
                 </button>
@@ -277,14 +227,9 @@ export function ClaimFlow() {
           </AnimatePresence>
         </div>
 
-        {session && (
-          <div className="flex items-center justify-between border-t border-white/5 px-5 py-3 text-xs text-white/45 sm:px-7">
-            <span>
-              {session.wallet.name} · <span className="font-mono text-white/70">{shortAddress(session.account.address)}</span>
-            </span>
-            <button onClick={disconnect} disabled={busy !== null} className="hover:text-white disabled:opacity-40">
-              Disconnect
-            </button>
+        {session && address && (
+          <div className="border-t border-white/5 px-5 py-3 text-xs text-white/45 sm:px-7">
+            {session.wallet.name} · <span className="font-mono text-white/70">{shortAddress(address)}</span>
           </div>
         )}
       </div>
@@ -312,14 +257,14 @@ function Stepper({ step }: { step: number }) {
           <span
             className={cn(
               "grid size-5 place-items-center rounded-full font-mono text-[10px] font-bold transition-colors",
-              i < step ? "bg-emerald-400 text-black" : i === step ? "bg-sky-400 text-black" : "bg-white/10 text-white/40",
+              i < step ? "bg-emerald-400 text-black" : i === step ? "bg-white text-black" : "bg-white/10 text-white/40",
             )}
           >
             {i < step ? "✓" : i + 1}
           </span>
           <span className={cn("hidden text-xs sm:inline", i <= step ? "text-white" : "text-white/35")}>{label}</span>
           {i === Math.min(step, STEPS.length - 1) && (
-            <motion.span layoutId="claim-step" className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-emerald-400 to-sky-400" />
+            <motion.span layoutId="claim-step" className="absolute inset-x-0 bottom-0 h-0.5" style={{ background: "var(--brand)" }} />
           )}
         </li>
       ))}
@@ -327,7 +272,7 @@ function Stepper({ step }: { step: number }) {
   );
 }
 
-const CONFETTI = ["#34d399", "#60a5fa", "#fbbf24", "#f4f4f5"];
+const CONFETTI = ["#f4f4f5", "#38bdf8", "#fbbf24", "#f472b6"];
 
 function Done({ outcome }: { outcome: Outcome }) {
   const agent = outcome.kind === "demo" ? outcome.agent : outcome.claim.agent;

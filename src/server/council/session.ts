@@ -1,6 +1,7 @@
 import type { CouncilMode, CouncilSnapshot, RoundResponse } from "@/lib/council-types";
 import { councilConfig, type CouncilConfig } from "./config";
 import { applyRisk } from "./risk";
+import { loadRound } from "./memory";
 import { RoundRun, runRound } from "./round";
 import { readState, today, updateState, type CouncilState } from "./store";
 
@@ -31,12 +32,17 @@ export async function snapshot(): Promise<CouncilSnapshot> {
   };
 }
 
+/** How soon a viewer should ask again while another server is still producing the session. */
+const RETRY_MS = 5000;
+
 /**
- * Returns the session a viewer should watch: the one in memory if they haven't seen
- * it, a new one if the next is due, or how long to wait. At most one session is
- * generated per interval, however many viewers ask.
+ * Returns the session a viewer should watch: one they haven't seen, a new one if the
+ * next is due, or how long to wait. At most one session is generated per interval,
+ * however many viewers or servers ask.
  */
-export async function joinRound(seen: number): Promise<RoundRun | RoundResponse> {
+export type Joined = { kind: "run"; run: RoundRun } | ({ kind: "wait" } & RoundResponse);
+
+export async function joinRound(seen: number): Promise<Joined> {
   const cfg = councilConfig();
   const unseen = () => {
     const run = shared.__councilRun;
@@ -44,19 +50,35 @@ export async function joinRound(seen: number): Promise<RoundRun | RoundResponse>
     return run.id > seen || !run.done ? run : null;
   };
 
+  const watch = (run: RoundRun): Joined => ({ kind: "run", run });
+  const wait = (ms: number, nextRoundAt: number): Joined => ({ kind: "wait", wait: ms, nextRoundAt });
+
   const current = unseen();
-  if (current) return current;
+  if (current) return watch(current);
 
   const state = await readState();
   const now = Date.now();
   const next = state.lastRoundAt + cfg.intervalMs;
-  if (state.round > 0 && now < next) return { wait: next - now, nextRoundAt: next };
 
-  // Nothing between this check and the assignment below can yield, so only one request starts a round.
-  const started = unseen();
-  if (started) return started;
-  const run = new RoundRun(state.round + 1);
+  // The latest session happened elsewhere, or before a restart. Replay it from storage.
+  if (state.round > seen) {
+    const stages = await loadRound(state.round).catch(() => null);
+    if (stages) return watch((shared.__councilRun = RoundRun.replay(state.round, stages)));
+    if (now < next) return wait(Math.min(RETRY_MS, next - now), Math.min(now + RETRY_MS, next));
+  }
+  if (state.round > 0 && now < next) return wait(next - now, next);
+
+  // Claim the next session. The save only succeeds for one server.
+  const claimed = await updateState(async (s) => {
+    if (s.round > 0 && now < s.lastRoundAt + cfg.intervalMs) return s;
+    const settled = await applyRisk(s, now).catch(() => s);
+    const day = today();
+    return { ...settled, round: s.round + 1, lastRoundAt: now, day, roundsToday: (settled.day === day ? settled.roundsToday : 0) + 1 };
+  });
+  if (claimed.lastRoundAt !== now) return wait(RETRY_MS, now + RETRY_MS);
+
+  const run = new RoundRun(claimed.round);
   shared.__councilRun = run;
-  void runRound(run, cfg, modeOf(cfg, state).mode);
-  return run;
+  void runRound(run, cfg, modeOf(cfg, state).mode, claimed);
+  return watch(run);
 }

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.97",
+    "@neondatabase/serverless": "^1.1.0",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
     "@wallet-standard/app": "^1.1.1",
