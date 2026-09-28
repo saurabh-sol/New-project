@@ -1,0 +1,58 @@
+import type { AgentId, AgentProfile } from "./types";
+
+export const AGENTS: Record<AgentId, AgentProfile> = {
+  quant: {
+    id: "quant",
+    name: "The Quant",
+    role: "Momentum & technicals",
+    model: "GPT-6 Astra",
+    provider: "OpenAI",
+    color: "#34d399",
+    body: "#10b981",
+    bodyShade: "#047857",
+    head: "#e6f4ee",
+    headShade: "#9fc7b8",
+    persona: "Data-driven. Trusts indicators over narratives.",
+  },
+  degen: {
+    id: "degen",
+    name: "The Degen",
+    role: "Momentum & conviction",
+    model: "Grok 4.7",
+    provider: "xAI",
+    color: "#f4f4f5",
+    body: "#63636f",
+    bodyShade: "#34343d",
+    head: "#52525c",
+    headShade: "#2a2a31",
+    persona: "Chases the biggest movers. High conviction, high size.",
+  },
+  guardian: {
+    id: "guardian",
+    name: "The Guardian",
+    role: "Risk manager",
+    model: "Claude Opus 4.8",
+    provider: "Anthropic",
+    color: "#fbbf24",
+    body: "#ea8a2e",
+    bodyShade: "#b45309",
+    head: "#fbeedb",
+    headShade: "#dcb98a",
+    persona: "Sizes every position. Holds the veto.",
+  },
+  oracle: {
+    id: "oracle",
+    name: "The Oracle",
+    role: "Probabilities & odds",
+    model: "Jev",
+    provider: "TypeSafe AI",
+    color: "#60a5fa",
+    body: "#3b82f6",
+    bodyShade: "#1d4ed8",
+    head: "#e3ecfb",
+    headShade: "#a3b8de",
+    persona: "Speaks only in probabilities. Never trades a coin flip.",
+  },
+};
+
+export const AGENT_ORDER: AgentId[] = ["quant", "degen", "guardian", "oracle"];
