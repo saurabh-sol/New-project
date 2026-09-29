@@ -6,7 +6,7 @@ import { AGENT_ORDER } from "@/lib/agents";
 import type { DeskAsset } from "@/lib/assets";
 import { buy, canSell, canSellOwn, COMMITTED_HOLD_ROUNDS, fitStakes, invested, MIN_ORDER_USD, OWN_BOOK_SHARE, positionOf, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, Exchange, Line, OwnTrade, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
-import type { AssetKey, Prices } from "@/lib/market";
+import { isToken, type AssetKey, type Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { backers, clamp, enforcePitch, fitTerms, type Brain } from "./brain";
 import { isEvaluationModel, type CouncilConfig } from "./config";
@@ -140,8 +140,7 @@ export async function runRound(
     const board = await market.board(opening);
     const { stats: listed, market1h } = board;
     if (listed.length === 0) throw new Error("No market data available");
-    const before = opening.portfolio;
-    const sellOnly = board.sellOnly ?? [];
+    let before = opening.portfolio;
 
     // A funder's request, if one is waiting. A failure here must not cost the desk its session.
     const asked = await requests.take(run.id, before.cash, opening.assets, market1h).catch((e) => {
@@ -163,6 +162,34 @@ export async function runRound(
       await updateState((s) => ({ ...s, assets: { ...s.assets, [request.asset.key]: known[request.asset.key] } }));
     }
 
+    // ETH and Stock Tokens are what the desk used to trade. It buys them now only when a funder asks for one.
+    const old = (t: AssetKey) => isToken(t) || assets[t]?.kind === "stock";
+    const sold: OwnTrade[] = [];
+    if (board.assets && !opening.woundDown) {
+      // Once, when the desk stopped trading them: what the agents had bought of them on their own is sold.
+      // What a funder asked for stays, with the agent who is bound to it.
+      for (const pos of before.positions.filter((p) => old(p.token) && listed.find((s) => s.token === p.token)?.session !== "closed")) {
+        const price = await market.price(pos.token, assets).catch(() => null);
+        if (!price) continue;
+        for (const agent of AGENT_ORDER) {
+          if (pos.stake[agent] < 0.01 || (pos.lockedUntil !== undefined && agent === pos.leader)) continue;
+          const ts = Date.now();
+          let made: Fill | null = null;
+          const saved = await updateState((s) => {
+            const done = sell(s.portfolio, { token: pos.token, price, fraction: 1, reason: "OWN", round: run.id, leader: agent, ts, id: `wind-${run.id}-${agent}-${pos.token}`, only: agent });
+            if (!done) return s;
+            made = { ...done.fill, note: `${nameOf(agent)} sold its ${pos.token} at ${px(price)}, as the desk no longer trades ${isToken(pos.token) && pos.token === "ETH" ? "ETH" : "Stock Tokens"}. Realized ${signed(done.fill.realized ?? 0, "")} USDG.` };
+            return { ...s, portfolio: done.portfolio, fills: [...s.fills, made] };
+          });
+          const f = made as Fill | null;
+          if (f) sold.push({ agent, fill: f, portfolio: saved.portfolio, note: f.note! });
+          before = saved.portfolio;
+        }
+      }
+      const lines = sold.map((t) => t.note);
+      await updateState((s) => ({ ...s, woundDown: true, recent: [...s.recent, ...(lines.length ? [`Round ${run.id}: the desk stopped trading ETH and Stock Tokens, and sold what the agents had bought of them on their own.`] : [])] }));
+    }
+
     // Requested tokens the desk already holds are on the board too, so the agents can judge and sell them.
     const heldAssets = before.positions.map((p) => p.token).filter((t) => assets[t] && t !== request?.asset.key && !listed.some((s) => s.token === t));
     const heldStats = await Promise.all(
@@ -171,7 +198,11 @@ export async function runRound(
         return quote ? assetStats(assets[t], quote, market1h).catch(() => null) : null;
       }),
     );
-    const stats = [...listed.filter((s) => s.token !== request?.asset.key), ...heldStats.filter((s): s is TokenStats => !!s), ...(asked ? [asked.stats] : [])];
+    const stillHeld = (s: TokenStats) => !old(s.token) || !!positionOf(before, s.token);
+    const stats = [...listed.filter((s) => s.token !== request?.asset.key && stillHeld(s)), ...heldStats.filter((s): s is TokenStats => !!s), ...(asked ? [asked.stats] : [])];
+    // The agents buy what is on the board. Anything else they hold can only be sold.
+    const onBoard = board.assets ? Object.keys(board.assets) : listed.map((s) => s.token).filter((t) => !(board.sellOnly ?? []).includes(t));
+    const sellOnly = stats.map((s) => s.token).filter((t) => !onBoard.includes(t) && t !== request?.asset.key);
     const prices: Prices = Object.fromEntries(stats.map((s) => [s.token, s.price]));
 
     // A Stock Token can't be bought or sold while its market is closed.
@@ -210,12 +241,13 @@ export async function runRound(
       request,
       // Every agent keeps a position open. One that holds nothing opens one this round, unless a funder's request has the floor.
       taken: [],
-      mustTrade: perAgent((a) => !request && !invested(before, a) && Math.floor(before.cash[a] * OWN_BOOK_SHARE) >= MIN_ORDER_USD && stats.some((s) => !closed.includes(s.token) && !sellOnly.includes(s.token))),
+      // What it holds of the tokens the desk no longer trades does not count.
+      mustTrade: perAgent((a) => !request && !invested(before, a, (pos) => !old(pos.token)) && Math.floor(before.cash[a] * OWN_BOOK_SHARE) >= MIN_ORDER_USD && stats.some((s) => !closed.includes(s.token) && !sellOnly.includes(s.token))),
       sellOnly,
       mine: perAgent((a) => before.positions.filter((p) => canSellOwn(before, p.token, a, run.id) && !closed.includes(p.token)).map((p) => p.token)),
     };
     await updateState((s) => ({ ...s, lenses: perAgent((a) => [...(s.lenses[a] ?? []), lens[a].id].slice(-LENS_MEMORY)) }));
-    run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt, request });
+    run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt, request, sold: sold.length ? sold : undefined });
 
     const think = thinker(cfg, mode);
     const sellPct = { quant: 100, degen: 100, guardian: 100, oracle: 100 } as Record<AgentId, number>;
@@ -317,9 +349,11 @@ export async function runRound(
     }
 
     if (!proposal) {
-      const note = "The council holds. No agent proposed a trade this round.";
-      await updateState((s) => ({ ...s, recent: [...s.recent, `Round ${run.id}: every agent chose to hold. No trade.`] }));
-      run.push({ stage: "outcome", fill: null, portfolio: before, note });
+      // Nothing was put to the council. An agent may still have decided to sell what is its own.
+      const own = await ownBooks([]);
+      const note = own.length ? "No trade was put to the council this round. The agents trade their own books." : "The council holds. No agent proposed a trade this round.";
+      if (!own.length) await updateState((s) => ({ ...s, recent: [...s.recent, `Round ${run.id}: every agent chose to hold. No trade.`] }));
+      run.push({ stage: "outcome", fill: null, portfolio: before, note, own });
       return;
     }
     const leader = proposal.leader;

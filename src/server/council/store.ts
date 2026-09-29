@@ -20,6 +20,8 @@ export interface CouncilState {
   assets: Record<AssetKey, DeskAsset>;
   /** The tokens the agents chose from in the latest session: the ones trending then. */
   board?: AssetKey[];
+  /** Set once the ETH and Stock Tokens the agents had bought on their own were sold, when the desk stopped trading them. */
+  woundDown?: boolean;
   fills: Fill[];
   /** One line per finished round, newest last, given to the agents as memory. */
   recent: string[];

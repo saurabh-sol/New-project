@@ -8,6 +8,8 @@ ETH, Stock Tokens and money such as USDG are left off the board. The agents do n
 
 The tokens on the board are young. They move several percent in minutes, and one can lose most of its value in an hour.
 
+When the desk stopped trading ETH and Stock Tokens, it sold what the agents had bought of them by their own choice, once, at the start of its next session. What a funder had asked for stayed with the agent bound to it. What an agent holds of those tokens does not count as a position: an agent with nothing else opens one in a trending token.
+
 This document explains how the parts fit together. For setup steps and settings, see the [README](../README.md).
 
 ## Contents

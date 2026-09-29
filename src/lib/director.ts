@@ -109,6 +109,7 @@ function transcriptOf(stages: Stage[]): { round: number; messages: ChatMessage[]
   const spoken = (line: Line, kind: MessageKind) => add(line.agent, kind, line.say, line);
 
   add("guardian", "system", `Session ${round}, held at ${clock(open.startedAt)}.`);
+  for (const t of open.sold ?? []) add(t.agent, "system", t.note);
   if (request) add(request.agent, "system", requestNote(request));
   let leader: AgentId = "guardian";
   for (const s of stages) {
@@ -381,18 +382,6 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       system(requestNote(request), request.agent);
     }
 
-    // 1. Pitches
-    const pitched = await next("pitches");
-    if (!pitched) return open.round;
-    await sleep(Math.max(0, 2500 - (Date.now() - scanStarted)));
-    setAll("idle");
-    emit({ type: "phase", phase: "pitch" });
-    for (const p of pitched.pitches) {
-      setState(p.agent, "thinking");
-      await sleep(600);
-      await say(p, "pitch");
-    }
-
     /** Each agent that traded for its own book places its order from its own desk. */
     async function ownBooks(trades: OwnTrade[]) {
       for (const t of trades) {
@@ -409,12 +398,36 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       }
     }
 
+    // What the desk sold before the session, because it no longer trades it.
+    if (open.sold?.length) {
+      setAll("idle");
+      await ownBooks(open.sold);
+      setAll("thinking");
+    }
+
+    // 1. Pitches
+    const pitched = await next("pitches");
+    if (!pitched) return open.round;
+    await sleep(Math.max(0, 2500 - (Date.now() - scanStarted)));
+    setAll("idle");
+    emit({ type: "phase", phase: "pitch" });
+    for (const p of pitched.pitches) {
+      setState(p.agent, "thinking");
+      await sleep(600);
+      await say(p, "pitch");
+    }
+
     const proposal = pitched.proposal;
     if (!proposal) {
       const outcome = await next("outcome");
       emit({ type: "phase", phase: "settle" });
       system(outcome?.note ?? "The council holds. No trade this round.");
       await sleep(2500);
+      if (outcome?.own?.length) {
+        emit({ type: "phase", phase: "execute" });
+        await ownBooks(outcome.own);
+        emit({ type: "phase", phase: "settle" });
+      }
       return open.round;
     }
     const leader = proposal.leader;

@@ -106,7 +106,8 @@ export interface ModelInfo {
 export type CouncilMode = "live" | "scripted";
 
 export type Stage =
-  | { stage: "open"; round: number; mode: CouncilMode; stats: TokenStats[]; portfolio: Portfolio; startedAt: number; request?: RequestBrief | null }
+  /** `sold`: what the desk sold before the session began, because it no longer trades it. */
+  | { stage: "open"; round: number; mode: CouncilMode; stats: TokenStats[]; portfolio: Portfolio; startedAt: number; request?: RequestBrief | null; sold?: OwnTrade[] }
   | { stage: "pitches"; pitches: Pitch[]; proposal: Proposal | null }
   | { stage: "debate"; exchanges: Exchange[] }
   /** `committed`: the leader was bound by a funder's request to trade whatever the vote. */

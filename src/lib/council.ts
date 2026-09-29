@@ -162,8 +162,8 @@ export function canSellOwn(p: Portfolio, token: string, agent: AgentId, round: n
   return !!pos && pos.stake[agent] > 0.005 && round - pos.openedRound >= MIN_OWN_HOLD_ROUNDS && round >= (pos.lockedUntil ?? 0);
 }
 
-/** Whether the agent has money in any open position. */
-export const invested = (p: Portfolio, agent: AgentId) => p.positions.some((pos) => pos.stake[agent] > 0.005);
+/** Whether the agent has money in any open position. `counts` leaves out positions that are not to count. */
+export const invested = (p: Portfolio, agent: AgentId, counts: (pos: Position) => boolean = () => true) => p.positions.some((pos) => pos.stake[agent] > 0.005 && counts(pos));
 
 /** Whether the council is allowed to sell this token in this round. */
 export function canSell(p: Portfolio, token: string, round: number): boolean {

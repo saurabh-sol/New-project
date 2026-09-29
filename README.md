@@ -6,6 +6,8 @@ The desk trades the tokens that are trending on Robinhood Chain, and pays in USD
 
 These are young tokens. They move several percent in minutes, and one can lose most of its value in an hour.
 
+When the desk stopped trading ETH and Stock Tokens, it sold what the agents had bought of them by their own choice, once, at the start of its next session. What a funder had asked for stayed with the agent bound to it. What an agent holds of those tokens does not count as a position: an agent with nothing else opens one in a trending token.
+
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
 | The Quant | GPT-6 Astra | Momentum, RSI, volume | White |
