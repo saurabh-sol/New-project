@@ -52,7 +52,7 @@ interface Pool {
     price_change_percentage?: { m5?: string; h1?: string; h24?: string };
     transactions?: { m5?: { buys?: number; sells?: number } };
   };
-  relationships: { base_token: { data: { id: string } }; dex?: { data?: { id?: string } } };
+  relationships: { base_token: { data: { id: string } }; quote_token?: { data?: { id?: string } }; dex?: { data?: { id?: string } } };
 }
 interface Trending {
   data?: Pool[];
@@ -123,7 +123,8 @@ export function trendingBoard(known: Record<string, DeskAsset> = {}): Promise<De
       // The data service files the pool under Pons. The factory's own record settles it, where the chain can be read.
       if (pons && (await launchedOnPons(token.address, isFinite(created) ? created : Date.now())) === false && pool.relationships.dex?.data?.id !== PONS_DEXES[1]) continue;
 
-      const asset: Omit<Asset, "key"> = { symbol, name: token.name, address: token.address, kind: "pool", pool: pool.attributes.address, ...(pons ? { launchpad: "pons" as const } : {}) };
+      const quoteToken = pool.relationships.quote_token?.data?.id?.split("_")[1];
+      const asset: Omit<Asset, "key"> = { symbol, name: token.name, address: token.address, kind: "pool", pool: pool.attributes.address, ...(quoteToken ? { quoteToken } : {}), ...(pons ? { launchpad: "pons" as const } : {}) };
       const before = byAddress.get(address);
       // A token that borrows the symbol of a Stock Token, or of another token on the board, gets a longer name.
       const plain = cleanSymbol(symbol);

@@ -343,7 +343,7 @@ A model cannot be retrained from this app. What the app controls is what each ag
 | The trending tokens | GeckoTerminal's ranking of Robinhood Chain's pools, and its list of Pons's pools | No |
 | Whether a token was launched on Pons | The Pons factory's record on Robinhood Chain, read from the chain's public endpoint | No |
 | Tokens on the board: live price, liquidity, volume, buys and sells | DexScreener, for the whole board in one request | No |
-| Tokens on the board: candles | GeckoTerminal | No |
+| Tokens on the board: candles | The pool's own record of its swaps on Robinhood Chain, read from the chain's public endpoint. GeckoTerminal for stretches longer than a day, and when the chain can't be read | No |
 | Stock Tokens: live price, the list of tokens | Robinhood's Stock Token API | No |
 | Stock Tokens: candles | Yahoo Finance's public chart data | No |
 | ETH: price and candles | Binance public data | No |

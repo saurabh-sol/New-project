@@ -8,7 +8,8 @@
 import { createPublicClient, http, parseAbi } from "viem";
 import { robinhood } from "viem/chains";
 import type { Asset, AssetPreview, AssetQuote } from "@/lib/assets";
-import { isToken, type Candle, type Interval } from "@/lib/market";
+import { INTERVAL_SECONDS, isToken, type Candle, type Interval } from "@/lib/market";
+import { chainCandles, readable } from "./chain-candles";
 import { cached, cachedOrKept, getJson } from "./http";
 import { findStock, stockCandles, stockQuotes, stockTokens } from "./stocks";
 
@@ -43,6 +44,7 @@ interface Pair {
   chainId: string;
   pairAddress: string;
   baseToken: { address: string; name: string; symbol: string };
+  quoteToken?: { address: string };
   priceUsd?: string;
   liquidity?: { usd?: number };
   volume?: { h24?: number };
@@ -293,7 +295,35 @@ const SIZES = [60, 300, 1000];
  */
 export async function assetCandles(asset: Asset, span: Interval, limit: number, patient = false): Promise<Candle[]> {
   if (asset.kind === "stock") return stockCandles(asset.symbol, span, limit, patient);
+  const wanted = Math.min(Math.max(limit, 1), 1000);
+  // The pool's own record on the chain comes first, where the stretch asked for is one the chain will search at once.
+  if (INTERVAL_SECONDS[span] * wanted <= CHAIN_REACH_SECONDS) {
+    const fromChain = await onChain(asset, span, wanted).catch((e) => (console.error(`[candles] could not read ${asset.symbol} from the chain:`, e instanceof Error ? e.message.split("\n")[0] : e), null));
+    // A token that has just begun trading has few candles on-chain and no more anywhere else.
+    if (fromChain && fromChain.length > 0) return fromChain;
+  }
   return poolCandles(asset.pool ?? "", asset.address, span, limit, patient);
+}
+
+/** A day of trading is what the chain's endpoint will search at once. */
+const CHAIN_REACH_SECONDS = 24 * 3600;
+
+/** The token its pool is quoted in, as DexScreener names it. Asked once for each pool. */
+const quoteTokenOf = (pool: string) =>
+  cached(`pair:${pool.toLowerCase()}`, 86_400_000, async () => {
+    const { pairs } = await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/pairs/${CHAIN}/${pool}`);
+    const quote = pairs?.[0]?.quoteToken?.address;
+    if (!quote) throw new Error("The pool's quote token is not known");
+    return quote;
+  });
+
+async function onChain(asset: Asset, span: Interval, limit: number): Promise<Candle[] | null> {
+  if (!asset.pool) return null;
+  const quote = asset.quoteToken ?? (await quoteTokenOf(asset.pool));
+  const pool = { pool: asset.pool, token: asset.address, quote };
+  if (!readable(pool)) return null;
+  const live = await assetQuote(asset);
+  return chainCandles(pool, span, limit, live.price);
 }
 
 /** A pool's candles, priced in USD, for the one of its two tokens that is named. */

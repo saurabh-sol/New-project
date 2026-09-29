@@ -225,7 +225,7 @@ export function PriceChart({ className }: { className?: string }) {
   }, [fills, token, interval, loaded]);
 
   const decimals = quote ? priceDecimals(quote.price) : 2;
-  const source = crypto ? "Live prices · Binance spot" : isToken(token) || assets[token]?.kind === "stock" ? "Robinhood Stock Token · history from Yahoo Finance" : `${assets[token]?.launchpad === "pons" ? "Launched on Pons · " : ""}Live price · DexScreener · candles from GeckoTerminal`;
+  const source = crypto ? "Live prices · Binance spot" : isToken(token) || assets[token]?.kind === "stock" ? "Robinhood Stock Token · history from Yahoo Finance" : `${assets[token]?.launchpad === "pons" ? "Launched on Pons · " : ""}Live price · DexScreener · candles from the pool's swaps on-chain`;
 
   return (
     <section className={cn("panel flex min-w-0 flex-col", className)}>

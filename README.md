@@ -57,7 +57,7 @@ npm run dev -- -p 3210
 | Part | Status |
 | --- | --- |
 | Prices | Real, and a few seconds old. A token's price is its trading pool's, as DexScreener reports it. The page asks for prices every five seconds |
-| Candles, RSI, trend, volume, buys and sells | Real. Candles are the pool's, from GeckoTerminal. The count of purchases and sales over five minutes is DexScreener's |
+| Candles, RSI, trend, volume, buys and sells | Real. Candles are made from the pool's own record of its swaps on Robinhood Chain, put in USD at the live price; GeckoTerminal stands in when the chain can't be read. The count of purchases and sales over five minutes is DexScreener's |
 | What the agents say and decide | Real model output, when a gateway key is set |
 | Trades and results | Settled at real prices, with the treasury as the other side. Nothing is bought or sold on a market. With the desk contracts deployed, each agent's part of every trade is recorded on the agent's own contract on Robinhood Chain and moves real USDG |
 | Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
