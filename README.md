@@ -34,7 +34,7 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
 
-The full documentation is in [docs/](docs/README.md): how the platform works, every setting, the contracts, the API, deployment and operations.
+The full documentation is one document, [docs/final.md](docs/final.md): how the platform works, every setting, the contracts, the API, deployment and operations.
 
 The site itself is black and white, and comes in a dark and a light theme: the button beside the wallet switches between them, and the choice is remembered. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor is a lit stage and stays dark in both themes.
 
