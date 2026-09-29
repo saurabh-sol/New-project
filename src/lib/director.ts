@@ -7,6 +7,7 @@ import type { DeskAsset, RequestBrief } from "./assets";
 import { agentPnl, type Emotion, type Fill } from "./council";
 import type { CouncilSnapshot, Line, OwnTrade, Proposal, RoundResponse, Stage } from "./council-types";
 import { walkSeconds } from "./layout";
+import { bookMood, resultMood, spokenMood } from "./mood";
 import type { AgentId, AgentState, ArenaEvent, ChatMessage, MessageKind, Spot } from "./types";
 import { fmtPrice, fmtSigned } from "./utils";
 import { useArena } from "@/store/arena";
@@ -105,7 +106,7 @@ function transcriptOf(stages: Stage[]): { round: number; messages: ChatMessage[]
   const messages: ChatMessage[] = [];
   let ts = open.startedAt;
   const add = (agent: AgentId, kind: MessageKind, text: string, line?: Line) =>
-    messages.push({ id: `r${round}-${messages.length}`, agent, kind, text, ts: (ts += 4000), round, to: line?.to, emotion: line?.emotion, source: line?.source });
+    messages.push({ id: `r${round}-${messages.length}`, agent, kind, text, ts: (ts += 4000), round, to: line?.to, emotion: line ? spokenMood(line.emotion, open.fitted) : undefined, source: line?.source });
   const spoken = (line: Line, kind: MessageKind) => add(line.agent, kind, line.say, line);
 
   add("guardian", "system", `Session ${round}, held at ${clock(open.startedAt)}.`);
@@ -175,6 +176,8 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
   const knownFills = new Set<string>();
   /** The session on stage, or 0 between sessions. Every line is filed under it. */
   let playing = 0;
+  /** Whether the session being played sets its faces by the situation. Older ones on record do not. */
+  let fitted = false;
   /** Lines of the session on stage shown so far, and how many of them this browser had already watched. */
   let shown = 0;
   let watchedLines = 0;
@@ -236,11 +239,11 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
 
   const count = line;
   async function say(line: Line, kind: MessageKind) {
-    feel(line.agent, line.emotion);
+    feel(line.agent, spokenMood(line.emotion, fitted));
     setState(line.agent, "speaking");
     emit({
       type: "message",
-      message: { id: uid(), agent: line.agent, to: line.to, kind, text: line.say, ts: Date.now(), emotion: line.emotion, source: line.source, round: playing || undefined },
+      message: { id: uid(), agent: line.agent, to: line.to, kind, text: line.say, ts: Date.now(), emotion: spokenMood(line.emotion, fitted), source: line.source, round: playing || undefined },
     });
     const quick = catchingUp();
     count();
@@ -276,13 +279,12 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
         continue;
       }
       const pct = (agentPnl(snapshot.portfolio, a, prices) / invested) * 100;
-      feel(a, pct > 0.4 ? "happy" : pct < -0.4 ? "worried" : "neutral");
+      feel(a, bookMood(pct));
     }
   }
 
   /** A stop-loss or profit target closed a position while the council was away. */
   async function riskExit(fill: Fill, snapshot: CouncilSnapshot) {
-    const won = (fill.realized ?? 0) >= 0;
     const holders = AGENT_ORDER.filter((a) => fill.stake[a] > 0);
     emit({ type: "focus", token: fill.token });
     emit({ type: "fill", fill, portfolio: snapshot.portfolio });
@@ -290,9 +292,12 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       `${fill.reason === "STOP" ? "Stop-loss" : "Profit target"} hit: sold ${fill.token} at $${fmtPrice(fill.price)}. Realized ${fmtSigned(fill.realized ?? 0)}.`,
       fill.leader,
     );
+    // Each holder takes it by what it made or lost itself. Small change is no occasion.
     for (const a of holders) {
-      feel(a, won ? "happy" : "sad");
-      setState(a, won ? "win" : "loss");
+      // A stop-loss puts the agent out of its position. It did not choose to sell.
+      const mood = resultMood(((fill.realized ?? 0) * fill.stake[a]) / Math.max(fill.usd, 0.01), fill.reason === "STOP");
+      feel(a, mood);
+      if (mood === "happy" || mood === "sad") setState(a, mood === "happy" ? "win" : "loss");
     }
     await sleep(3200);
     for (const a of holders) setState(a, "idle");
@@ -304,7 +309,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     emit({ type: "focus", token: fill.token });
     emit({ type: "fill", fill, portfolio: snapshot.portfolio });
     system(fill.note ?? `${AGENTS[fill.leader].name} sold its ${fill.token} at $${fmtPrice(fill.price)} as the price fell. Realized ${fmtSigned(fill.realized ?? 0)}.`, fill.leader);
-    feel(fill.leader, won ? "confident" : "worried");
+    feel(fill.leader, won ? "confident" : resultMood(fill.realized ?? 0, true));
     setState(fill.leader, "executing");
     await sleep(2600);
     setState(fill.leader, "idle");
@@ -361,6 +366,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     const open = await next("open");
     if (!open) return 0;
     playing = open.round;
+    fitted = !!open.fitted;
     shown = 0;
     watchedLines = savedProgress(open.round);
     emit({ type: "round_start", round: open.round, mode: open.mode, portfolio: open.portfolio, committed: open.request?.mode === "commit" });
@@ -392,7 +398,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
         await sleep(1400);
         emit({ type: "fill", fill: t.fill, portfolio: t.portfolio });
         system(t.note, t.agent);
-        feel(t.agent, t.fill.side === "BUY" ? "confident" : (t.fill.realized ?? 0) >= 0 ? "happy" : "sad");
+        feel(t.agent, t.fill.side === "BUY" ? "confident" : resultMood(t.fill.realized ?? 0));
         await sleep(1800);
         setState(t.agent, "idle");
       }
@@ -462,11 +468,11 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       if (pledge.support && buying && pledge.stakeUsd > 0) {
         setState(pledge.agent, "negotiating");
         await sleep(Math.max(walk(pledge.agent, { kind: "desk", of: leader }), leaving * 0.5) + SETTLE_MS);
-        feel(pledge.agent, pledge.emotion);
+        feel(pledge.agent, spokenMood(pledge.emotion, fitted));
         setState(pledge.agent, "speaking");
         emit({
           type: "message",
-          message: { id: uid(), agent: pledge.agent, to: leader, kind: "negotiate", text: pledge.say, ts: Date.now(), emotion: pledge.emotion, source: pledge.source, round: playing },
+          message: { id: uid(), agent: pledge.agent, to: leader, kind: "negotiate", text: pledge.say, ts: Date.now(), emotion: spokenMood(pledge.emotion, fitted), source: pledge.source, round: playing },
         });
         const quick = catchingUp();
         line();
@@ -528,13 +534,15 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       // A sale books a result, so the desk reacts to it.
       for (const a of AGENT_ORDER) {
         if (outcome.fill!.stake[a] <= 0) continue;
-        feel(a, realized >= 0 ? "happy" : "sad");
-        setState(a, realized >= 0 ? "win" : "loss");
+        const mood = resultMood((realized * outcome.fill!.stake[a]) / Math.max(outcome.fill!.usd, 0.01));
+        feel(a, mood);
+        if (mood === "happy" || mood === "sad") setState(a, mood === "happy" ? "win" : "loss");
       }
       await sleep(3000);
       setAll("idle");
     } else {
-      if (!outcome.fill) feel(leader, "sad");
+      // A proposal that was turned down is a day at the desk, not a loss.
+      if (!outcome.fill) feel(leader, "neutral");
       await sleep(2200);
     }
     await walkAll(AGENT_ORDER.filter((a) => at[a].kind !== "home"), HOME);

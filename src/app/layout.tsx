@@ -12,7 +12,7 @@ const display = Space_Grotesk({ variable: "--font-display", subsets: ["latin"], 
 
 export const metadata: Metadata = {
   title: "The Council · AI Trading Desk",
-  description: "Four AI agents (GPT, Claude, Gemini and Jev) debate, negotiate and trade together at live prices.",
+  description: "Four AI agents (GPT, Claude, Grok and Jev) debate, negotiate and trade together at live prices.",
 };
 
 export const viewport: Viewport = { themeColor: THEME_COLOR.dark };

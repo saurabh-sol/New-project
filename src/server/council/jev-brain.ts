@@ -54,6 +54,24 @@ function judge(p: number, proposal: Proposal) {
 /** Conviction 1..5 from how far a probability sits from a coin flip. */
 const conviction = (p: number) => Math.round(clamp(1 + Math.abs(p - 0.5) * 16, 1, 5));
 
+/**
+ * Jev's odds that each token on the board trades higher an hour from now.
+ * For agents that decide for themselves and are given the odds to weigh.
+ */
+export async function oddsFromJev(cfg: CouncilConfig, ctx: RoundCtx): Promise<Record<string, number>> {
+  const questions: Record<string, Question> = {};
+  ctx.stats.forEach((s, i) => (questions[`up_${i}`] = { type: "boolean", instructions: `Will ${s.token} trade higher one hour from now than its current price of ${px(s.price)}?` }));
+  const { answers } = await evaluate({
+    model: gateway.evaluationModel(cfg.oddsModel),
+    state: briefingState(ctx, cfg.withOdds[0]) as Parameters<typeof evaluate>[0]["state"],
+    questions,
+    maxRetries: 3,
+    abortSignal: AbortSignal.timeout(cfg.callTimeoutMs),
+  });
+  const all = answers as Record<string, { probability?: number }>;
+  return Object.fromEntries(ctx.stats.flatMap((s, i) => (typeof all[`up_${i}`]?.probability === "number" ? [[s.token, clamp(all[`up_${i}`].probability!, 0, 1)]] : [])));
+}
+
 export function jevBrain(cfg: CouncilConfig): Brain {
   async function ask(agent: AgentId, state: unknown, questions: Record<string, Question>) {
     const { answers } = await evaluate({

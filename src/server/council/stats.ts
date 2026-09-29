@@ -51,7 +51,7 @@ function atrPct(candles: Candle[], period = 14): number {
 const hourChange = (candles: Candle[]) => (candles.length ? pct(candles.slice(-12)[0].open, candles[candles.length - 1].close) : 0);
 
 /** `candles` are five minutes apart, oldest first. */
-function summarize(token: AssetKey, candles: Candle[], quote: Pick<Quote, "change24h" | "high24h" | "low24h"> | undefined, hasVolume: boolean): TokenStats {
+export function summarize(token: AssetKey, candles: Candle[], quote: Pick<Quote, "change24h" | "high24h" | "low24h"> | undefined, hasVolume: boolean): TokenStats {
   const last = candles[candles.length - 1];
   const closes = candles.map((c) => c.close);
   const back = (n: number) => candles[Math.max(0, candles.length - n)];

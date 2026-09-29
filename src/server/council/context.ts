@@ -37,6 +37,8 @@ export interface RoundCtx {
   mine: Record<AgentId, AssetKey[]>;
   /** Whether the board is made of tokens launched on Pons, and of no others. */
   pons?: boolean;
+  /** Jev's odds that each token trades higher an hour from now, 0 to 1, for the agents that are given them. */
+  odds?: { for: AgentId[]; up1h: Record<AssetKey, number> };
 }
 
 export const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -136,6 +138,14 @@ export function briefing(ctx: RoundCtx, agent: AgentId): string {
     ...(ctx.closed.length ? [`Closed now, so they can be neither bought nor sold this round: ${ctx.closed.join(", ")}.`] : []),
     "",
     ...(ctx.request ? ["A FUNDER'S REQUEST THIS ROUND", describeRequest(ctx), ""] : []),
+    ...(ctx.odds?.for.includes(agent) && Object.keys(ctx.odds.up1h).length
+      ? [
+          "ODDS (from Jev, an evaluation model that reads the same figures. The chance that each token trades higher one hour from now.)",
+          ctx.stats.flatMap((s) => (ctx.odds!.up1h[s.token] === undefined ? [] : [`${s.token} ${Math.round(ctx.odds!.up1h[s.token] * 100)}%`])).join(" | "),
+          "Weigh them with the rest. Odds near 50% say nothing either way.",
+          "",
+        ]
+      : []),
     "DESK",
     deskReport(ctx, agent),
     "",

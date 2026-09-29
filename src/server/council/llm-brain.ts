@@ -1,4 +1,4 @@
-/** Agents backed by a language model (GPT, Claude, Gemini), called through Vercel AI Gateway. */
+/** Agents backed by a language model (GPT, Claude, Grok), called through Vercel AI Gateway. */
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS, withPresentNames } from "@/lib/agents";
@@ -39,6 +39,7 @@ How the desk works:
 
 Rules for what you say:
 - Use only the figures in the data you are given. Never invent news, social media sentiment, on-chain flows or any number.
+- If you are given odds from Jev, they are a reading to weigh, not an order. Say so when they are what settles it for you.
 - "say" is one short remark across the desk, the way traders talk: at most 15 words and 100 characters. One point, one or two figures, then stop.
   Good: "ROO up 12% on 1h, 49 buys to 41 sells. Long $25, stop 10%."
   Good: "Down 6% in 15 minutes, sellers lead. I'm selling mine."

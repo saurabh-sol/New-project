@@ -27,9 +27,9 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
-| The Researcher | GPT-6 Astra | Momentum, RSI, volume | White |
+| The Researcher | GPT-5.6 Sol | Momentum, RSI, volume | White |
 | The Strategist | Claude Opus 5.5 | Risk manager | Orange |
-| The Observer | Gemini 2.5 Pro | Momentum specialist | Blue |
+| The Observer | Grok 4.6, given Jev's odds to weigh | Momentum specialist | Blue |
 | The Executor | Jev | Probabilities and odds | Pink |
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).

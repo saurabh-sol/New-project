@@ -145,10 +145,12 @@ const LOOKS: Record<Emotion, Look> = {
   confident: { eyes: 0.85, brow: { tilt: 9, y: 22 }, mouth: [36, 36.8, 41.5, 39.4, 45.5, 35.4], headTilt: -3, headDrop: -1, tint: null, tremble: false },
   excited: { eyes: 1.25, brow: { tilt: -7, y: 19.6 }, mouth: [35, 35, 40.5, 43, 46, 35], open: true, headTilt: 0, headDrop: -1.5, tint: "#fde047", tremble: false },
   happy: { eyes: 1, brow: { tilt: -5, y: 20.2 }, mouth: [35, 35.4, 40.5, 41.4, 46, 35.4], headTilt: 3, headDrop: 0, tint: "#4ade80", tremble: false },
-  skeptical: { eyes: 0.7, brow: { tilt: 4, y: 23, liftRight: 3.6 }, mouth: [36.5, 38, 40.5, 37, 44.5, 35.8], headTilt: 7, headDrop: 0, tint: null, tremble: false },
-  worried: { eyes: 1.15, brow: { tilt: -18, y: 21 }, mouth: [36.5, 38.4, 40.5, 35.8, 44.5, 38.4], headTilt: -2, headDrop: 1, tint: "#60a5fa", tremble: true },
-  annoyed: { eyes: 0.6, brow: { tilt: 23, y: 23.4 }, mouth: [36.5, 38.6, 40.5, 35.4, 44.5, 38.6], headTilt: 0, headDrop: 0.5, tint: "#ef4444", tremble: true },
-  sad: { eyes: 0.8, brow: { tilt: -25, y: 21.4 }, mouth: [35.5, 39.2, 40.5, 34.6, 45.5, 39.2], headTilt: 5, headDrop: 3, tint: "#60a5fa", tremble: false },
+  // Doubt is a raised brow, and no more than that.
+  skeptical: { eyes: 0.88, brow: { tilt: 2, y: 21.6, liftRight: 3 }, mouth: [36.5, 37.4, 40.5, 37.4, 44.5, 36.6], headTilt: 5, headDrop: 0, tint: null, tremble: false },
+  worried: { eyes: 1.08, brow: { tilt: -10, y: 21 }, mouth: [36.5, 37.8, 40.5, 36.6, 44.5, 37.8], headTilt: -2, headDrop: 0.5, tint: null, tremble: false },
+  // Anger is for when there is cause: see `moodFor`.
+  annoyed: { eyes: 0.65, brow: { tilt: 21, y: 23.2 }, mouth: [36.5, 38.6, 40.5, 35.6, 44.5, 38.6], headTilt: 0, headDrop: 0.5, tint: "#ef4444", tremble: false },
+  sad: { eyes: 0.9, brow: { tilt: -14, y: 21.4 }, mouth: [36, 38.4, 40.5, 36, 45, 38.4], headTilt: 4, headDrop: 2, tint: null, tremble: false },
 };
 
 const mouthPath = ([x0, y0, cx, cy, x1, y1]: Look["mouth"]) => `M${x0} ${y0} Q${cx} ${cy} ${x1} ${y1}`;
@@ -312,9 +314,9 @@ const STAR = "M0 -5 Q0.8 -0.8 5 0 Q0.8 0.8 0 5 Q-0.8 0.8 -5 0 Q-0.8 -0.8 0 -5 Z"
 const CENTER = { originX: 0.5, originY: 0.5 };
 
 /**
- * The small symbol that floats beside the head. `unflip` keeps glyphs readable when
- * the character faces left. Placement is on a plain group, because an animated
- * element's own transform would replace it.
+ * The small symbol that floats beside the head. `unflip` keeps glyphs readable when the
+ * character faces left. Placement is on a plain group, because an animated element's own
+ * transform would replace it.
  */
 function Emote({ emotion, unflip }: { emotion: Emotion; unflip: number }) {
   const at = (x: number, y: number) => `translate(${x} ${y}) scale(${unflip} 1)`;

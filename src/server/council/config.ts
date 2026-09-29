@@ -2,14 +2,16 @@ import type { ModelInfo } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 
 const DEFAULT_MODELS: Record<AgentId, string> = {
-  quant: "openai/gpt-6-astra",
+  quant: "openai/gpt-5.6-sol",
   guardian: "anthropic/claude-opus-5.5",
-  degen: "google/gemini-2.5-pro",
+  degen: "spacexai/grok-4.6",
   oracle: "typesafe-ai/jev",
 };
 
 const NAMES: Record<string, string> = {
   "openai/gpt-6-astra": "GPT-6 Astra",
+  "openai/gpt-5.6-sol": "GPT-5.6 Sol",
+  "spacexai/grok-4.6": "Grok 4.6",
   "anthropic/claude-opus-4": "Claude Opus 4",
   "anthropic/claude-opus-4.5": "Claude Opus 4.5",
   "anthropic/claude-opus-4.8": "Claude Opus 4.8",
@@ -38,6 +40,13 @@ export interface CouncilConfig {
   intervalMs: number;
   maxRoundsPerDay: number;
   callTimeoutMs: number;
+  /**
+   * Agents that are given Jev's odds to weigh before they decide. The model still makes the
+   * decision and writes what the agent says. Jev's odds are one more reading on its desk.
+   */
+  withOdds: AgentId[];
+  /** The evaluation model that gives those odds. */
+  oddsModel: string;
 }
 
 export function councilConfig(): CouncilConfig {
@@ -48,7 +57,13 @@ export function councilConfig(): CouncilConfig {
     degen: env.COUNCIL_MODEL_DEGEN || DEFAULT_MODELS.degen,
     oracle: env.COUNCIL_MODEL_ORACLE || DEFAULT_MODELS.oracle,
   };
-  const info = (a: AgentId): ModelInfo => ({ id: modelIds[a], name: NAMES[modelIds[a]] ?? prettify(modelIds[a]) });
+  const oddsModel = env.COUNCIL_ODDS_MODEL || DEFAULT_MODELS.oracle;
+  const asked = (env.COUNCIL_ODDS_FOR ?? "degen").split(",").map((a) => a.trim());
+  // An agent that is an evaluation model itself has odds of its own.
+  const withOdds = (Object.keys(modelIds) as AgentId[]).filter((a) => asked.includes(a) && !isEvaluationModel(modelIds[a]));
+  const nameOf = (id: string) => NAMES[id] ?? prettify(id);
+  // The name says so when a second model has a part in the agent's decisions.
+  const info = (a: AgentId): ModelInfo => ({ id: modelIds[a], name: withOdds.includes(a) ? `${nameOf(modelIds[a])} + ${nameOf(oddsModel)}` : nameOf(modelIds[a]) });
 
   return {
     hasKey: !!(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN),
@@ -57,6 +72,8 @@ export function councilConfig(): CouncilConfig {
     intervalMs: Math.max(num(env.COUNCIL_INTERVAL_SECONDS, 300), 60) * 1000,
     maxRoundsPerDay: num(env.COUNCIL_MAX_ROUNDS_PER_DAY, 100),
     callTimeoutMs: num(env.COUNCIL_CALL_TIMEOUT_SECONDS, 45) * 1000,
+    withOdds,
+    oddsModel,
   };
 }
 

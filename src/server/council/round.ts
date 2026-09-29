@@ -7,11 +7,12 @@ import type { DeskAsset } from "@/lib/assets";
 import { buy, canSell, canSellOwn, COMMITTED_HOLD_ROUNDS, fitStakes, invested, MIN_ORDER_USD, OWN_BOOK_SHARE, positionOf, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, Exchange, Line, OwnTrade, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
 import { isToken, type AssetKey, type Prices } from "@/lib/market";
+import { moodFor } from "@/lib/mood";
 import type { AgentId } from "@/lib/types";
 import { backers, clamp, enforcePitch, fitTerms, type Brain } from "./brain";
 import { isEvaluationModel, type CouncilConfig } from "./config";
 import { nameOf, px, signed, usd, type RoundCtx } from "./context";
-import { jevBrain } from "./jev-brain";
+import { jevBrain, oddsFromJev } from "./jev-brain";
 import { llmBrain } from "./llm-brain";
 import { linesAbout, recentLines, saveRound } from "./memory";
 import { scriptedBrain } from "./scripted-brain";
@@ -250,8 +251,13 @@ export async function runRound(
       pons,
       mine: perAgent((a) => before.positions.filter((p) => canSellOwn(before, p.token, a, run.id) && !closed.includes(p.token)).map((p) => p.token)),
     };
+    // Some agents are given Jev's odds to weigh. Without them they decide on the figures alone.
+    if (mode === "live" && cfg.withOdds.length) {
+      const up1h = await oddsFromJev(cfg, ctx).catch((e) => (console.error("[council] Jev's odds could not be had:", e instanceof Error ? e.message.split("\n")[0] : e), null));
+      if (up1h) ctx.odds = { for: cfg.withOdds, up1h };
+    }
     await updateState((s) => ({ ...s, lenses: perAgent((a) => [...(s.lenses[a] ?? []), lens[a].id].slice(-LENS_MEMORY)) }));
-    run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt, request, sold: sold.length ? sold : undefined });
+    run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt, request, sold: sold.length ? sold : undefined, fitted: true });
 
     const think = thinker(cfg, mode);
     const sellPct = { quant: 100, degen: 100, guardian: 100, oracle: 100 } as Record<AgentId, number>;
@@ -261,7 +267,11 @@ export async function runRound(
       const raw = await think(agent, (b) => b.pitch(agent, ctx));
       const p = enforcePitch(agent, ctx, raw);
       sellPct[agent] = p.sellPct;
-      return heard({ agent, action: p.action, token: p.token, stakeUsd: p.stakeUsd, stopPct: p.stopPct, targetPct: p.targetPct, conviction: p.conviction, emotion: p.emotion, say: p.say, source: raw.source });
+      // The face follows the situation, not the feeling the model named.
+      const held = positionOf(before, p.token);
+      const losing = !!held && (prices[p.token] ?? held.entryPrice) < held.entryPrice;
+      const emotion = moodFor({ kind: "pitch", action: p.action, conviction: p.conviction, losing });
+      return heard({ agent, action: p.action, token: p.token, stakeUsd: p.stakeUsd, stopPct: p.stopPct, targetPct: p.targetPct, conviction: p.conviction, emotion, say: p.say, source: raw.source });
     };
     let pitches: Pitch[];
     if (AGENT_ORDER.some((a) => ctx.mustTrade[a])) {
@@ -376,10 +386,14 @@ export async function runRound(
       const current = terms;
       const soFar = [...exchanges];
       const c = await think(agent, (b) => b.challenge(agent, ctx, current, pitches, soFar));
-      const challenge: Line = heard({ agent, to: leader, emotion: c.emotion, say: c.say, source: c.source });
+      const own = pitches.find((p) => p.agent === agent);
+      const agrees = !!own && own.action === current.action && own.token === current.token;
+      // Strongly against: it would do the opposite with this token, or is sure of a trade of its own.
+      const against = !!own && !agrees && ((own.token === current.token && own.action !== "HOLD") || (own.action !== "HOLD" && own.conviction >= 4));
+      const challenge: Line = heard({ agent, to: leader, emotion: moodFor({ kind: "challenge", agrees, against }), say: c.say, source: c.source });
       const r = await think(leader, (b) => b.reply(leader, ctx, current, challenge, soFar));
       terms = fitted(current, r.stopPct, r.targetPct);
-      exchanges.push({ challenge, reply: heard({ agent: leader, to: agent, emotion: r.emotion, say: r.say, source: r.source }) });
+      exchanges.push({ challenge, reply: heard({ agent: leader, to: agent, emotion: moodFor({ kind: "reply" }), say: r.say, source: r.source }) });
     }
     proposal = terms;
     const final = proposal;
@@ -397,12 +411,12 @@ export async function runRound(
             ? pick([`My pick too. In for $${stake}.`, `Same trade I pitched. $${stake} from me.`, `I had ${final.token} as well. Joining with $${stake}.`], ctx, agent)
             : pick([`I pitched the same sale. Agreed.`, `My call too. Sell ${final.token}.`], ctx, agent);
           said[agent].push(say);
-          return { agent, to: leader, emotion: mine.emotion, say, source: mine.source, support: !buying || stake >= 1, stakeUsd: stake, reason: "pitched the same trade" };
+          return { agent, to: leader, emotion: moodFor({ kind: "pledge", support: true }), say, source: mine.source, support: !buying || stake >= 1, stakeUsd: stake, reason: "pitched the same trade" };
         }
         const p = await think(agent, (b) => b.pledge(agent, ctx, final, pitches, exchanges));
         const stakeUsd = p.support && buying ? Math.floor(clamp(p.stakeUsd, 0, before.cash[agent])) : 0;
         const support = p.support && (!buying || stakeUsd >= 1);
-        return heard({ agent, to: leader, emotion: p.emotion, say: p.say, source: p.source, support, stakeUsd: support ? stakeUsd : 0, reason: p.reason || (support ? "backs the trade" : "does not back the trade") });
+        return heard({ agent, to: leader, emotion: moodFor({ kind: "pledge", support }), say: p.say, source: p.source, support, stakeUsd: support ? stakeUsd : 0, reason: p.reason || (support ? "backs the trade" : "does not back the trade") });
       }),
     );
 
@@ -429,7 +443,8 @@ export async function runRound(
     const alone = !approved && !asking && (buying ? (pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0) >= MIN_ORDER_USD : canSellOwn(before, final.token, leader, run.id));
     const ownUsd = buying ? Math.min(pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0, Math.floor(before.cash[leader] * OWN_BOOK_SHARE)) : 0;
     const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd: alone ? ownUsd : totalUsd, committed: bound, alone }));
-    const closing: Line = { agent: leader, emotion: c.emotion, say: c.say, source: c.source };
+    const sure = pitches.find((p) => p.agent === leader)?.conviction ?? 0;
+    const closing: Line = { agent: leader, emotion: moodFor({ kind: "closing", approved, alone, conviction: sure, yes }), say: c.say, source: c.source };
     run.push({ stage: "decision", pledges, closing, votes, approved, committed: bound });
 
     // 4. Order
