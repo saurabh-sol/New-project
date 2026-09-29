@@ -60,6 +60,28 @@ export async function loadRound(round: number): Promise<Stage[] | null> {
   return row ? (row.stages as Stage[]) : null;
 }
 
+export interface PastSession {
+  round: number;
+  stages: Stage[];
+}
+
+/** Finished sessions before `before`, newest first, and whether there are older ones still. */
+export async function loadHistory(before: number, limit: number): Promise<{ sessions: PastSession[]; more: boolean }> {
+  let rows: PastSession[];
+  if (hasDb()) {
+    const sql = await db();
+    const found = await sql`select round, stages from council_rounds where round < ${before} and not failed order by round desc limit ${limit + 1}`;
+    rows = found.map((r) => ({ round: Number(r.round), stages: r.stages as Stage[] }));
+  } else {
+    rows = [...localRounds()]
+      .filter(([round]) => round < before)
+      .sort(([a], [b]) => b - a)
+      .slice(0, limit + 1)
+      .map(([round, stages]) => ({ round, stages }));
+  }
+  return { sessions: rows.slice(0, limit), more: rows.length > limit };
+}
+
 const LOOK_BACK = 24;
 const KEEP_ABOUT = 6;
 

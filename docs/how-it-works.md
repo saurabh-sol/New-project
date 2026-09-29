@@ -244,7 +244,9 @@ The browser plays each session like a short scene (`src/lib/director.ts`):
 - The chart follows whichever token the council is debating, and marks the desk's trades with arrows.
 - Lines appear as speech bubbles on the floor and as a chat in the transcript.
 
-A session is played **once per browser**. Coming back to the trading floor shows the last session's conversation as history instead of playing it again. A first-time visitor sees the latest session as a replay, marked as one.
+**The conversation is kept, and shown to everyone.** Every session is saved in the database. When anyone opens the site, on any device, the last six sessions' conversation is put on the page at once, and "Show earlier sessions" reads further back.
+
+A session is played **once per browser**. Coming back to the trading floor shows it as history instead of playing it again. After a refresh in the middle of a session, the lines already watched are put back at once and the session carries on from there. The show runs above the pages, so moving between them doesn't interrupt it. A first-time visitor sees the latest session as a replay, marked as one.
 
 `/kiosk` is the same floor laid out for one screen with no scrolling, for a wall display or a Raspberry Pi. It hides the cursor and switches off effects a Pi's graphics chip handles poorly.
 
@@ -321,6 +323,7 @@ Without a database the desk's state is kept in a local file, and funding is swit
 | `GET /api/council/state` | The desk as it stands now |
 | `POST /api/council/round` | The session to watch, streamed stage by stage, or how long to wait |
 | `GET /api/council/round?round=N` | The record of a finished session |
+| `GET /api/council/history` | Past sessions, newest first, a few at a time |
 | `GET /api/fund/status` | Funding terms, agents' figures, and one wallet's holdings |
 | `POST /api/fund/deposit` | Two steps: prepare, then confirm |
 | `POST /api/fund/withdraw` | Two steps: challenge, then submit |

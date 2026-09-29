@@ -72,6 +72,8 @@ export type ArenaEvent =
   | { type: "vote"; agent: AgentId; approve: boolean; reason: string; joining?: boolean }
   /** The conversation of a session that is over, put on the page at once. */
   | { type: "recap"; round: number; messages: ChatMessage[] }
+  /** How far back the conversation on the page goes, and whether the desk's record goes further. */
+  | { type: "history"; oldest: number; more: boolean }
   | { type: "consensus"; value: number } // 0..1
   | { type: "fill"; fill: Fill; portfolio: Portfolio }
   | { type: "schedule"; nextRoundAt: number };

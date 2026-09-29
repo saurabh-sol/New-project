@@ -1,8 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AGENTS } from "@/lib/agents";
+import { loadHistory } from "@/lib/director";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -70,11 +71,30 @@ function Line({ m }: { m: ChatMessage }) {
 
 export function Transcript({ className = "h-96" }: { className?: string }) {
   const messages = useArena((s) => s.messages);
+  const history = useArena((s) => s.history);
+  const apply = useArena((s) => s.apply);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const newest = messages[messages.length - 1]?.id;
 
+  // Follow the conversation as new lines arrive. Earlier sessions added at the top leave the view where it is.
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight, behavior: "smooth" });
-  }, [messages.length]);
+  }, [newest]);
+
+  function earlier() {
+    if (history.oldest === null || loading) return;
+    const box = ref.current;
+    const fromBottom = box ? box.scrollHeight - box.scrollTop : 0;
+    setLoading(true);
+    setFailed(false);
+    loadHistory(apply, history.oldest)
+      // Keep the line the reader was on in place, now that there is more above it.
+      .then(() => requestAnimationFrame(() => box && (box.scrollTop = box.scrollHeight - fromBottom)))
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
+  }
 
   return (
     <section className="panel flex min-h-0 flex-col">
@@ -85,6 +105,13 @@ export function Transcript({ className = "h-96" }: { className?: string }) {
         </span>
       </div>
       <div ref={ref} className={cn("space-y-3.5 overflow-y-auto px-5 py-4", className)}>
+        {history.more && (
+          <div className="text-center">
+            <button onClick={earlier} disabled={loading} className="btn-ghost px-4 py-1.5 text-xs">
+              {loading ? "Loading…" : failed ? "Couldn't load. Try again" : "Show earlier sessions"}
+            </button>
+          </div>
+        )}
         {messages.length === 0 && <p className="py-10 text-center text-sm text-white/30">The desk is quiet. The next session will appear here.</p>}
         <AnimatePresence initial={false}>
           {messages.map((m) => (

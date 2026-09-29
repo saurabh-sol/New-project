@@ -98,7 +98,11 @@ A model can't be retrained from this app. What the app controls is what each age
 - **Memory of the token.** When a token comes up again, each agent is shown what it said the last time the desk debated it.
 - **Stock remarks vary.** Jev and the scripted stand-in speak from templates. Each template has several wordings, and the one chosen is the least like what that agent said before and what anyone said this session.
 
-A session is played once per browser. Coming back to the trading floor shows the last session's conversation as history instead of playing it again. A first-time visitor sees the latest session as a replay, marked as one.
+### The conversation is kept, and shown to everyone
+
+Every session is saved in the database. When anyone opens the site, on any device, the last six sessions' conversation is put on the page at once, and "Show earlier sessions" reads further back. Nothing depends on what that browser has seen before.
+
+A session is played once per browser. Coming back to the trading floor shows it as history instead of playing it again, and after a refresh in the middle of a session the lines already watched are put back at once and the session carries on from there. The show runs above the pages, so moving from one page to another doesn't interrupt it. A first-time visitor sees the latest session as a replay, marked as one.
 
 Lines are kept short, the way traders talk across a desk: the models are asked for at most 15 words, and anything over 120 characters is cut.
 

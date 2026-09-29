@@ -49,6 +49,8 @@ interface ArenaStore {
   nextRoundAt: number | null;
   agents: Record<AgentId, AgentRuntime>;
   messages: ChatMessage[];
+  /** The earliest session whose conversation is on the page, and whether the desk's record goes back further. */
+  history: { oldest: number | null; more: boolean };
   coins: Coin[];
   tickets: Ticket[];
   apply: (e: ArenaEvent) => void;
@@ -70,7 +72,15 @@ const freshAgent = (): AgentRuntime => ({
   history: [],
 });
 
-const MAX_MESSAGES = 120;
+/** A long evening's worth of conversation. Older lines are read from the desk's record when asked for. */
+const MAX_MESSAGES = 1500;
+
+/** Lines in the order they were spoken. Lines of one session keep the order they came in. */
+const inOrder = (messages: ChatMessage[]) =>
+  messages
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => (a.m.round ?? Infinity) - (b.m.round ?? Infinity) || (a.m.round === undefined ? a.m.ts - b.m.ts : 0) || a.i - b.i)
+    .map((x) => x.m);
 const MAX_HISTORY = 60;
 /** Coins fly at chest height, not along the floor. */
 const CHEST = 9;
@@ -95,6 +105,7 @@ export const useArena = create<ArenaStore>((set) => ({
   nextRoundAt: null,
   agents: { quant: freshAgent(), degen: freshAgent(), guardian: freshAgent(), oracle: freshAgent() },
   messages: [],
+  history: { oldest: null, more: false },
   coins: [],
   tickets: [],
 
@@ -177,7 +188,9 @@ export const useArena = create<ArenaStore>((set) => ({
         case "vote":
           return patchAgent(e.agent, { vote: e.approve, voteReason: e.reason, joining: !!e.joining });
         case "recap":
-          return { messages: [...s.messages.filter((m) => m.round !== e.round), ...e.messages].slice(-MAX_MESSAGES) };
+          return { messages: inOrder([...s.messages.filter((m) => m.round !== e.round), ...e.messages]).slice(-MAX_MESSAGES) };
+        case "history":
+          return { history: { oldest: s.history.oldest === null ? e.oldest : Math.min(s.history.oldest, e.oldest), more: e.more } };
         case "consensus":
           return { consensus: e.value };
         case "fill":

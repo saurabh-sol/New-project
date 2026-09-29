@@ -61,7 +61,12 @@ function saveProgress(round: number, lines: number) {
   } catch {}
 }
 
-const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** The time of day, with the date as well when it was not today. */
+function clock(ms: number): string {
+  const at = new Date(ms);
+  const time = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return at.toDateString() === new Date().toDateString() ? time : `${time} on ${at.toLocaleDateString([], { day: "numeric", month: "short" })}`;
+}
 
 // What the desk's notes say. Shared by a session as it plays and by the record of one that is over.
 const openingNote = (round: number, replayOf: number | null) =>
@@ -112,6 +117,25 @@ function transcriptOf(stages: Stage[]): { round: number; messages: ChatMessage[]
     if (s.stage === "outcome") add(leader, "system", s.note);
   }
   return { round, messages };
+}
+
+/** How many past sessions are read from the desk's record at a time. */
+const HISTORY_PAGE = 6;
+
+/**
+ * Puts past sessions' conversation on the page, read from the desk's record on the server.
+ * The record is the same for everyone, so a new visitor on a new device sees all of it.
+ * `before` is the first session NOT wanted: sessions earlier than it are loaded.
+ */
+export async function loadHistory(apply: (e: ArenaEvent) => void, before: number, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`/api/council/history?before=${before}&limit=${HISTORY_PAGE}`, { signal, cache: "no-store" });
+  if (!res.ok) throw new Error("The desk's history can't be reached right now.");
+  const { sessions, more } = (await res.json()) as { sessions: Array<{ round: number; stages: Stage[] }>; more: boolean };
+  for (const session of [...sessions].reverse()) {
+    const record = transcriptOf(session.stages);
+    if (record) apply({ type: "recap", ...record });
+  }
+  if (sessions.length) apply({ type: "history", oldest: sessions[sessions.length - 1].round, more });
 }
 
 /** Reads a newline-delimited JSON response one stage at a time. */
@@ -286,18 +310,6 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       await sleep(2600);
       setState(busy, "idle");
       await sleep(Math.max(0, Math.min(POLL_MS, until - (Date.now() + skew))));
-    }
-  }
-
-  /** Puts the conversation of a session that is over into the transcript, without playing it. */
-  async function recall(round: number) {
-    try {
-      const res = await fetch(`/api/council/round?round=${round}`, { signal, cache: "no-store" });
-      if (!res.ok) return;
-      const record = transcriptOf(((await res.json()) as { stages: Stage[] }).stages);
-      if (record) emit({ type: "recap", ...record });
-    } catch (e) {
-      if (e instanceof Stopped || signal.aborted) throw new Stopped();
     }
   }
 
@@ -483,8 +495,14 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     for (const f of first?.fills ?? []) knownFills.add(f.id);
     // A count ahead of the server's means the desk was started afresh, and nothing has been watched yet.
     let seen = first && lastWatched() <= first.round ? lastWatched() : 0;
-    // The latest session was watched on an earlier visit. Its conversation is shown, not played again.
-    if (first && seen > 0 && seen === first.round && !useArena.getState().messages.some((m) => m.round === seen)) await recall(seen);
+    // What the desk said before is put on the page at once, whoever is looking and from wherever.
+    // The latest session is left out if it is about to be played.
+    if (first && first.round > 0 && useArena.getState().history.oldest === null) {
+      await loadHistory(emit, seen >= first.round ? first.round + 1 : first.round, signal).catch((e) => {
+        if (signal.aborted) throw new Stopped();
+        console.error("[council] could not load the desk's history:", e);
+      });
+    }
 
     for (;;) {
       let res: Response;
