@@ -4,7 +4,7 @@ import type { AgentId } from "@/lib/types";
 const DEFAULT_MODELS: Record<AgentId, string> = {
   quant: "openai/gpt-5.6-sol",
   guardian: "anthropic/claude-opus-5.5",
-  degen: "spacexai/grok-4.6",
+  degen: "alibaba/qwen3.8-max",
   oracle: "typesafe-ai/jev",
 };
 
@@ -12,6 +12,7 @@ const NAMES: Record<string, string> = {
   "openai/gpt-6-astra": "GPT-6 Astra",
   "openai/gpt-5.6-sol": "GPT-5.6 Sol",
   "spacexai/grok-4.6": "Grok 4.6",
+  "alibaba/qwen3.8-max": "Qwen 3.8 Max",
   "anthropic/claude-opus-4": "Claude Opus 4",
   "anthropic/claude-opus-4.5": "Claude Opus 4.5",
   "anthropic/claude-opus-4.8": "Claude Opus 4.8",
@@ -75,6 +76,17 @@ export function councilConfig(): CouncilConfig {
     withOdds,
     oddsModel,
   };
+}
+
+/**
+ * How hard a model is asked to think, in a word it knows. The desk speaks of low, medium and
+ * high. Qwen has no "high", and answers nothing at all when asked for it, so it is asked for
+ * "medium". Mistral takes no such setting.
+ */
+export function effortFor(model: string, effort: "low" | "medium" | "high"): "low" | "medium" | "high" | undefined {
+  if (model.startsWith("mistral/")) return undefined;
+  if (model.startsWith("alibaba/") && effort === "high") return "medium";
+  return effort;
 }
 
 /** Evaluation models answer typed questions instead of writing text. */

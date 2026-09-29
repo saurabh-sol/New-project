@@ -1,4 +1,4 @@
-/** Agents backed by a language model (GPT, Claude, Grok), called through Vercel AI Gateway. */
+/** Agents backed by a language model (GPT, Claude, Qwen), called through Vercel AI Gateway. */
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS, withPresentNames } from "@/lib/agents";
@@ -6,7 +6,7 @@ import { COMMITTED_HOLD_ROUNDS, EMOTIONS, MIN_HOLD_ROUNDS, OWN_BOOK_SHARE } from
 import type { Exchange } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 import { asEmotion, asToken, backers, cleanSay, mostStake, openTokens, presents, requestStake, starterStake, starterTokens, STOP_RANGE, TARGET_RANGE, weighs, type Brain } from "./brain";
-import type { CouncilConfig } from "./config";
+import { effortFor, type CouncilConfig } from "./config";
 import { briefing, describeDebate, describePitches, describeProposal, nameOf, usd, type RoundCtx } from "./context";
 import { repeats } from "./skills";
 
@@ -103,7 +103,7 @@ export function llmBrain(cfg: CouncilConfig): Brain {
       maxRetries: 2,
       abortSignal: AbortSignal.timeout(cfg.callTimeoutMs),
       // How hard the agent thinks is set by how much users have funded it.
-      reasoning: ctx.effort[agent],
+      reasoning: effortFor(cfg.modelIds[agent], ctx.effort[agent]),
     });
     return shape.parse(extractJson(text));
   }

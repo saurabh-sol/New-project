@@ -70,6 +70,13 @@ export class RoundRun {
 
 type Tagged<T> = T & { source: Source };
 
+const budget = globalThis as typeof globalThis & { __councilOutOfBudget?: number };
+const noteOutOfBudget = () => (budget.__councilOutOfBudget = Date.now());
+/** How long the models are left alone once the gateway has said its budget is used up. Then they are tried again. */
+const LEAVE_ALONE_MS = 15 * 60_000;
+/** Whether the gateway refused the models for want of budget a short while ago. */
+export const outOfBudget = () => Date.now() - (budget.__councilOutOfBudget ?? 0) < LEAVE_ALONE_MS;
+
 /** Runs a call on the agent's model and falls back to the scripted stand-in if it fails. */
 function thinker(cfg: CouncilConfig, mode: CouncilMode) {
   const scripted = scriptedBrain();
@@ -82,7 +89,10 @@ function thinker(cfg: CouncilConfig, mode: CouncilMode) {
       try {
         return { ...(await call(modelFor(agent))), source: "model" };
       } catch (e) {
-        console.error(`[council] ${cfg.modelIds[agent]} failed for ${agent}, using scripted stand-in:`, e instanceof Error ? e.message : e);
+        const message = e instanceof Error ? e.message : String(e);
+        console.error(`[council] ${cfg.modelIds[agent]} failed for ${agent}, using scripted stand-in:`, message);
+        // Out of budget is not a passing fault: no model will answer until the budget is raised.
+        if (/budget exceeded|insufficient (funds|credit)|payment required/i.test(message)) noteOutOfBudget();
       }
     }
     return { ...(await call(scripted)), source: "scripted" };

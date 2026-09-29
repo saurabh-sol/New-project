@@ -3,7 +3,7 @@ import { deskInfo, settleOnChain } from "../chains/desk";
 import { councilConfig, type CouncilConfig } from "./config";
 import { applyRisk } from "./risk";
 import { loadRound } from "./memory";
-import { RoundRun, runRound } from "./round";
+import { outOfBudget, RoundRun, runRound } from "./round";
 import { readState, today, updateState, type CouncilState } from "./store";
 
 // Shared across route bundles, so every viewer follows the same session.
@@ -11,6 +11,7 @@ const shared = globalThis as typeof globalThis & { __councilRun?: RoundRun };
 
 function modeOf(cfg: CouncilConfig, state: CouncilState): { mode: CouncilMode; note: string | null } {
   if (!cfg.hasKey) return { mode: "scripted", note: "No AI Gateway key is configured, so the agents are running on scripted rules." };
+  if (outOfBudget()) return { mode: "scripted", note: "The AI gateway's budget is used up, so the agents are running on scripted rules until it is raised." };
   const used = state.day === today() ? state.roundsToday : 0;
   if (used >= cfg.maxRoundsPerDay) return { mode: "scripted", note: "Today's AI budget is used up, so the agents are running on scripted rules until tomorrow." };
   return { mode: "live", note: null };
