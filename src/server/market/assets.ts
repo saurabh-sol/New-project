@@ -7,7 +7,7 @@
  */
 import { createPublicClient, http, parseAbi } from "viem";
 import { robinhood } from "viem/chains";
-import type { Asset, AssetPreview, AssetQuote } from "@/lib/assets";
+import type { Asset, AssetPreview, AssetQuote, DeskAsset } from "@/lib/assets";
 import { INTERVAL_SECONDS, isToken, type Candle, type Interval } from "@/lib/market";
 import { chainCandles, readable } from "./chain-candles";
 import { cached, cachedOrKept, getJson } from "./http";
@@ -253,9 +253,11 @@ export async function listings(tokens: string[]): Promise<Listing[]> {
   const batches: string[][] = [];
   for (let i = 0; i < tokens.length; i += BATCH) batches.push(tokens.slice(i, i + BATCH));
   const out: Listing[] = [];
-  // A few requests at a time, so that a long list does not use up what the service allows in a minute.
-  for (let i = 0; i < batches.length; i += 5) {
-    const answers = await Promise.all(batches.slice(i, i + 5).map((batch) => getJson<Pair[] | null>(`https://api.dexscreener.com/tokens/v1/${CHAIN}/${batch.join(",")}`).catch(() => null)));
+  // The service allows 300 requests a minute, and the desk's prices need their share of them.
+  // A long list is asked for three requests at a time, a second apart.
+  for (let i = 0; i < batches.length; i += 3) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 1_000));
+    const answers = await Promise.all(batches.slice(i, i + 3).map((batch) => getJson<Pair[] | null>(`https://api.dexscreener.com/tokens/v1/${CHAIN}/${batch.join(",")}`).catch(() => null)));
     for (const pairs of answers) {
       const best = new Map<string, Pair>();
       for (const p of pairs ?? []) {
@@ -355,6 +357,8 @@ export async function assetCandles(asset: Asset, span: Interval, limit: number, 
   return poolCandles(asset.pool ?? "", asset.address, span, limit, patient);
 }
 
+const FRESH_QUOTE_MS = 60_000;
+
 /** A day of trading is what the chain's endpoint will search at once. */
 const CHAIN_REACH_SECONDS = 24 * 3600;
 
@@ -372,8 +376,10 @@ async function onChain(asset: Asset, span: Interval, limit: number): Promise<Can
   const quote = asset.quoteToken ?? (await quoteTokenOf(asset.pool));
   const pool = { pool: asset.pool, token: asset.address, quote };
   if (!readable(pool)) return null;
-  const live = await assetQuote(asset);
-  return chainCandles(pool, span, limit, live.price);
+  // A token on the board was priced a moment ago. Anything else is priced now.
+  const known = asset as Partial<DeskAsset>;
+  const price = known.quote && known.quotedAt && Date.now() - known.quotedAt < FRESH_QUOTE_MS && known.quote.price > 0 ? known.quote.price : (await assetQuote(asset)).price;
+  return chainCandles(pool, span, limit, price);
 }
 
 /** A pool's candles, priced in USD, for the one of its two tokens that is named. */

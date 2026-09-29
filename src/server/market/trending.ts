@@ -38,26 +38,51 @@ export const boardLimits = () => ({
 
 /** How far back the factory's record is read for tokens that graduated, in days. */
 const GRADUATED_WITHIN_DAYS = 30;
+/** At the start, when nothing is known yet, only the last few days are read, so that the first board is not kept waiting. */
+const FIRST_LOOK_DAYS = 5;
 /** How often every graduate is looked at again. In between, only the busiest are. */
 const SURVEY_MS = 30 * 60_000;
 const WATCHED = 60;
 
+const kept = globalThis as typeof globalThis & { __ponsSurvey?: { at: number; busiest: Listing[]; running: Promise<unknown> | null; full: boolean } };
+
+/** Every graduate of the last `days`, priced, and the busiest of them by what they traded in a day. */
+async function survey(days: number): Promise<Listing[]> {
+  const tokens = (await graduates(days)).map((g) => g.token);
+  const all = await listings(tokens);
+  if (tokens.length > 0 && all.length === 0) throw new Error("Pons's tokens could not be priced");
+  return [...all].sort((a, b) => b.quote.volume24hUsd - a.quote.volume24hUsd).slice(0, WATCHED);
+}
+
 /**
  * Pons's graduates and how they are trading, busiest over the last hour first.
  * The factory's record says which tokens they are, and DexScreener how each is trading.
+ *
+ * Looking at every graduate takes a minute or two, so it is done behind the scenes, and the
+ * board is made from the last look in the meantime.
  */
 async function ponsListings(): Promise<Listing[]> {
-  const busiest = (all: Listing[]) => [...all].sort((a, b) => b.volume1hUsd - a.volume1hUsd || b.quote.volume24hUsd - a.quote.volume24hUsd);
-  const survey = await cached("pons:survey", SURVEY_MS, async () => {
-    const tokens = (await graduates(GRADUATED_WITHIN_DAYS)).map((g) => g.token);
-    const all = await listings(tokens);
-    if (tokens.length > 0 && all.length === 0) throw new Error("Pons's tokens could not be priced");
-    // Those worth a second look, by what they traded in a day.
-    return [...all].sort((a, b) => b.quote.volume24hUsd - a.quote.volume24hUsd).slice(0, WATCHED);
-  });
+  const mine = (kept.__ponsSurvey ??= { at: 0, busiest: [], running: null, full: false });
+  const look = (days: number, full: boolean) =>
+    (mine.running ??= survey(days)
+      .then((busiest) => {
+        // What was busy at the last look and is no longer among the graduates read this time is kept in sight.
+        const seen = new Set(busiest.map((l) => l.token));
+        Object.assign(mine, { at: Date.now(), busiest: [...busiest, ...mine.busiest.filter((l) => !seen.has(l.token))].slice(0, WATCHED * 2), full });
+      })
+      .catch((e) => console.error("[board] could not look over Pons's tokens:", e instanceof Error ? e.message.split("\n")[0] : e))
+      .finally(() => (mine.running = null)));
+
+  if (mine.busiest.length === 0) {
+    await look(FIRST_LOOK_DAYS, false);
+    if (mine.busiest.length === 0) throw new Error("Pons's tokens could not be read");
+  }
+  if (!mine.running && (!mine.full || Date.now() - mine.at > SURVEY_MS)) void look(GRADUATED_WITHIN_DAYS, true);
+
   // The busiest are asked about again every time, so the order is this minute's.
-  const fresh = await cached("pons:watched", 45_000, () => listings(survey.map((l) => l.token))).catch(() => [] as Listing[]);
-  return busiest(fresh.length ? fresh : survey);
+  const fresh = await cached("pons:watched", 45_000, () => listings(mine.busiest.slice(0, WATCHED).map((l) => l.token))).catch(() => [] as Listing[]);
+  const now = fresh.length ? fresh : mine.busiest;
+  return [...now].sort((a, b) => b.volume1hUsd - a.volume1hUsd || b.quote.volume24hUsd - a.quote.volume24hUsd);
 }
 
 /** Not trending tokens in the desk's sense: money, and wrapped ETH, which everything else is priced in. */
