@@ -1,15 +1,17 @@
 /**
- * The tokens the agents choose from: those trending on Robinhood Chain right now.
+ * The tokens the agents choose from: those launched on Pons that are trending right now.
  *
- * GeckoTerminal ranks the chain's trading pools by how much attention they are getting.
- * The desk takes the top of that list, leaves out what it does not trade, and keeps to
- * pools with enough money, trading and history to be read. The list is made again for
- * every session, so it follows the market.
+ * Pons is the launchpad of Robinhood Chain. GeckoTerminal ranks the chain's trading pools by
+ * how much attention they are getting, and lists Pons's pools by how much they trade. The
+ * desk takes the Pons tokens at the top of those lists, keeps to pools with enough money,
+ * trading and history to be read, and checks each token against the record of Pons's own
+ * factory. The list is made again for every session, so it follows the market.
  */
 import type { Asset, AssetQuote, DeskAsset } from "@/lib/assets";
 import { isToken } from "@/lib/market";
 import { assetQuotes, cleanSymbol, longKey } from "./assets";
 import { cached, getJson } from "./http";
+import { launchedOnPons, PONS_DEXES } from "./pons";
 import { stockTokens } from "./stocks";
 
 const GECKOTERMINAL = "https://api.geckoterminal.com/api/v2/networks/robinhood";
@@ -18,6 +20,12 @@ const num = (raw: string | undefined, fallback: number) => {
   const n = Number(raw);
   return raw !== undefined && raw !== "" && isFinite(n) && n >= 0 ? n : fallback;
 };
+
+/**
+ * Where the board's tokens come from. "pons": tokens launched on Pons, and no others.
+ * "any": whatever is trending on the chain. Set with BOARD_LAUNCHPAD.
+ */
+export const boardSource = (): "pons" | "any" => (process.env.BOARD_LAUNCHPAD === "any" ? "any" : "pons");
 
 /** What a trending pool must show before its token goes on the board. */
 export const boardLimits = () => ({
@@ -44,7 +52,7 @@ interface Pool {
     price_change_percentage?: { m5?: string; h1?: string; h24?: string };
     transactions?: { m5?: { buys?: number; sells?: number } };
   };
-  relationships: { base_token: { data: { id: string } } };
+  relationships: { base_token: { data: { id: string } }; dex?: { data?: { id?: string } } };
 }
 interface Trending {
   data?: Pool[];
@@ -68,12 +76,25 @@ const quoteOf = (p: Pool): AssetQuote => ({
  * Throws if the ranking can't be read.
  */
 export function trendingBoard(known: Record<string, DeskAsset> = {}): Promise<DeskAsset[]> {
-  return cached("board:trending", 60_000, async () => {
+  const source = boardSource();
+  return cached(`board:trending:${source}`, 60_000, async () => {
     const limits = boardLimits();
-    const [ranking, stocks] = await Promise.all([
-      getJson<Trending>(`${GECKOTERMINAL}/trending_pools?include=base_token&duration=1h&page=1`, true),
+    const pons = source === "pons";
+    const onPons = (p: Pool) => PONS_DEXES.includes(p.relationships.dex?.data?.id ?? "");
+    const list = (path: string, patient = false) => getJson<Trending>(`${GECKOTERMINAL}/${path}${path.includes("?") ? "&" : "?"}include=base_token,dex&page=1`, patient);
+    // What is trending on the whole chain comes first. Pons's own busiest pools follow: by trades made, then by money traded.
+    const [trending, busiest, largest, older, stocks] = await Promise.all([
+      list("trending_pools?duration=1h", true),
+      pons ? list(`dexes/${PONS_DEXES[0]}/pools?sort=h24_tx_count_desc`, true).catch(() => null) : null,
+      pons ? list(`dexes/${PONS_DEXES[0]}/pools?sort=h24_volume_usd_desc`).catch(() => null) : null,
+      pons ? list(`dexes/${PONS_DEXES[1]}/pools?sort=h24_tx_count_desc`).catch(() => null) : null,
       stockTokens().catch(() => new Map<string, { address: string }>()),
     ]);
+    const lists = [trending, busiest, older, largest].filter((l): l is Trending => !!l);
+    const ranking: Trending = {
+      data: lists.flatMap((l, i) => (l.data ?? []).filter((p) => !pons || (i === 0 ? onPons(p) : true))),
+      included: lists.flatMap((l) => l.included ?? []),
+    };
     const tokens = new Map((ranking.included ?? []).map((t) => [t.id, t.attributes]));
     const stockAddresses = new Set([...stocks.values()].map((s) => s.address.toLowerCase()));
     const byAddress = new Map(Object.values(known).map((a) => [a.address.toLowerCase(), a]));
@@ -95,7 +116,10 @@ export function trendingBoard(known: Record<string, DeskAsset> = {}): Promise<De
       const ageHours = isFinite(created) ? (Date.now() - created) / 3_600_000 : Infinity;
       if (!(quote.price > 0) || (quote.liquidityUsd ?? 0) < limits.minLiquidityUsd || quote.volume24hUsd < limits.minVolumeUsd || ageHours < limits.minAgeHours) continue;
 
-      const asset: Omit<Asset, "key"> = { symbol, name: token.name, address: token.address, kind: "pool", pool: pool.attributes.address };
+      // The data service files the pool under Pons. The factory's own record settles it, where the chain can be read.
+      if (pons && (await launchedOnPons(token.address, isFinite(created) ? created : Date.now())) === false && pool.relationships.dex?.data?.id !== PONS_DEXES[1]) continue;
+
+      const asset: Omit<Asset, "key"> = { symbol, name: token.name, address: token.address, kind: "pool", pool: pool.attributes.address, ...(pons ? { launchpad: "pons" as const } : {}) };
       const before = byAddress.get(address);
       // A token that borrows the symbol of a Stock Token, or of another token on the board, gets a longer name.
       const plain = cleanSymbol(symbol);

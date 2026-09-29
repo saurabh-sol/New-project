@@ -2,11 +2,25 @@
 
 The Council is a web app in which four AI agents, each on a different model, share a trading desk on Robinhood Chain. They read the same live market data, argue about what to trade, put their own cash behind their views, and hold positions with stop-losses and targets. People can watch the desk, fund an agent with USDG, ask an agent to trade a token, and claim a small reward.
 
-The agents trade the tokens that are trending on Robinhood Chain. For every session the desk takes the chain's trending trading pools, as GeckoTerminal ranks them, and keeps the first eight whose pool holds at least $30,000, traded $100,000 in the last day and is six hours old. That list is the board the agents choose from.
+The agents trade tokens launched on Pons, the launchpad of Robinhood Chain, that are trending right now. For every session the desk makes a board of eight of them, each with a pool that holds at least $30,000, traded $100,000 in the last day and is six hours old. That list is the board the agents choose from.
 
 ETH, Stock Tokens and money such as USDG are left off the board. The agents do not buy them. Those the desk still holds from before are listed so that they can be sold. A Stock Token is a token on Robinhood Chain that follows the price of a share; a funder can still ask for one.
 
 The tokens on the board are young. They move several percent in minutes, and one can lose most of its value in an hour.
+
+The tokens on the board are tokens launched on **Pons** ([ponsfamily.com](https://www.ponsfamily.com/launchpad)), the launchpad of Robinhood Chain, and no others. A token launched there trades on a bonding curve of its own until enough has been paid in, and then graduates into a Uniswap v4 pool whose liquidity is locked. The desk trades graduated tokens, which have a pool and so a price.
+
+| Step | What the desk does |
+| --- | --- |
+| Finds candidates | Takes the Pons pools among those trending on the chain, then Pons's busiest pools by trades made and by money traded, from GeckoTerminal |
+| Checks where each came from | Looks the token up in the record of Pons's factory contract, `0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e`, which puts every launch and graduation on-chain. A token the factory has no record of is left out |
+| Keeps what can be read | The first eight whose pool clears the limits below |
+
+Tokens from the first version of Pons are not on the record of the present factory. They are taken on GeckoTerminal's word that the pool is Pons's. If the chain can't be read, so is every token, until it can.
+
+`BOARD_LAUNCHPAD=any` puts whatever is trending on the chain on the board, from any launchpad.
+
+What an agent holds of tokens that did not come from Pons is its own to keep or sell. It does not count as its position: an agent with no Pons token opens one.
 
 When the desk stopped trading ETH and Stock Tokens, it sold what the agents had bought of them by their own choice, once, at the start of its next session. What a funder had asked for stayed with the agent bound to it. What an agent holds of those tokens does not count as a position: an agent with nothing else opens one in a trending token.
 
@@ -326,7 +340,8 @@ A model cannot be retrained from this app. What the app controls is what each ag
 
 | Data | Source | Key needed |
 | --- | --- | --- |
-| The trending tokens | GeckoTerminal's ranking of Robinhood Chain's pools | No |
+| The trending tokens | GeckoTerminal's ranking of Robinhood Chain's pools, and its list of Pons's pools | No |
+| Whether a token was launched on Pons | The Pons factory's record on Robinhood Chain, read from the chain's public endpoint | No |
 | Tokens on the board: live price, liquidity, volume, buys and sells | DexScreener, for the whole board in one request | No |
 | Tokens on the board: candles | GeckoTerminal | No |
 | Stock Tokens: live price, the list of tokens | Robinhood's Stock Token API | No |

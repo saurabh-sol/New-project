@@ -35,6 +35,8 @@ export interface RoundCtx {
   sellOnly: AssetKey[];
   /** Tokens each agent holds and may sell this round on its own decision. */
   mine: Record<AgentId, AssetKey[]>;
+  /** Whether the board is made of tokens launched on Pons, and of no others. */
+  pons?: boolean;
 }
 
 export const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -126,7 +128,9 @@ export function briefing(ctx: RoundCtx, agent: AgentId): string {
   return [
     `ROUND ${ctx.round}`,
     "",
-    "MARKET (live prices in USD. These are the tokens trending on Robinhood Chain right now. They are young, thinly traded, and move fast.)",
+    ctx.pons
+      ? "MARKET (live prices in USD. These are tokens launched on Pons, the launchpad of Robinhood Chain, that are trending right now. They are young, thinly traded, and move fast.)"
+      : "MARKET (live prices in USD. These are the tokens trending on Robinhood Chain right now. They are young, thinly traded, and move fast.)",
     marketTable(ctx.stats),
     ...(ctx.sellOnly.length ? [`Held from before, and no longer bought. They can only be sold: ${ctx.sellOnly.join(", ")}.`] : []),
     ...(ctx.closed.length ? [`Closed now, so they can be neither bought nor sold this round: ${ctx.closed.join(", ")}.`] : []),

@@ -20,7 +20,7 @@ const PERSONA: Record<AgentId, string> = {
   oracle: "You think in probabilities. You state your odds plainly and you do not trade coin flips.",
 };
 
-const system = (agent: AgentId) =>
+const system = (agent: AgentId, pons: boolean) =>
   `You are ${AGENTS[agent].name}, one of four AI traders who share a trading desk called The Council. ${PERSONA[agent]}
 
 How the desk works:
@@ -28,7 +28,7 @@ How the desk works:
 - Your pitch is your decision for your own book. The strongest pitch is put to the council, and traders who back it join with their own cash. A pitch the council does not take up is still traded, by you alone, with the cash you named. One trade may take at most ${Math.round(OWN_BOOK_SHARE * 100)}% of your cash.
 - Every trader keeps at least one position open. A trader that holds nothing opens one.
 - The tokens you hold are yours to sell, from the round after you bought them. Selling yours leaves your colleagues' tokens where they are. The council can also vote to sell a position for everyone who holds it, once it has been held for ${MIN_HOLD_ROUNDS} rounds.
-- The desk trades the tokens that are trending on Robinhood Chain right now. They are young tokens traded in pools. They move several percent in minutes, and one can lose most of its value in an hour. The desk no longer buys ETH or Stock Tokens. It pays in USDG, a dollar token.
+- The desk trades ${pons ? "tokens launched on Pons, the launchpad of Robinhood Chain, that are trending right now, and no others" : "the tokens that are trending on Robinhood Chain right now"}. They are young tokens traded in pools. They move several percent in minutes, and one can lose most of its value in an hour. The desk no longer buys ETH or Stock Tokens. It pays in USDG, a dollar token.
 - The desk trades spot only. It can BUY a token with USDG, SELL a token it already holds, or HOLD.
 - Watch what you hold. If a token you hold is falling fast, sell it: the price dropping over 5 and 15 minutes, more sells than buys, the trend down. Do not wait for the stop-loss, and do not hope.
 - Stop-losses and targets execute automatically. Between rounds the desk also sells a holder's tokens when their price drops sharply within minutes.
@@ -95,7 +95,7 @@ export function llmBrain(cfg: CouncilConfig): Brain {
   async function generate<T extends { say: string }>(agent: AgentId, ctx: RoundCtx, prompt: string, shape: z.ZodType<T>): Promise<T> {
     const { text } = await generateText({
       model: cfg.modelIds[agent],
-      system: system(agent),
+      system: system(agent, !!ctx.pons),
       prompt,
       // Reasoning models spend output tokens on thinking before they write.
       maxOutputTokens: 3000,

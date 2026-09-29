@@ -21,6 +21,8 @@ export interface Asset {
    * GeckoTerminal does for a token DexScreener has no price for, such as one that pools are priced in.
    */
   feed?: "gecko";
+  /** Set for a token that was launched on Pons, the launchpad of Robinhood Chain. */
+  launchpad?: "pons";
 }
 
 export interface AssetQuote {

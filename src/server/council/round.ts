@@ -198,6 +198,9 @@ export async function runRound(
         return quote ? assetStats(assets[t], quote, market1h).catch(() => null) : null;
       }),
     );
+    // A board of Pons tokens: what an agent holds of other tokens is its to keep or sell, and does not count as its position.
+    const pons = !!board.assets && Object.values(board.assets).length > 0 && Object.values(board.assets).every((a) => a.launchpad === "pons");
+    const counts = (t: AssetKey) => !old(t) && (!pons || assets[t]?.launchpad === "pons");
     const stillHeld = (s: TokenStats) => !old(s.token) || !!positionOf(before, s.token);
     const stats = [...listed.filter((s) => s.token !== request?.asset.key && stillHeld(s)), ...heldStats.filter((s): s is TokenStats => !!s), ...(asked ? [asked.stats] : [])];
     // The agents buy what is on the board. Anything else they hold can only be sold.
@@ -242,8 +245,9 @@ export async function runRound(
       // Every agent keeps a position open. One that holds nothing opens one this round, unless a funder's request has the floor.
       taken: [],
       // What it holds of the tokens the desk no longer trades does not count.
-      mustTrade: perAgent((a) => !request && !invested(before, a, (pos) => !old(pos.token)) && Math.floor(before.cash[a] * OWN_BOOK_SHARE) >= MIN_ORDER_USD && stats.some((s) => !closed.includes(s.token) && !sellOnly.includes(s.token))),
+      mustTrade: perAgent((a) => !request && !invested(before, a, (pos) => counts(pos.token)) && Math.floor(before.cash[a] * OWN_BOOK_SHARE) >= MIN_ORDER_USD && stats.some((s) => !closed.includes(s.token) && !sellOnly.includes(s.token))),
       sellOnly,
+      pons,
       mine: perAgent((a) => before.positions.filter((p) => canSellOwn(before, p.token, a, run.id) && !closed.includes(p.token)).map((p) => p.token)),
     };
     await updateState((s) => ({ ...s, lenses: perAgent((a) => [...(s.lenses[a] ?? []), lens[a].id].slice(-LENS_MEMORY)) }));
