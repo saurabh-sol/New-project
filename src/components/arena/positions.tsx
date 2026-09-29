@@ -18,7 +18,8 @@ function Row({ pos, price, round, now }: { pos: Position; price: number; round: 
   const pct = (pnl / pos.cost) * 100;
   // Where the live price sits between the stop (0) and the target (1).
   const progress = Math.min(Math.max((price - pos.stop) / (pos.target - pos.stop), 0), 1);
-  const entryAt = (pos.entryPrice - pos.stop) / (pos.target - pos.stop);
+  // A stop that has followed the price up stands above the entry, which is then at the bar's left end.
+  const entryAt = Math.max((pos.entryPrice - pos.stop) / (pos.target - pos.stop), 0);
   const locked = round - pos.openedRound < MIN_HOLD_ROUNDS;
 
   return (

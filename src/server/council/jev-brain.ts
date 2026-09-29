@@ -205,7 +205,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       }
 
       // The best odds among tokens that can be bought. An agent that must open a position takes the best there is.
-      const buyable = odds.filter((o) => starterTokens(ctx).includes(o.token)).sort((x, y) => y.p - x.p);
+      const buyable = odds.filter((o) => starterTokens(ctx, agent).includes(o.token)).sort((x, y) => y.p - x.p);
       if (ctx.mustTrade[agent] && buyable.length) {
         const top = buyable[0];
         const c = conviction(top.p);

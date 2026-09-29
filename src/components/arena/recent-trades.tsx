@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
-import type { Fill } from "@/lib/council";
+import { trailed, type Fill } from "@/lib/council";
 import { cn, fmtPrice, fmtSigned, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 
@@ -48,7 +48,7 @@ export function RecentTrades({ className }: { className?: string }) {
                 <div className="mt-0.5 flex items-baseline gap-2 text-[11px] text-white/45">
                   <span className="font-mono">{time(f.ts)}</span>
                   <span className="truncate">
-                    {who(f)} · {WHY[f.reason]} · at ${fmtPrice(f.price)}
+                    {who(f)} · {trailed(f) ? "trailing stop" : WHY[f.reason]} · at ${fmtPrice(f.price)}
                   </span>
                 </div>
                 {desk && (

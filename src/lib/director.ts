@@ -4,7 +4,7 @@
  */
 import { AGENT_ORDER, AGENTS } from "./agents";
 import type { DeskAsset, RequestBrief } from "./assets";
-import { agentPnl, type Emotion, type Fill } from "./council";
+import { agentPnl, trailed, type Emotion, type Fill } from "./council";
 import type { CouncilSnapshot, Line, OwnTrade, Proposal, RoundResponse, Stage } from "./council-types";
 import { walkSeconds } from "./layout";
 import { bookMood, resultMood, spokenMood } from "./mood";
@@ -289,7 +289,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     emit({ type: "focus", token: fill.token });
     emit({ type: "fill", fill, portfolio: snapshot.portfolio });
     system(
-      `${fill.reason === "STOP" ? "Stop-loss" : "Profit target"} hit: sold ${fill.token} at $${fmtPrice(fill.price)}. Realized ${fmtSigned(fill.realized ?? 0)}.`,
+      `${trailed(fill) ? "Trailing stop" : fill.reason === "STOP" ? "Stop-loss" : "Profit target"} hit: sold ${fill.token} at $${fmtPrice(fill.price)}. Realized ${fmtSigned(fill.realized ?? 0)}.`,
       fill.leader,
     );
     // Each holder takes it by what it made or lost itself. Small change is no occasion.
