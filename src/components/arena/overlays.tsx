@@ -46,7 +46,7 @@ function AgentOverlay({ id }: { id: AgentId }) {
               exit={{ opacity: 0, y: -8, scale: 0.6 }}
               transition={{ type: "spring", stiffness: 400, damping: 15 }}
             >
-              {rt.vote ? "✓ YES" : "✕ NO"}
+              {rt.joining ? (rt.vote ? "✓ IN" : "✕ OUT") : rt.vote ? "✓ YES" : "✕ NO"}
               {rt.voteReason && (
                 <span className="absolute bottom-full left-1/2 mb-1 hidden w-max max-w-40 -translate-x-1/2 whitespace-normal rounded-md bg-black/80 px-2 py-1 text-center text-[10px] font-normal leading-tight tracking-normal text-white/85 sm:block">
                   {rt.voteReason}

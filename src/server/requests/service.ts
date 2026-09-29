@@ -16,7 +16,7 @@ import { assetQuote, lookupAsset, tooThin } from "../market/assets";
 type Row = Record<string, unknown>;
 
 /** A request is given this many sessions before it is dropped, when sessions break or its market data can't be reached. */
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 6;
 const GAVE_UP = "The council could not hear this request: its sessions broke off, or the token's market data could not be reached.";
 /** How many unusable requests one session will go through before it carries on without one. */
 const MAX_SKIPS = 3;

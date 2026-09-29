@@ -3,12 +3,13 @@
  * do; this file decides how it is staged: who walks where, and how long each line is held.
  */
 import { AGENT_ORDER, AGENTS } from "./agents";
-import type { DeskAsset } from "./assets";
+import type { DeskAsset, RequestBrief } from "./assets";
 import { agentPnl, type Emotion, type Fill } from "./council";
-import type { CouncilSnapshot, Line, RoundResponse, Stage } from "./council-types";
+import type { CouncilSnapshot, Line, Proposal, RoundResponse, Stage } from "./council-types";
 import { walkSeconds } from "./layout";
-import type { AgentId, AgentState, ArenaEvent, MessageKind, Spot } from "./types";
+import type { AgentId, AgentState, ArenaEvent, ChatMessage, MessageKind, Spot } from "./types";
 import { fmtPrice, fmtSigned } from "./utils";
+import { useArena } from "@/store/arena";
 import { livePrices, useMarket } from "@/store/market";
 
 const HOME: Spot = { kind: "home" };
@@ -27,6 +28,74 @@ function learn(assets: Record<string, DeskAsset>) {
 }
 /** Time a speech bubble needs to type out, plus a beat to read it. */
 const readTime = (text: string) => Math.min(text.length * 26 + 1400, 5000);
+
+// The last session this browser watched to the end. A session is played once, not on every visit.
+const WATCHED = "council:watched";
+function lastWatched(): number {
+  try {
+    return Number(localStorage.getItem(WATCHED)) || 0;
+  } catch {
+    return 0;
+  }
+}
+function markWatched(round: number) {
+  try {
+    if (round > lastWatched()) localStorage.setItem(WATCHED, String(round));
+  } catch {}
+}
+
+const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+// What the desk's notes say. Shared by a session as it plays and by the record of one that is over.
+const openingNote = (round: number, replayOf: number | null) =>
+  replayOf === null ? `Session ${round} opens. The desk is reading the market.` : `Session ${round}, held at ${clock(replayOf)}. This is a replay.`;
+
+function requestNote(r: RequestBrief): string {
+  const who = AGENTS[r.agent].name;
+  return r.mode === "commit"
+    ? `A funder put $${r.usd.toFixed(0)} behind ${who} and asked for ${r.asset.key}. ${who} is committed to the trade. The others decide whether to join.`
+    : `A funder put $${r.usd.toFixed(0)} behind ${who} and asked for ${r.asset.key}. The whole desk weighs it, then votes.`;
+}
+
+function proposalNote(p: Proposal, request: RequestBrief | null): string {
+  const who = AGENTS[p.leader].name;
+  if (request && p.token === request.asset.key) return `${who} puts the funder's request to the desk: buy ${p.token}.`;
+  return p.action === "BUY" ? `${who} leads with a proposal to buy ${p.token}.` : `${who} leads with a proposal to sell ${p.sellPct}% of the desk's ${p.token}.`;
+}
+
+/** A committed trade is not voted on, so the others answer IN or OUT instead of YES or NO. */
+const voteWord = (approve: boolean, committed: boolean) => (committed ? (approve ? "IN" : "OUT") : approve ? "YES" : "NO");
+
+/** The conversation of a finished session, as it would stand in the transcript once played. */
+function transcriptOf(stages: Stage[]): { round: number; messages: ChatMessage[] } | null {
+  const open = stages.find((s) => s.stage === "open");
+  if (!open || open.stage !== "open") return null;
+  const round = open.round;
+  const request = open.request ?? null;
+  const messages: ChatMessage[] = [];
+  let ts = open.startedAt;
+  const add = (agent: AgentId, kind: MessageKind, text: string, line?: Line) =>
+    messages.push({ id: `r${round}-${messages.length}`, agent, kind, text, ts: (ts += 4000), round, to: line?.to, emotion: line?.emotion, source: line?.source });
+  const spoken = (line: Line, kind: MessageKind) => add(line.agent, kind, line.say, line);
+
+  add("guardian", "system", `Session ${round}, held at ${clock(open.startedAt)}.`);
+  if (request) add(request.agent, "system", requestNote(request));
+  let leader: AgentId = "guardian";
+  for (const s of stages) {
+    if (s.stage === "pitches") {
+      s.pitches.forEach((p) => spoken(p, "pitch"));
+      if (s.proposal) add((leader = s.proposal.leader), "system", proposalNote(s.proposal, request));
+    }
+    if (s.stage === "debate") s.exchanges.forEach((e) => (spoken(e.challenge, "debate"), spoken(e.reply, "debate")));
+    if (s.stage === "decision") {
+      s.pledges.forEach((p) => spoken(p, "negotiate"));
+      s.votes.forEach((v) => add(v.agent, "vote", `${voteWord(v.approve, !!s.committed)}: ${v.reason}`));
+      spoken(s.closing, "closing");
+    }
+    if (s.stage === "outcome") add(leader, "system", s.note);
+  }
+  return { round, messages };
+}
 
 /** Reads a newline-delimited JSON response one stage at a time. */
 async function* readStages(res: Response): AsyncGenerator<Stage> {
@@ -51,6 +120,8 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
   const { signal } = ctrl;
   const at = Object.fromEntries(AGENT_ORDER.map((a) => [a, HOME])) as Record<AgentId, Spot>;
   const knownFills = new Set<string>();
+  /** The session on stage, or 0 between sessions. Every line is filed under it. */
+  let playing = 0;
 
   // --- staging primitives ---
 
@@ -82,7 +153,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
   const setAll = (state: AgentState) => AGENT_ORDER.forEach((a) => setState(a, state));
   const feel = (agent: AgentId, emotion: Emotion) => emit({ type: "emotion", agent, emotion });
   const system = (text: string, agent: AgentId = "guardian") =>
-    emit({ type: "message", message: { id: uid(), agent, kind: "system", text, ts: Date.now() } });
+    emit({ type: "message", message: { id: uid(), agent, kind: "system", text, ts: Date.now(), round: playing || undefined } });
 
   /** Starts a walk and returns how long it takes, in ms. */
   function walk(agent: AgentId, to: Spot): number {
@@ -99,7 +170,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     setState(line.agent, "speaking");
     emit({
       type: "message",
-      message: { id: uid(), agent: line.agent, to: line.to, kind, text: line.say, ts: Date.now(), emotion: line.emotion, source: line.source },
+      message: { id: uid(), agent: line.agent, to: line.to, kind, text: line.say, ts: Date.now(), emotion: line.emotion, source: line.source, round: playing || undefined },
     });
     await sleep(readTime(line.say));
     setState(line.agent, "idle");
@@ -182,7 +253,21 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     }
   }
 
+  /** Puts the conversation of a session that is over into the transcript, without playing it. */
+  async function recall(round: number) {
+    try {
+      const res = await fetch(`/api/council/round?round=${round}`, { signal, cache: "no-store" });
+      if (!res.ok) return;
+      const record = transcriptOf(((await res.json()) as { stages: Stage[] }).stages);
+      if (record) emit({ type: "recap", ...record });
+    } catch (e) {
+      if (e instanceof Stopped || signal.aborted) throw new Stopped();
+    }
+  }
+
+  /** Returns the session's number once it has been played to the end, or 0 if it broke off. */
   async function playRound(res: Response): Promise<number> {
+    const replay = res.headers.get("x-council-replay") === "1";
     const stages = readStages(res);
     /** Waits for the server's next stage. Agents visibly think while the models are working. */
     async function next<K extends Stage["stage"]>(...kinds: K[]): Promise<Extract<Stage, { stage: K }> | null> {
@@ -202,13 +287,14 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
 
     const open = await next("open");
     if (!open) return 0;
-    emit({ type: "round_start", round: open.round, mode: open.mode, portfolio: open.portfolio });
+    playing = open.round;
+    emit({ type: "round_start", round: open.round, mode: open.mode, portfolio: open.portfolio, committed: open.request?.mode === "commit" });
     emit({ type: "phase", phase: "scan" });
     const away = AGENT_ORDER.filter((a) => at[a].kind !== "home");
     if (away.length) await walkAll(away, HOME);
     AGENT_ORDER.forEach((a) => feel(a, "neutral"));
     setAll("thinking");
-    system(`Session ${open.round} opens. The desk is reading the market.`);
+    system(openingNote(open.round, replay ? open.startedAt : null));
     const scanStarted = Date.now();
 
     const request = open.request ?? null;
@@ -218,13 +304,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       const asset: DeskAsset = { ...request.asset, quote, quotedAt: Date.now() };
       emit({ type: "assets", assets: { [asset.key]: asset } });
       if (seen) learn({ [asset.key]: asset });
-      const who = AGENTS[request.agent].name;
-      system(
-        request.mode === "commit"
-          ? `A funder put $${request.usd.toFixed(0)} behind ${who} and asked for ${request.asset.key}. ${who} is committed to the trade. The others decide whether to join.`
-          : `A funder put $${request.usd.toFixed(0)} behind ${who} and asked for ${request.asset.key}. ${who} presents it once, and the council votes.`,
-        request.agent,
-      );
+      system(requestNote(request), request.agent);
     }
 
     // 1. Pitches
@@ -250,14 +330,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     const leader = proposal.leader;
     const buying = proposal.action === "BUY";
     emit({ type: "focus", token: proposal.token });
-    system(
-      request && proposal.token === request.asset.key
-        ? `${AGENTS[leader].name} puts the funder's request to the desk: buy ${proposal.token}.`
-        : buying
-        ? `${AGENTS[leader].name} leads with a proposal to buy ${proposal.token}.`
-        : `${AGENTS[leader].name} leads with a proposal to sell ${proposal.sellPct}% of the desk's ${proposal.token}.`,
-      leader,
-    );
+    system(proposalNote(proposal, request), leader);
 
     // 2. Debate at the leader's desk
     emit({ type: "phase", phase: "debate" });
@@ -309,13 +382,17 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     // 4. Vote at the table. Each vote is what that agent just did with its money.
     emit({ type: "phase", phase: "vote" });
     await walkAll(AGENT_ORDER, TABLE);
+    const committed = !!decision.committed;
     let yes = 0;
     for (const v of decision.votes) {
       if (v.approve) yes++;
       setState(v.agent, "voting");
       await sleep(500);
-      emit({ type: "vote", agent: v.agent, approve: v.approve, reason: v.reason });
-      emit({ type: "message", message: { id: uid(), agent: v.agent, kind: "vote", text: `${v.approve ? "YES" : "NO"}: ${v.reason}`, ts: Date.now() } });
+      emit({ type: "vote", agent: v.agent, approve: v.approve, reason: v.reason, joining: committed });
+      emit({
+        type: "message",
+        message: { id: uid(), agent: v.agent, kind: "vote", text: `${voteWord(v.approve, committed)}: ${v.reason}`, ts: Date.now(), round: playing },
+      });
       emit({ type: "consensus", value: yes / decision.votes.length });
       await sleep(1500);
     }
@@ -360,9 +437,12 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
   // --- main loop ---
 
   (async () => {
-    let seen = 0;
     const first = await sync();
     for (const f of first?.fills ?? []) knownFills.add(f.id);
+    // A count ahead of the server's means the desk was started afresh, and nothing has been watched yet.
+    let seen = first && lastWatched() <= first.round ? lastWatched() : 0;
+    // The latest session was watched on an earlier visit. Its conversation is shown, not played again.
+    if (first && seen > 0 && seen === first.round && !useArena.getState().messages.some((m) => m.round === seen)) await recall(seen);
 
     for (;;) {
       let res: Response;
@@ -382,8 +462,9 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       if (!res.ok) {
         await sleep(8000);
       } else if (res.headers.get("content-type")?.includes("ndjson")) {
-        const played = await playRound(res);
+        const played = await playRound(res).finally(() => (playing = 0));
         seen = Math.max(seen, played);
+        markWatched(played);
         await sync();
         // A round that broke early reports no number. Give the server a moment before asking again.
         if (played === 0) await sleep(10_000);

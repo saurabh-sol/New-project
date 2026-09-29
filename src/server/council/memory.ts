@@ -60,6 +60,31 @@ export async function loadRound(round: number): Promise<Stage[] | null> {
   return row ? (row.stages as Stage[]) : null;
 }
 
+const LOOK_BACK = 24;
+const KEEP_ABOUT = 6;
+
+/**
+ * What each agent said in earlier sessions that debated this token, oldest first.
+ * A token that comes up again should not get the same speeches again.
+ */
+export async function linesAbout(token: string, before: number): Promise<Record<AgentId, string[]>> {
+  const out: Record<AgentId, string[]> = { quant: [], degen: [], guardian: [], oracle: [] };
+  let sessions: Stage[][];
+  if (hasDb()) {
+    const sql = await db();
+    const rows = await sql`select stages from council_rounds where round < ${before} and round >= ${before - LOOK_BACK} and not failed order by round`;
+    sessions = rows.map((r) => r.stages as Stage[]);
+  } else {
+    sessions = [...localRounds()].filter(([round]) => round < before && round >= before - LOOK_BACK).sort(([a], [b]) => a - b).map(([, stages]) => stages);
+  }
+  for (const stages of sessions) {
+    const about = stages.some((s) => s.stage === "pitches" && s.proposal?.token === token);
+    if (about) for (const l of spokenIn(stages)) out[l.agent].push(l.say);
+  }
+  for (const a of Object.keys(out) as AgentId[]) out[a] = out[a].slice(-KEEP_ABOUT);
+  return out;
+}
+
 /** Each agent's latest lines, oldest first. */
 export async function recentLines(): Promise<Record<AgentId, string[]>> {
   const out: Record<AgentId, string[]> = { quant: [], degen: [], guardian: [], oracle: [] };

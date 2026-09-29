@@ -5,6 +5,7 @@
  * a different analytical focus each round, its own recent lines to avoid, and a
  * check that rejects a draft too close to something it already said.
  */
+import { AGENT_ORDER } from "@/lib/agents";
 import type { AgentId } from "@/lib/types";
 
 export interface Skill {
@@ -80,10 +81,26 @@ export function repeats(draft: string, earlier: string[]): string | null {
   return earlier.find((line) => similarity(draft, line) >= TOO_CLOSE) ?? null;
 }
 
-/** Of several ways to say the same thing, the one least like what was said before. */
-export function freshest(variants: string[], earlier: string[]): string {
+/**
+ * Of several ways to say the same thing, the one least like what was said before.
+ * `turn` decides which comes first when several are equally fresh. Agents who speak at the
+ * same moment pass different turns, so they don't all land on the same sentence.
+ */
+export function freshest(variants: string[], earlier: string[], turn = 0): string {
   const worst = (v: string) => Math.max(0, ...earlier.map((e) => similarity(v, e)));
-  return [...variants].sort((a, b) => worst(a) - worst(b))[0];
+  const start = turn % variants.length;
+  return [...variants.slice(start), ...variants.slice(0, start)].sort((a, b) => worst(a) - worst(b))[0];
+}
+
+/**
+ * Chooses how an agent words a stock remark: unlike what it said before, and unlike what
+ * anyone else has said in this session. The choice is noted at once, so agents who speak
+ * at the same moment don't land on the same sentence.
+ */
+export function pick(variants: string[], ctx: { said: Record<AgentId, string[]>; floor: string[] }, agent: AgentId): string {
+  const line = freshest(variants, [...ctx.said[agent], ...ctx.floor], AGENT_ORDER.indexOf(agent));
+  ctx.floor.push(line);
+  return line;
 }
 
 /**

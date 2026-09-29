@@ -35,24 +35,29 @@ interface Pair {
 // Both services limit how often they may be asked, so answers are reused for a few seconds.
 const shared = globalThis as typeof globalThis & { __assetCache?: Map<string, { at: number; value: Promise<unknown> }> };
 
+const FAILED_MS = 10_000;
+
 function cached<T>(key: string, freshMs: number, load: () => Promise<T>): Promise<T> {
   const cache = (shared.__assetCache ??= new Map());
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < freshMs) return hit.value as Promise<T>;
   const value = load();
   cache.set(key, { at: Date.now(), value });
-  value.catch(() => cache.get(key)?.value === value && cache.delete(key));
+  // A failure is remembered too, briefly: asking again at once only makes a busy service busier.
+  value.catch(() => cache.get(key)?.value === value && cache.set(key, { at: Date.now() - freshMs + Math.min(freshMs, FAILED_MS), value }));
   if (cache.size > 200) for (const [k, v] of cache) if (Date.now() - v.at > 60_000) cache.delete(k);
   return value;
 }
 
-const TRIES = 3;
+/** Waits between tries, in ms. A caller that can afford to wait out "too many requests" is `patient`. */
+const WAITS = { quick: [700, 1500], patient: [3_000, 8_000, 15_000] };
 
 /** These services time out or ask for patience now and then, so a request is tried more than once. */
-async function getJson<T>(url: string): Promise<T> {
+async function getJson<T>(url: string, patient = false): Promise<T> {
+  const waits = patient ? WAITS.patient : WAITS.quick;
   let problem: unknown;
-  for (let attempt = 0; attempt < TRIES; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 700 * attempt));
+  for (let attempt = 0; attempt <= waits.length; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, waits[attempt - 1]));
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(8_000), headers: { accept: "application/json" } });
       if (res.ok) return (await res.json()) as T;
@@ -129,11 +134,13 @@ export function assetQuote(asset: Asset): Promise<AssetQuote> {
 }
 
 export type Span = "1m" | "5m" | "15m" | "1h";
-const SPAN: Record<Span, { unit: "minute" | "hour"; every: number; seconds: number }> = {
-  "1m": { unit: "minute", every: 1, seconds: 60 },
-  "5m": { unit: "minute", every: 5, seconds: 300 },
-  "15m": { unit: "minute", every: 15, seconds: 900 },
-  "1h": { unit: "hour", every: 1, seconds: 3600 },
+// `freshMs` is how long an answer is reused. The candle service allows few requests a minute,
+// and every viewer and every risk check draws on the same allowance.
+const SPAN: Record<Span, { unit: "minute" | "hour"; every: number; seconds: number; freshMs: number }> = {
+  "1m": { unit: "minute", every: 1, seconds: 60, freshMs: 40_000 },
+  "5m": { unit: "minute", every: 5, seconds: 300, freshMs: 90_000 },
+  "15m": { unit: "minute", every: 15, seconds: 900, freshMs: 180_000 },
+  "1h": { unit: "hour", every: 1, seconds: 3600, freshMs: 300_000 },
 };
 
 export const isSpan = (v: unknown): v is Span => typeof v === "string" && v in SPAN;
@@ -152,14 +159,22 @@ function evenly(candles: Candle[], step: number): Candle[] {
   return out;
 }
 
-/** Candles for the token's pool, oldest first. */
-export function assetCandles(asset: Asset, span: Span, limit: number): Promise<Candle[]> {
-  const { unit, every, seconds } = SPAN[span];
-  const count = Math.min(Math.max(limit, 1), 1000);
-  return cached(`candles:${asset.pool}:${span}:${count}`, 15_000, async () => {
+/** How many candles a request may ask for. Few sizes, so that requests for the same pool share an answer. */
+const SIZES = [60, 300, 1000];
+
+/**
+ * The latest `limit` candles of the token's pool, oldest first.
+ * `patient` waits out the service's "too many requests" instead of giving up.
+ */
+export async function assetCandles(asset: Asset, span: Span, limit: number, patient = false): Promise<Candle[]> {
+  const { unit, every, seconds, freshMs } = SPAN[span];
+  const wanted = Math.min(Math.max(limit, 1), 1000);
+  const count = SIZES.find((n) => n >= wanted) ?? 1000;
+  const all = await cached(`candles:${asset.pool}:${span}:${count}`, freshMs, async () => {
     const url = `${GECKOTERMINAL}/pools/${asset.pool}/ohlcv/${unit}?aggregate=${every}&limit=${count}&currency=usd`;
-    const body = await getJson<{ data?: { attributes?: { ohlcv_list?: number[][] } } }>(url);
+    const body = await getJson<{ data?: { attributes?: { ohlcv_list?: number[][] } } }>(url, patient);
     const rows = (body.data?.attributes?.ohlcv_list ?? []).map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
     return evenly(rows.sort((a, b) => a.time - b.time), seconds).slice(-count);
   });
+  return all.slice(-wanted);
 }

@@ -25,7 +25,8 @@ function Line({ m }: { m: ChatMessage }) {
   }
 
   if (m.kind === "vote") {
-    const yes = m.text.startsWith("YES");
+    const [word, ...rest] = m.text.split(": ");
+    const yes = word === "YES" || word === "IN";
     return (
       <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2.5 pl-1 text-xs">
         <Face id={m.agent} size={22} />
@@ -33,9 +34,9 @@ function Line({ m }: { m: ChatMessage }) {
           {a.name}
         </span>
         <span className={cn("rounded-full px-2 py-px font-mono text-[10px] font-bold", yes ? "bg-white/15 text-white/80" : "bg-white/15 text-red-300")}>
-          {yes ? "YES" : "NO"}
+          {word}
         </span>
-        <span className="truncate text-white/50">{m.text.replace(/^(YES|NO): /, "")}</span>
+        <span className="truncate text-white/50">{rest.join(": ")}</span>
       </motion.div>
     );
   }

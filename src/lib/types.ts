@@ -51,11 +51,14 @@ export interface ChatMessage {
   emotion?: Emotion;
   /** Whether the AI model wrote this line or the scripted stand-in did. */
   source?: Source;
+  /** The session the line belongs to. */
+  round?: number;
 }
 
 export type ArenaEvent =
   | { type: "sync"; snapshot: CouncilSnapshot }
-  | { type: "round_start"; round: number; mode: CouncilMode; portfolio: Portfolio }
+  /** `committed`: the session hears a request that binds an agent to the trade, so nobody votes on it. */
+  | { type: "round_start"; round: number; mode: CouncilMode; portfolio: Portfolio; committed?: boolean }
   | { type: "phase"; phase: Phase }
   | { type: "focus"; token: AssetKey | null }
   /** Tokens funders asked for that the desk has just learned of. */
@@ -65,7 +68,10 @@ export type ArenaEvent =
   | { type: "move"; agent: AgentId; to: Spot }
   | { type: "message"; message: ChatMessage }
   | { type: "offer"; id: string; from: AgentId; to: AgentId; amount: number }
-  | { type: "vote"; agent: AgentId; approve: boolean; reason: string }
+  /** `joining`: the trade was already decided, and the agent only chose whether to join it. */
+  | { type: "vote"; agent: AgentId; approve: boolean; reason: string; joining?: boolean }
+  /** The conversation of a session that is over, put on the page at once. */
+  | { type: "recap"; round: number; messages: ChatMessage[] }
   | { type: "consensus"; value: number } // 0..1
   | { type: "fill"; fill: Fill; portfolio: Portfolio }
   | { type: "schedule"; nextRoundAt: number };

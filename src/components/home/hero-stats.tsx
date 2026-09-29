@@ -8,6 +8,9 @@ import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { usePoolEquity } from "@/store/selectors";
 
+/** In a session that carries out a funder's commitment nobody votes: the agents join or stay out. */
+const JOINING = "Who joins";
+
 const PHASE: Record<string, string> = {
   monitor: "Watching positions",
   scan: "Reading the market",
@@ -48,6 +51,7 @@ export function HeroStats() {
   const portfolio = useArena((s) => s.portfolio);
   const round = useArena((s) => s.round);
   const phase = useArena((s) => s.phase);
+  const committed = useArena((s) => s.committed);
   const equity = usePoolEquity();
   const countdown = useCountdown();
 
@@ -78,7 +82,7 @@ export function HeroStats() {
       <Stat label={`Session ${round || "—"}`} note={phase === "monitor" && countdown ? `next session in ${countdown}` : "in progress"}>
         <span className="flex items-center gap-2.5 text-xl sm:text-2xl">
           <span className={cn("size-2.5 shrink-0 rounded-full", phase === "monitor" ? "bg-white/30" : "animate-pulse bg-white")} />
-          <span className="truncate">{PHASE[phase]}</span>
+          <span className="truncate">{phase === "vote" && committed ? JOINING : PHASE[phase]}</span>
         </span>
       </Stat>
     </section>

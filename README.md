@@ -65,6 +65,11 @@ A model can't be retrained from this app. What the app controls is what each age
 - **Its own recent lines**, with an instruction not to reuse their points or wording.
 - **A repeat check.** A draft too close to something the agent already said is sent back once for a different point.
 
+- **Memory of the token.** When a token comes up again, each agent is shown what it said the last time the desk debated it.
+- **Stock remarks vary.** Jev and the scripted stand-in speak from templates. Each template has several wordings, and the one chosen is the least like what that agent said before and what anyone said this session.
+
+A session is played once per browser. Coming back to the trading floor shows the last session's conversation as history instead of playing it again. A first-time visitor sees the latest session as a replay, marked as one.
+
 Lines are kept short, the way traders talk across a desk: the models are asked for at most 15 words, and anything over 120 characters is cut.
 
 ### About Jev
@@ -93,16 +98,24 @@ With a deposit, a funder may paste the address of any Solana token and ask the a
 
 | Deposit | What happens |
 | --- | --- |
-| Under $20 | **Suggestion.** The agent presents the token to the council once. It is bought only if 3 of the 4 agents back it. |
-| $20 or more | **Commitment.** The agent buys the token with its own cash, up to the amount funded, whatever the vote. The other agents choose whether to add their own cash. |
+| Under $20 | **Suggestion.** The agent puts the token to the council once. All four agents weigh it, and it is bought only if 3 of them back it. |
+| $20 or more | **Commitment.** The agent buys the token with its own cash, up to the amount funded. Nobody votes on whether to trade: the other agents answer IN or OUT with their own cash. |
 
 The threshold is `REQUEST_COMMIT_FROM_USD`.
 
 - One request is heard per session, oldest first. A wallet can have one request waiting at a time.
 - The token must have a trading pool on Solana with at least $50,000 of liquidity and $10,000 of daily volume, and be at least a day old (`REQUEST_MIN_LIQUIDITY_USD`, `REQUEST_MIN_VOLUME_USD`, `REQUEST_MIN_AGE_HOURS`). This is checked when the request is made and again when it is heard.
 - A request is dropped if the funding behind it was withdrawn before it was heard.
-- If the token's market data can't be reached, the request keeps its place and is tried at a later session, three times at most.
-- The trade is a paper trade like every other: it has a stop-loss and a target, and the council may vote to sell it later.
+- If the token's market data can't be reached, the request keeps its place and is tried at a later session, six times at most.
+- In a request session every agent speaks to the requested token, so the request is the desk's business and not one agent's.
+- A suggestion that is voted down means no trade. The funding stays with the agent; $5 can't force a trade on capital that other funders share.
+- A committed purchase is held for at least 12 sessions (`COMMITTED_HOLD_ROUNDS` in `src/lib/council.ts`) before the council may vote to sell it. Its stop-loss and target still close it at any time.
+- A request for a token the desk already holds adds to the position. The agents are given what they said about the token before and are told to say only what has changed, and the debate is skipped.
+- The trade is a paper trade like every other: it has a stop-loss and a target.
+
+### Stops
+
+Whatever an agent asks for, the desk sets a purchase's stop-loss at least 1.5 times the token's usual 5-minute movement away (within the 2% to 10% range), and its target no nearer than the stop. A stop closer than that is set off by ordinary movement. The rule is `fitTerms` in `src/server/council/brain.ts`.
 - An agent's capital is pooled, so the result of a requested trade is shared by everyone who funds that agent. The fund page says so.
 
 Prices and liquidity for requested tokens come from DexScreener, and candles from GeckoTerminal. Neither needs a key. The agents are told that a funder's wish is not evidence, and they say so when the data is weak.

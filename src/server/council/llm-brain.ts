@@ -2,10 +2,10 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS } from "@/lib/agents";
-import { EMOTIONS, MIN_HOLD_ROUNDS } from "@/lib/council";
+import { COMMITTED_HOLD_ROUNDS, EMOTIONS, MIN_HOLD_ROUNDS } from "@/lib/council";
 import type { Exchange } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { asEmotion, asToken, cleanSay, presents, requestStake, STOP_RANGE, TARGET_RANGE, type Brain } from "./brain";
+import { asEmotion, asToken, backers, cleanSay, presents, requestStake, STOP_RANGE, TARGET_RANGE, weighs, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefing, describeDebate, describePitches, describeProposal, nameOf, usd, type RoundCtx } from "./context";
 import { repeats } from "./skills";
@@ -27,8 +27,9 @@ How the desk works:
 - Each trader manages its own cash and can co-invest in a trade that another trader leads.
 - The desk trades spot only. It can BUY a token with USDC, SELL a token it already holds, or HOLD.
 - A position must be held for at least ${MIN_HOLD_ROUNDS} rounds before the council may sell it. Stop-losses and targets execute automatically.
+- A stop-loss must stand clear of the token's ordinary movement: at least 1.5 times its volatility per 5 minutes. The desk widens any stop that is closer, and a target is never nearer than the stop.
 - The council makes at most one trade per round, and it needs 3 of 4 votes.
-- A user who funds a trader may ask it to buy a Solana token of their choice. The trader presents that request to the desk. A small request is only a suggestion; a request funded with a larger amount commits that trader to the trade with its own cash.
+- A user who funds a trader may ask it to buy a Solana token of their choice. That trader presents the request and the whole desk weighs it. A small request is a suggestion that the desk votes on. A request funded with a larger amount commits that trader to the trade with its own cash: then nobody votes on whether to trade, and the others only decide whether to join. A position bought that way is held for ${COMMITTED_HOLD_ROUNDS} rounds before the council may sell it.
 - This is paper trading on live prices.
 
 Rules for what you say:
@@ -141,6 +142,25 @@ JSON shape:
         const o = await ask(agent, ctx, task, pitchShape);
         return { ...o, ...spoken(o), action: "BUY", token: r.asset.key };
       }
+      if (weighs(agent, ctx)) {
+        const r = ctx.request!;
+        const task = `YOUR FOCUS THIS ROUND: ${lens.name}
+${lens.brief} Read ${r.asset.key} from this angle.
+
+TASK: Give the desk your first read of ${r.asset.key}, the token ${nameOf(r.agent)}'s funder asked for. Speak only about ${r.asset.key}.
+BUY means you would put your own cash in. HOLD means you would stay out.
+JSON shape:
+{"action": "BUY" | "HOLD",
+ "token": "${r.asset.key}",
+ "stakeUsd": your own cash you would commit if BUY, from 0 to ${cash.toFixed(0)},
+ "stopPct": the stop-loss distance you would want, ${STOP_RANGE[0]} to ${STOP_RANGE[1]},
+ "targetPct": the profit target distance you would want, ${TARGET_RANGE[0]} to ${TARGET_RANGE[1]},
+ "conviction": 1 to 5,
+ "emotion": "...",
+ "say": "your read of ${r.asset.key}"}`;
+        const o = await ask(agent, ctx, task, pitchShape);
+        return { ...o, ...spoken(o), token: r.asset.key };
+      }
       const task = `YOUR FOCUS THIS ROUND: ${lens.name}
 ${lens.brief} Build your pitch on this angle.
 
@@ -187,19 +207,22 @@ JSON shape: {"emotion": "...", "say": "your answer", "stopPct": ${STOP_RANGE[0]}
     async pledge(agent, ctx, proposal, pitches, debate) {
       const cash = ctx.portfolio.cash[agent];
       const buying = proposal.action === "BUY";
+      const committed = ctx.request?.mode === "commit" && presents(proposal.leader, ctx);
       const task = `THE PITCHES
 ${describePitches(pitches)}
 
 THE DEBATE
-${describeDebate(debate)}
+${debate.length ? describeDebate(debate) : "- none this round"}
 
 THE FINAL PROPOSAL
 ${describeProposal(proposal)}
 
 TASK: Decide. ${
-        buying
-          ? `If you back this trade you commit your own cash and vote YES. If you commit nothing you vote NO. You have ${usd(cash)}.`
-          : "Vote YES to sell or NO to keep holding."
+        committed
+          ? `${nameOf(proposal.leader)} is committed, so this trade goes ahead whatever you decide. You are not voting on it. Either join with your own cash (support true) or stay out (support false, stake 0). You have ${usd(cash)}.`
+          : buying
+            ? `If you back this trade you commit your own cash and vote YES. If you commit nothing you vote NO. You have ${usd(cash)}.`
+            : "Vote YES to sell or NO to keep holding."
       } Your vote must match what you say. State your decision and the one reason that settles it, in a few words.
 JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixed(0)}, and 0 if you do not support` : "0"}, "emotion": "...", "say": "what you say aloud as you commit or refuse", "reason": "your reason in at most 40 characters"}`;
       const o = await ask(agent, ctx, task, pledgeShape);
@@ -207,9 +230,12 @@ JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixe
     },
 
     async closing(agent, ctx, proposal, input) {
-      const votes = input.pledges.map((p) => `- ${nameOf(p.agent)}: ${p.support ? "YES" : "NO"} ("${p.say}")`).join("\n");
-      const result = input.alone
-        ? `The vote was ${input.yes} to ${4 - input.yes}, short of the 3 needed. You are committed to your funder, so you buy ${usd(input.totalUsd)} of ${proposal.token} without the desk's approval.`
+      const word = (yes: boolean) => (input.committed ? (yes ? "IN" : "OUT") : yes ? "YES" : "NO");
+      const votes = input.pledges.map((p) => `- ${nameOf(p.agent)}: ${word(p.support)} ("${p.say}")`).join("\n");
+      const result = input.committed
+        ? input.approved
+          ? `You buy ${proposal.token} for your funder, as committed. Joined by: ${backers(input.pledges, nameOf)}. Total size ${usd(input.totalUsd)}.`
+          : `The order came out under the desk's smallest size, so nothing is bought.`
         : input.approved
         ? proposal.action === "BUY"
           ? `The trade passes ${input.yes} to ${4 - input.yes}. Total size ${usd(input.totalUsd)} of ${proposal.token}.`
@@ -218,7 +244,7 @@ JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixe
       const task = `YOUR PROPOSAL
 ${describeProposal(proposal)}
 
-THE VOTES
+${input.committed ? "WHO JOINED" : "THE VOTES"}
 ${votes}
 
 RESULT: ${result}

@@ -46,7 +46,7 @@ interface ChartApi {
 const toChartTime = (unixSeconds: number) => (unixSeconds - new Date().getTimezoneOffset() * 60) as UTCTimestamp;
 
 /** How often the chart of a DEX-traded token asks for new candles. Its data source allows few requests. */
-const POOL_REFRESH_MS = 20_000;
+const POOL_REFRESH_MS = 45_000;
 
 /** Candles of a token a funder asked for, which the server reads from the token's trading pool. */
 async function poolCandles(token: AssetKey, interval: Interval, signal: AbortSignal): Promise<Candle[]> {

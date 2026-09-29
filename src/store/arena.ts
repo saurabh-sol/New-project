@@ -14,6 +14,8 @@ export interface AgentRuntime {
   walking: boolean;
   vote: boolean | null;
   voteReason: string;
+  /** The vote was on whether to join a trade already decided, so it reads IN or OUT. */
+  joining: boolean;
   bubble: ChatMessage | null;
   /** PnL samples over this viewing session, for sparklines. */
   history: number[];
@@ -30,6 +32,8 @@ interface ArenaStore {
   mode: CouncilMode;
   modeNote: string | null;
   models: Record<AgentId, ModelInfo> | null;
+  /** The session on stage carries out a funder's commitment, so the agents join or stay out instead of voting. */
+  committed: boolean;
   /** Token the council is discussing, which the chart follows. */
   focus: AssetKey | null;
   consensus: number;
@@ -58,6 +62,7 @@ const freshAgent = (): AgentRuntime => ({
   walking: false,
   vote: null,
   voteReason: "",
+  joining: false,
   bubble: null,
   history: [],
 });
@@ -76,6 +81,7 @@ export const useArena = create<ArenaStore>((set) => ({
   mode: "live",
   modeNote: null,
   models: null,
+  committed: false,
   focus: null,
   consensus: 0,
   portfolio: newPortfolio(),
@@ -119,11 +125,14 @@ export const useArena = create<ArenaStore>((set) => ({
           return {
             round: e.round,
             mode: e.mode,
+            committed: !!e.committed,
             consensus: 0,
             focus: null,
             // While a session plays, show the desk as it stood when that session began.
             portfolio: e.portfolio,
             fills: s.fills.filter((f) => !(f.round === e.round && f.reason === "COUNCIL")),
+            // A session watched in part and then started over must not leave its first lines behind.
+            messages: s.messages.filter((m) => m.round !== e.round),
             agents: patchAll({ vote: null, voteReason: "", bubble: null }),
           };
         case "phase":
@@ -161,7 +170,9 @@ export const useArena = create<ArenaStore>((set) => ({
           return { coins: [...s.coins, coin] };
         }
         case "vote":
-          return patchAgent(e.agent, { vote: e.approve, voteReason: e.reason });
+          return patchAgent(e.agent, { vote: e.approve, voteReason: e.reason, joining: !!e.joining });
+        case "recap":
+          return { messages: [...s.messages.filter((m) => m.round !== e.round), ...e.messages].slice(-MAX_MESSAGES) };
         case "consensus":
           return { consensus: e.value };
         case "fill":

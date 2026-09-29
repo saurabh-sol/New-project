@@ -102,7 +102,8 @@ export async function fetchStats(): Promise<TokenStats[]> {
 
 /** The same figures for a token traded on a DEX pool. Null if the pool has too little history to read. */
 export async function poolStats(asset: Asset, quote: AssetQuote, solChange1h: number): Promise<TokenStats | null> {
-  const candles = await assetCandles(asset, "5m", 60);
+  // A session can wait a few seconds for these. Without them the token can't be discussed at all.
+  const candles = await assetCandles(asset, "5m", 60, true);
   if (candles.length < 30) return null;
   // The pool's latest trade can be minutes old. The quote is the price an order would get now.
   const last = candles[candles.length - 1];

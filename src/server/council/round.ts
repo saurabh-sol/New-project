@@ -4,16 +4,16 @@
  */
 import { AGENT_ORDER } from "@/lib/agents";
 import type { DeskAsset } from "@/lib/assets";
-import { buy, canSell, fitStakes, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
+import { buy, canSell, COMMITTED_HOLD_ROUNDS, fitStakes, positionOf, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, Exchange, Line, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
 import type { AssetKey, Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
-import { clamp, enforcePitch, STOP_RANGE, TARGET_RANGE, type Brain } from "./brain";
+import { backers, clamp, enforcePitch, fitTerms, type Brain } from "./brain";
 import { isEvaluationModel, type CouncilConfig } from "./config";
 import { nameOf, px, signed, usd, type RoundCtx } from "./context";
 import { jevBrain } from "./jev-brain";
 import { llmBrain } from "./llm-brain";
-import { recentLines, saveRound } from "./memory";
+import { linesAbout, recentLines, saveRound } from "./memory";
 import { scriptedBrain } from "./scripted-brain";
 import { fundingLevel, pickLens, type Effort, type Skill } from "./skills";
 import { liveRequests, type ActiveRequest, type RequestSource } from "../requests/service";
@@ -169,10 +169,19 @@ export async function runRound(
     const effort: Record<AgentId, Effort> = perAgent((a) => fundingLevel(userFunding(before, a)).effort);
     const said = await recentLines().catch(() => perAgent<string[]>(() => []));
     /** Remembers a line so the same agent won't repeat it later in this round. */
+    const floor: string[] = [];
     const heard = <T extends { agent: AgentId; say: string }>(line: T): T => {
       said[line.agent].push(line.say);
+      if (!floor.includes(line.say)) floor.push(line.say);
       return line;
     };
+    /** Brings back what each agent said when the desk last debated this token, so it is not said again. */
+    const recall = async (token: AssetKey) => {
+      const earlier = await linesAbout(token, run.id).catch(() => null);
+      if (!earlier) return;
+      for (const a of AGENT_ORDER) said[a].unshift(...earlier[a].filter((line) => !said[a].includes(line)));
+    };
+    if (request) await recall(request.asset.key);
 
     const ctx: RoundCtx = {
       round: run.id,
@@ -182,6 +191,7 @@ export async function runRound(
       sellable: before.positions.filter((p) => canSell(before, p.token, run.id)).map((p) => p.token),
       recent: opening.recent,
       said,
+      floor,
       lens,
       effort,
       request,
@@ -220,18 +230,24 @@ export async function runRound(
       return;
     }
     const leader = proposal.leader;
-    const first = proposal;
+    // Whatever the agents ask for, a purchase gets a stop that the token's ordinary movement can't set off.
+    const noise = stats.find((s) => s.token === proposal!.token)?.atrPct ?? 0;
+    const fitted = (p: Proposal, stopPct: number, targetPct: number): Proposal => (p.action === "BUY" ? { ...p, ...fitTerms(stopPct, targetPct, noise) } : p);
+    const first = fitted(proposal, proposal.stopPct, proposal.targetPct);
+    if (!asking) await recall(first.token);
+    // Adding to a token the desk debated when it bought it: no second debate, only who joins.
+    const addOn = !!asking && !!positionOf(before, first.token);
 
     // 2. Debate at the leader's desk. One challenger at a time, so the leader's answers build on each other.
     const exchanges: Exchange[] = [];
     let terms = first;
-    for (const agent of chooseChallengers(pitches, first)) {
+    for (const agent of addOn ? [] : chooseChallengers(pitches, first)) {
       const current = terms;
       const soFar = [...exchanges];
       const c = await think(agent, (b) => b.challenge(agent, ctx, current, pitches, soFar));
       const challenge: Line = heard({ agent, to: leader, emotion: c.emotion, say: c.say, source: c.source });
       const r = await think(leader, (b) => b.reply(leader, ctx, current, challenge, soFar));
-      terms = { ...current, stopPct: clamp(r.stopPct, ...STOP_RANGE), targetPct: clamp(r.targetPct, ...TARGET_RANGE) };
+      terms = fitted(current, r.stopPct, r.targetPct);
       exchanges.push({ challenge, reply: heard({ agent: leader, to: agent, emotion: r.emotion, say: r.say, source: r.source }) });
     }
     proposal = terms;
@@ -258,17 +274,17 @@ export async function runRound(
     const yes = 1 + pledges.filter((p) => p.support).length;
     const tooSmall = buying && totalUsd === 0;
     const passed = yes >= VOTES_TO_PASS;
-    // A committed leader trades whatever the vote. Those who voted yes still join with their own cash.
+    // A committed leader's trade is not put to a vote. The others only choose whether to join with their own cash.
     const approved = (passed || bound) && !tooSmall;
-    const alone = approved && !passed;
+    const joined = backers(pledges, nameOf);
 
     const votes: Vote[] = AGENT_ORDER.map((agent) => {
-      if (agent === leader) return { agent, approve: true, reason: "leads the proposal" };
+      if (agent === leader) return { agent, approve: true, reason: bound ? "committed to its funder" : "leads the proposal" };
       const p = pledges.find((x) => x.agent === agent)!;
       return { agent, approve: p.support, reason: p.reason };
     });
 
-    const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd, alone }));
+    const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd, committed: bound }));
     const closing: Line = { agent: leader, emotion: c.emotion, say: c.say, source: c.source };
     run.push({ stage: "decision", pledges, closing, votes, approved, committed: bound });
 
@@ -285,7 +301,7 @@ export async function runRound(
       const id = `r${run.id}-${final.token}-${ts}`;
       const saved = await updateState((s) => {
         const done = buying
-          ? buy(s.portfolio, { token: final.token, price, stakes, stopPct: final.stopPct, targetPct: final.targetPct, round: run.id, leader, ts, id })
+          ? buy(s.portfolio, { token: final.token, price, stakes, stopPct: final.stopPct, targetPct: final.targetPct, round: run.id, leader, ts, id, committed: bound })
           : sell(s.portfolio, { token: final.token, price, fraction: final.sellPct / 100, reason: "COUNCIL", round: run.id, leader, ts, id });
         if (!done) return s;
         fill = done.fill;
@@ -296,14 +312,16 @@ export async function runRound(
       note = !f
         ? "The order could not be placed. No trade."
         : buying
-          ? `${alone ? `Vote was ${yes} to ${4 - yes}. ${nameOf(leader)} was committed to its funder and bought` : "Bought"} ${usd(f.usd)} of ${f.token} at ${px(price)}. Stop ${final.stopPct}% below, target ${final.targetPct}% above.`
+          ? bound
+            ? `${nameOf(leader)} bought ${usd(f.usd)} of ${f.token} at ${px(price)} for its funder, joined by ${joined}. Stop ${final.stopPct}% below, target ${final.targetPct}% above. Held for at least ${COMMITTED_HOLD_ROUNDS} sessions unless one of them is hit.`
+            : `Bought ${usd(f.usd)} of ${f.token} at ${px(price)}. Stop ${final.stopPct}% below, target ${final.targetPct}% above.`
           : `Sold ${final.sellPct}% of ${f.token} at ${px(price)}. Realized ${signed(f.realized ?? 0, "")} USDC.`;
     }
 
     const origin = asking ? " at a funder's request" : "";
     const summary = approved && fill
-      ? alone
-        ? `Round ${run.id}: ${nameOf(leader)} bought ${final.token}${origin}, committed to it although the vote was ${yes} to ${4 - yes}.`
+      ? bound
+        ? `Round ${run.id}: ${nameOf(leader)} bought ${final.token}${origin}, as committed; joined by ${joined}.`
         : `Round ${run.id}: council ${buying ? "bought" : "sold"} ${final.token}${origin}, led by ${nameOf(leader)} (passed ${yes} to ${4 - yes}).`
       : `Round ${run.id}: ${nameOf(leader)} proposed to ${final.action} ${final.token}${origin}; ${passed || bound ? "no order was placed" : `rejected ${yes} to ${4 - yes}`}.`;
     await updateState((s) => ({ ...s, recent: [...s.recent, summary] }));

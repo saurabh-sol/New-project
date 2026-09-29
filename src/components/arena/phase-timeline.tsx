@@ -10,6 +10,7 @@ const PHASES: Phase[] = ["monitor", "scan", "pitch", "debate", "negotiate", "vot
 export function PhaseTimeline() {
   const phase = useArena((s) => s.phase);
   const round = useArena((s) => s.round);
+  const committed = useArena((s) => s.committed);
   const active = PHASES.indexOf(phase);
 
   return (
@@ -34,7 +35,7 @@ export function PhaseTimeline() {
               )}
             >
               {i < active && <span className="mr-1 text-green-400">✓</span>}
-              {p}
+              {p === "vote" && committed ? "join" : p}
             </div>
           </div>
         ))}

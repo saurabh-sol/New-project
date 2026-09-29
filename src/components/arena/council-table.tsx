@@ -37,12 +37,13 @@ function useCountdown(): string | null {
 /** The round table in the middle of the floor, with a hologram of the shared pool. */
 export function CouncilTable() {
   const phase = useArena((s) => s.phase);
+  const committed = useArena((s) => s.committed);
   const focus = useArena((s) => s.focus);
   const agents = useArena((s) => s.agents);
   const quote = useMarket((s) => (focus ? s.quotes[focus] : undefined));
   const equity = usePoolEquity();
   const countdown = useCountdown();
-  const status = phase === "monitor" ? (countdown ? `Next session in ${countdown}` : "Watching positions") : PHASE_COPY[phase];
+  const status = phase === "monitor" ? (countdown ? `Next session in ${countdown}` : "Watching positions") : phase === "vote" && committed ? "Who joins" : PHASE_COPY[phase];
 
   return (
     <div

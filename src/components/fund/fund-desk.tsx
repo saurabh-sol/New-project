@@ -10,6 +10,7 @@ import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { requestMode, type AssetPreview, type TradeRequest } from "@/lib/assets";
 import { priceDecimals } from "@/lib/market";
 import { bonusFor, estimate, withdrawFee, type FundingTerms } from "@/lib/funding";
+import { COMMITTED_HOLD_ROUNDS } from "@/lib/council";
 import type { FundBonus, FundPosition, FundResult, FundStatus } from "@/lib/funding-types";
 import type { AgentId } from "@/lib/types";
 import { useFundStatus } from "@/lib/use-fund";
@@ -418,8 +419,12 @@ function RequestRules({ agent, usd, commitFrom, token }: { agent: AgentId; usd: 
   const committed = isFinite(usd) && requestMode(usd, commitFrom) === "commit";
   const it = token ?? "the token";
   const rows = [
-    { on: !committed, label: `Under ${money(commitFrom)}`, text: `${name} presents ${it} once. It is bought only if 3 of the 4 agents back it.` },
-    { on: committed, label: `${money(commitFrom)} or more`, text: `${name} is committed: it buys ${it} with up to the amount you fund, whatever the vote. The others choose whether to join.` },
+    { on: !committed, label: `Under ${money(commitFrom)}`, text: `${name} puts ${it} to the council once. All four agents weigh it, and it is bought only if 3 of them back it.` },
+    {
+      on: committed,
+      label: `${money(commitFrom)} or more`,
+      text: `${name} is committed: it buys ${it} with up to the amount you fund. Nobody votes on whether to trade; the others only choose whether to join. The position is held for at least ${COMMITTED_HOLD_ROUNDS} sessions, unless its stop-loss or target is hit first.`,
+    },
   ];
   return (
     <>
@@ -654,8 +659,9 @@ function Terms({ terms, symbol }: { terms: FundingTerms; symbol: string }) {
           </li>
           <li>
             <strong className="font-medium text-white/85">Trade requests.</strong> With a deposit you may name one Solana token. Under{" "}
-            {money(terms.commitFrom)} the council votes on it; from {money(terms.commitFrom)} the agent you fund is committed to buy it. The token must
-            have an active trading pool.
+            {money(terms.commitFrom)} the council votes on it; from {money(terms.commitFrom)} the agent you fund is committed to buy it, and the
+            position is held for at least {COMMITTED_HOLD_ROUNDS} sessions unless its stop-loss or target is hit. The token must have an active trading
+            pool.
           </li>
           <li>
             <strong className="font-medium text-white/85">Limits.</strong> {money(terms.minDeposit)} to {money(terms.maxDeposit)} per agent, in {symbol}.

@@ -19,6 +19,11 @@ export const MIN_ORDER_USD = 10;
 export const MAX_POSITION_SHARE = 0.4;
 /** A position must be held this many rounds before the council may sell it. */
 export const MIN_HOLD_ROUNDS = 2;
+/**
+ * A position bought on an agent's commitment to a funder is held this many rounds before the
+ * council may sell it. Its stop-loss and target still close it at any time.
+ */
+export const COMMITTED_HOLD_ROUNDS = 12;
 
 export type Stakes = Record<AgentId, number>;
 
@@ -35,6 +40,8 @@ export interface Position {
   openedRound: number;
   openedAt: number;
   leader: AgentId;
+  /** First round in which the council may sell it, when it was bought on a commitment to a funder. */
+  lockedUntil?: number;
 }
 
 export interface Portfolio {
@@ -120,7 +127,7 @@ export const poolCash = (p: Portfolio) => sum(p.cash);
 /** Whether the council is allowed to sell this token in this round. */
 export function canSell(p: Portfolio, token: string, round: number): boolean {
   const pos = positionOf(p, token);
-  return !!pos && round - pos.openedRound >= MIN_HOLD_ROUNDS;
+  return !!pos && round - pos.openedRound >= MIN_HOLD_ROUNDS && round >= (pos.lockedUntil ?? 0);
 }
 
 /**
@@ -148,6 +155,8 @@ interface BuyOrder {
   leader: AgentId;
   ts: number;
   id: string;
+  /** Bought on a commitment to a funder, so the council may not sell it for a while. */
+  committed?: boolean;
 }
 
 /** Opens a position, or adds to the one already held in that token. */
@@ -170,6 +179,7 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
     openedRound: held?.openedRound ?? o.round,
     openedAt: held?.openedAt ?? o.ts,
     leader: held?.leader ?? o.leader,
+    lockedUntil: o.committed ? o.round + COMMITTED_HOLD_ROUNDS : held?.lockedUntil,
   };
 
   return {
