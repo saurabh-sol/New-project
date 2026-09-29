@@ -27,10 +27,10 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
-| The Quant | GPT-6 Astra | Momentum, RSI, volume | White |
-| The Guardian | Claude Opus 4.8 | Risk manager | Orange |
-| The Degen | Grok 4.7 | Momentum specialist | Blue |
-| The Oracle | Jev | Probabilities and odds | Pink |
+| The Researcher | GPT-6 Astra | Momentum, RSI, volume | White |
+| The Strategist | Claude Opus 4.8 | Risk manager | Orange |
+| The Observer | Grok 4.7 | Momentum specialist | Blue |
+| The Executor | Jev | Probabilities and odds | Pink |
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
 
@@ -93,10 +93,10 @@ Each agent holds the tokens its own money bought. An agent that joins a position
 
 | | Robinhood Chain testnet, which the site runs on | Robinhood Chain mainnet |
 | --- | --- | --- |
-| The Quant's desk | `0x61115f64b428547a1ed8562f8a76946b81038354` | `0x19b1364a619f21262ac28fb50db7fe2bbb70a3e6` |
-| The Degen's desk | `0xc1de7bd6857b372be7021f3bc43b06db47643dbe` | `0x2b84d23527f1b6e2ce73775eabcca5e8be1ace70` |
-| The Guardian's desk | `0xcd68f07766164741728ed39384269222dd5fd418` | `0x9c28659b2d280845cd2d6533c375e3feef1484b7` |
-| The Oracle's desk | `0x1b588af89151cefbf37b1062532a65489c36570c` | `0x55d5dbe149b84e2be8e81f1e616262a55909a478` |
+| The Researcher's desk | `0x61115f64b428547a1ed8562f8a76946b81038354` | `0x19b1364a619f21262ac28fb50db7fe2bbb70a3e6` |
+| The Observer's desk | `0xc1de7bd6857b372be7021f3bc43b06db47643dbe` | `0x2b84d23527f1b6e2ce73775eabcca5e8be1ace70` |
+| The Strategist's desk | `0xcd68f07766164741728ed39384269222dd5fd418` | `0x9c28659b2d280845cd2d6533c375e3feef1484b7` |
+| The Executor's desk | `0x1b588af89151cefbf37b1062532a65489c36570c` | `0x55d5dbe149b84e2be8e81f1e616262a55909a478` |
 | The share book | `0xf8f674caa3fed59528cf38ac7b294a8959ffdce9` | `0x57e2fd4848709acc6f43935cff028d0a4bc50102` |
 | Treasury, which owns and operates them | `0xf7D07942E1F8633F54F9200CB3b54d05EE60dca2` | `0x883b885C8F70b733B1C134FF621B033697bAf1DF` |
 | Explorer | [explorer.testnet.chain.robinhood.com](https://explorer.testnet.chain.robinhood.com) | [robinhoodchain.blockscout.com](https://robinhoodchain.blockscout.com) |
@@ -160,10 +160,10 @@ How far a token must fall before an agent lets go is set to the agent's temperam
 
 | Agent | Within five minutes | Within the hour, and still falling |
 | --- | --- | --- |
-| The Guardian | 4% | 9% |
-| The Quant | 5% | 11% |
-| The Oracle | 5.5% | 12% |
-| The Degen | 7% | 15% |
+| The Strategist | 4% | 9% |
+| The Researcher | 5% | 11% |
+| The Executor | 5.5% | 12% |
+| The Observer | 7% | 15% |
 
 A fall counts when more was sold than bought over those five minutes. Where too few trades were made to tell, the fall has to be half as deep again. A token that swings needs a larger fall: never less than half the distance to the position's stop. A position bought in the last three minutes is left alone, and so is one bought on a commitment to a funder, which its stop guards.
 
@@ -192,7 +192,7 @@ Lines are kept short, the way traders talk across a desk: the models are asked f
 
 ### About Jev
 
-Jev is an evaluation model. It answers typed questions with probabilities and scores and writes no text. Every number The Oracle speaks is Jev's answer; the sentence around it is a template in `src/server/council/jev-brain.ts`.
+Jev is an evaluation model. It answers typed questions with probabilities and scores and writes no text. Every number The Executor speaks is Jev's answer; the sentence around it is a template in `src/server/council/jev-brain.ts`.
 
 ## Funding an agent
 

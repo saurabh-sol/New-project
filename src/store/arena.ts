@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AGENT_ORDER } from "@/lib/agents";
+import { AGENT_ORDER, withPresentNames } from "@/lib/agents";
 import type { DeskAsset } from "@/lib/assets";
 import type { DeskInfo } from "@/lib/chains";
 import { agentPnl, newPortfolio, type Emotion, type Fill, type Portfolio } from "@/lib/council";
@@ -177,7 +177,8 @@ export const useArena = create<ArenaStore>((set) => ({
           if (sameSpot(s.agents[e.agent].spot, e.to)) return {};
           return patchAgent(e.agent, { spot: e.to, walking: true, bubble: null });
         case "message": {
-          const m = e.message;
+          // A session from before the agents were renamed is shown with the names they have now.
+          const m = { ...e.message, text: withPresentNames(e.message.text) };
           const messages = [...s.messages, m].slice(-MAX_MESSAGES);
           // System notes and votes go to the transcript only. A vote shows on the floor as a YES/NO sign.
           if (m.kind === "system" || m.kind === "vote") return { messages };
@@ -194,7 +195,7 @@ export const useArena = create<ArenaStore>((set) => ({
         case "vote":
           return patchAgent(e.agent, { vote: e.approve, voteReason: e.reason, joining: !!e.joining });
         case "recap":
-          return { messages: inOrder([...s.messages.filter((m) => m.round !== e.round), ...e.messages]).slice(-MAX_MESSAGES) };
+          return { messages: inOrder([...s.messages.filter((m) => m.round !== e.round), ...e.messages.map((m) => ({ ...m, text: withPresentNames(m.text) }))]).slice(-MAX_MESSAGES) };
         case "history":
           return { history: { oldest: s.history.oldest === null ? e.oldest : Math.min(s.history.oldest, e.oldest), more: e.more } };
         case "consensus":

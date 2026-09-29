@@ -1,9 +1,13 @@
 import type { AgentId, AgentProfile } from "./types";
 
+/**
+ * The four agents. The keys are what the desk has called them since the start, and are what the
+ * database, the contracts' settings and the code know them by. `name` is what people see.
+ */
 export const AGENTS: Record<AgentId, AgentProfile> = {
   quant: {
     id: "quant",
-    name: "The Quant",
+    name: "The Researcher",
     role: "Momentum & technicals",
     model: "GPT-6 Astra",
     provider: "OpenAI",
@@ -16,7 +20,7 @@ export const AGENTS: Record<AgentId, AgentProfile> = {
   },
   degen: {
     id: "degen",
-    name: "The Degen",
+    name: "The Observer",
     role: "Momentum & conviction",
     model: "Grok 4.7",
     provider: "SpaceXAI",
@@ -29,7 +33,7 @@ export const AGENTS: Record<AgentId, AgentProfile> = {
   },
   guardian: {
     id: "guardian",
-    name: "The Guardian",
+    name: "The Strategist",
     role: "Risk manager",
     model: "Claude Opus 4.8",
     provider: "Anthropic",
@@ -42,7 +46,7 @@ export const AGENTS: Record<AgentId, AgentProfile> = {
   },
   oracle: {
     id: "oracle",
-    name: "The Oracle",
+    name: "The Executor",
     role: "Probabilities & odds",
     model: "Jev",
     provider: "TypeSafe AI",
@@ -56,3 +60,9 @@ export const AGENTS: Record<AgentId, AgentProfile> = {
 };
 
 export const AGENT_ORDER: AgentId[] = ["quant", "degen", "guardian", "oracle"];
+
+/** What the agents were called before they were renamed. Older sessions on record still use these names. */
+const FORMER: Record<string, AgentId> = { Quant: "quant", Degen: "degen", Guardian: "guardian", Oracle: "oracle" };
+
+/** A line from the desk's record, with every agent called by its present name. */
+export const withPresentNames = (text: string) => text.replace(/\b(Quant|Degen|Guardian|Oracle)\b/g, (old) => AGENTS[FORMER[old]].name.replace("The ", ""));

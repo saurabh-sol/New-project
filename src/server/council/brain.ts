@@ -22,7 +22,7 @@ export interface ClosingInput {
   alone: boolean;
 }
 
-/** Who put cash in beside the leader, as "The Quant ($10)", or "nobody". */
+/** Who put cash in beside the leader, as "The Researcher ($10)", or "nobody". */
 export const backers = (pledges: Pledge[], name: (a: AgentId) => string) =>
   pledges
     .filter((p) => p.support && p.stakeUsd > 0)

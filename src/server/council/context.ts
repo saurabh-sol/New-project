@@ -1,5 +1,5 @@
 /** Everything an agent is told at the start of a round, as text and as structured data. */
-import { AGENTS } from "@/lib/agents";
+import { AGENTS, withPresentNames } from "@/lib/agents";
 import type { RequestBrief } from "@/lib/assets";
 import { agentPnl, canSell, poolCapital, poolEquity, positionOf, unitsOf, unrealized, type Portfolio } from "@/lib/council";
 import type { Exchange, Pitch, Proposal, TokenStats } from "@/lib/council-types";
@@ -140,7 +140,8 @@ export function briefing(ctx: RoundCtx, agent: AgentId): string {
     deskReport(ctx, agent),
     "",
     "RECENT ROUNDS",
-    ctx.recent.length ? ctx.recent.map((r) => `- ${r}`).join("\n") : "- none yet",
+    // Rounds from before the agents were renamed speak of them by the names they have now.
+    ctx.recent.length ? ctx.recent.map((r) => `- ${withPresentNames(r)}`).join("\n") : "- none yet",
   ].join("\n");
 }
 

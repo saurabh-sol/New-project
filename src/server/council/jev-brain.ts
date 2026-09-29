@@ -1,6 +1,6 @@
 /**
- * The Oracle, backed by Jev. Jev is an evaluation model: it answers typed questions
- * with probabilities and scores and writes no text. Every number The Oracle speaks
+ * The Executor, backed by Jev. Jev is an evaluation model: it answers typed questions
+ * with probabilities and scores and writes no text. Every number The Executor speaks
  * is Jev's answer; the sentence around it is a template.
  */
 import { gateway } from "@ai-sdk/gateway";

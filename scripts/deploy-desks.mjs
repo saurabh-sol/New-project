@@ -20,7 +20,8 @@ import { createPublicClient, createWalletClient, formatEther, formatUnits, getAd
 import { privateKeyToAccount } from "viem/accounts";
 import { robinhood, robinhoodTestnet } from "viem/chains";
 
-const AGENTS = { QUANT: "The Quant", DEGEN: "The Degen", GUARDIAN: "The Guardian", ORACLE: "The Oracle" };
+// The settings keep the agents' first names. The contracts are given the names people see.
+const AGENTS = { QUANT: "The Researcher", DEGEN: "The Observer", GUARDIAN: "The Strategist", ORACLE: "The Executor" };
 const MIN_ETH = parseEther("0.002");
 const mainnet = process.env.ROBINHOOD_NETWORK === "mainnet";
 const chain = mainnet ? robinhood : robinhoodTestnet;

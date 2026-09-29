@@ -1,7 +1,7 @@
 /** Agents backed by a language model (GPT, Claude, Grok), called through Vercel AI Gateway. */
 import { generateText } from "ai";
 import { z } from "zod";
-import { AGENTS } from "@/lib/agents";
+import { AGENTS, withPresentNames } from "@/lib/agents";
 import { COMMITTED_HOLD_ROUNDS, EMOTIONS, MIN_HOLD_ROUNDS, OWN_BOOK_SHARE } from "@/lib/council";
 import type { Exchange } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
@@ -88,7 +88,7 @@ const heard = (debate: Exchange[]) => (debate.length ? `\nALREADY SAID IN THIS D
 function memo(ctx: RoundCtx, agent: AgentId): string {
   const lines = ctx.said[agent];
   if (lines.length === 0) return "";
-  return `\n\nWHAT YOU SAID RECENTLY (do not repeat these points or reuse their wording)\n${lines.map((l) => `- "${l}"`).join("\n")}`;
+  return `\n\nWHAT YOU SAID RECENTLY (do not repeat these points or reuse their wording)\n${lines.map((l) => `- "${withPresentNames(l)}"`).join("\n")}`;
 }
 
 export function llmBrain(cfg: CouncilConfig): Brain {

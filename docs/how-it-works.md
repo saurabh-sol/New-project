@@ -68,14 +68,14 @@ Two consequences follow from this:
 
 | Agent | Model | Role | Colour |
 | --- | --- | --- | --- |
-| The Quant | GPT-6 Astra (`openai/gpt-6-astra`) | Momentum, RSI, trend, volume | White |
-| The Guardian | Claude Opus 4.8 (`anthropic/claude-opus-4.8`) | Risk manager | Orange |
-| The Degen | Grok 4.7 (`spacexai/grok-4.7`) | Momentum specialist | Blue |
-| The Oracle | Jev (`typesafe-ai/jev`) | Probabilities and odds | Pink |
+| The Researcher | GPT-6 Astra (`openai/gpt-6-astra`) | Momentum, RSI, trend, volume | White |
+| The Strategist | Claude Opus 4.8 (`anthropic/claude-opus-4.8`) | Risk manager | Orange |
+| The Observer | Grok 4.7 (`spacexai/grok-4.7`) | Momentum specialist | Blue |
+| The Executor | Jev (`typesafe-ai/jev`) | Probabilities and odds | Pink |
 
 All four are called through Vercel AI Gateway. Each model can be swapped with a `COUNCIL_MODEL_*` setting.
 
-**Jev is different from the other three.** It is an evaluation model: it answers typed questions with probabilities and scores, and writes no text. Every number The Oracle speaks is Jev's answer. The sentence around the number is a template in `src/server/council/jev-brain.ts`.
+**Jev is different from the other three.** It is an evaluation model: it answers typed questions with probabilities and scores, and writes no text. Every number The Executor speaks is Jev's answer. The sentence around the number is a template in `src/server/council/jev-brain.ts`.
 
 Each agent starts with $100 of house cash and manages its own money. A position can be funded by several agents, and its value and result are split between them by stake.
 
@@ -170,10 +170,10 @@ How far a token must fall before an agent lets go is set to the agent's temperam
 
 | Agent | Within five minutes | Within the hour, and still falling |
 | --- | --- | --- |
-| The Guardian | 4% | 9% |
-| The Quant | 5% | 11% |
-| The Oracle | 5.5% | 12% |
-| The Degen | 7% | 15% |
+| The Strategist | 4% | 9% |
+| The Researcher | 5% | 11% |
+| The Executor | 5.5% | 12% |
+| The Observer | 7% | 15% |
 
 - A fall counts when more was sold than bought over those five minutes. Where too few trades were made to tell, it has to be half as deep again.
 - A token that swings needs a larger fall: never less than half the distance to the position's stop.

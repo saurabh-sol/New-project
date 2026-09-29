@@ -514,7 +514,7 @@ export function Character({ id, pose, emotion = "neutral", thinking = false, fac
           <motion.g animate={rig.head} style={NECK}>
             <motion.g animate={{ rotate: look.headTilt, y: look.headDrop }} transition={{ type: "spring", stiffness: 140, damping: 14 }} style={NECK}>
               <Headgear id={id} color={a.color} />
-              {/* The Guardian wears headphones where the others have ears. */}
+              {/* The Strategist wears headphones where the others have ears. */}
               {id !== "guardian" && (
                 <g fill={a.color} opacity="0.9">
                   <rect x="12.4" y="24" width="5" height="10" rx="2.5" />
