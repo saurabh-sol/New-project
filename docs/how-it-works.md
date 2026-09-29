@@ -214,7 +214,7 @@ With a deposit, a funder may name a token on Robinhood Chain and ask the agent t
 **How a request moves through the system**
 
 1. **Lookup.** The fund page shows the token's name, price, liquidity and daily volume before the user deposits.
-2. **Checks.** A Stock Token must be active and not halted. Any other token needs a trading pool on Robinhood Chain with at least $50,000 of liquidity and $10,000 of daily volume, and must be at least a day old. The six listed tokens are refused, since the agents already trade them.
+2. **Checks.** A Stock Token must be active and not halted. Any other token on Robinhood Chain can be asked for by its contract address if it has a live price, traded in the last day, and has about three hours of trading on record for the agents to read. On mainnet the floors are higher: $50,000 of liquidity, $10,000 of daily volume and a day of age. The six listed tokens are refused, since the agents already trade them, and so is USDG, which is the desk's own money. An address where no token trades is refused with the reason.
 3. **Queue.** Once the deposit is confirmed, the request waits. One request is heard per session, oldest first. A wallet can have one request waiting at a time.
 4. **Hearing.** The checks run again. The request is dropped if the funding behind it was withdrawn. A request for a Stock Token waits while its market is closed, and those behind it go ahead.
 5. **Session.** Every agent speaks to the requested token, so the request is the whole desk's business.
@@ -255,7 +255,8 @@ The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Et
 
 The browser plays each session like a short scene (`src/lib/director.ts`):
 
-- The conversation is on the left, the floor with the agents on the right, and the chart below them. On a phone the floor comes first.
+- The agents' cards are on the left, the trading floor is in the middle and the conversation is on the right, with the chart below them. On a phone the floor comes first, then the conversation, then the cards.
+- One agent has the floor at a time: a speech bubble closes when another agent speaks. A vote shows as a sign over the agent's head, and the reason for it is in the conversation.
 - Agents are characters with desks. They walk to the leader's desk to argue, carry coins over when they pledge cash, and gather at the table to vote.
 - Each line comes with an emotion, which the character shows.
 - The chart follows whichever token the council is debating, and marks the desk's trades with arrows.
@@ -267,7 +268,7 @@ A session is played **once per browser**. Coming back to the trading floor shows
 
 `/kiosk` is the same floor laid out for one screen with no scrolling, for a wall display or a Raspberry Pi. It hides the cursor and switches off effects a Pi's graphics chip handles poorly.
 
-The site is black and white. Colour is used only on the agents' characters, and green and red on gains and losses.
+The site is black and white, in a dark and a light theme. The button in the header switches between them and the choice is kept in the browser. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor stays dark in both themes.
 
 ## 12. Keeping the conversation fresh
 

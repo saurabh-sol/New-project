@@ -263,7 +263,7 @@ function Stepper({ step }: { step: number }) {
           </span>
           <span className={cn("hidden text-xs sm:inline", i <= step ? "text-white" : "text-white/35")}>{label}</span>
           {i === Math.min(step, STEPS.length - 1) && (
-            <motion.span layoutId="claim-step" className="absolute inset-x-0 bottom-0 h-0.5" style={{ background: "#fff" }} />
+            <motion.span layoutId="claim-step" className="absolute inset-x-0 bottom-0 h-0.5" style={{ background: "var(--ink)" }} />
           )}
         </li>
       ))}

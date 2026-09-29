@@ -217,7 +217,7 @@ export function FundDesk() {
                   onClick={() => setAgent(id)}
                   aria-pressed={picked}
                   className={cn("relative flex items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition", picked ? "bg-white/[0.07]" : "border-white/10 hover:bg-white/[0.04]")}
-                  style={picked ? { borderColor: "#fff" } : undefined}
+                  style={picked ? { borderColor: "var(--ink)" } : undefined}
                 >
                   <div className="w-12 shrink-0">
                     <Character id={id} pose={picked ? "talk" : "idle"} emotion={picked ? "happy" : "neutral"} />

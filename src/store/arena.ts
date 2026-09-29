@@ -177,7 +177,9 @@ export const useArena = create<ArenaStore>((set) => ({
           const messages = [...s.messages, m].slice(-MAX_MESSAGES);
           // System notes and votes go to the transcript only. A vote shows on the floor as a YES/NO sign.
           if (m.kind === "system" || m.kind === "vote") return { messages };
-          return { messages, ...patchAgent(m.agent, { bubble: m, emotion: m.emotion ?? s.agents[m.agent].emotion }) };
+          // One agent has the floor at a time: bubbles side by side would cover each other.
+          const quiet = patchAll({ bubble: null });
+          return { messages, agents: { ...quiet, [m.agent]: { ...quiet[m.agent], bubble: m, emotion: m.emotion ?? s.agents[m.agent].emotion } } };
         }
         case "offer": {
           const from = pointOf(e.from, s.agents[e.from].spot);

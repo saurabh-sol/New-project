@@ -1,10 +1,12 @@
 /**
- * Tokens on Robinhood Chain that a funder may ask for.
+ * Tokens on Robinhood Chain that a funder may ask for: any token that has a live price.
  *
  * A Robinhood Stock Token is priced by Robinhood. Any other token is priced by its most
  * liquid trading pool: DexScreener supplies the price and liquidity, GeckoTerminal the candles.
- * None of these needs a key.
+ * A token DexScreener has no price for is priced by GeckoTerminal. None of these needs a key.
  */
+import { createPublicClient, http, parseAbi } from "viem";
+import { robinhood } from "viem/chains";
 import type { Asset, AssetPreview, AssetQuote } from "@/lib/assets";
 import { isToken, type Candle, type Interval } from "@/lib/market";
 import { cached, getJson } from "./http";
@@ -20,12 +22,22 @@ const num = (raw: string | undefined, fallback: number) => {
   return raw !== undefined && raw !== "" && isFinite(n) && n >= 0 ? n : fallback;
 };
 
-/** A pool token must clear these before an agent will be asked to trade it. */
-export const requestLimits = () => ({
-  minLiquidityUsd: num(process.env.REQUEST_MIN_LIQUIDITY_USD, 50_000),
-  minVolumeUsd: num(process.env.REQUEST_MIN_VOLUME_USD, 10_000),
-  minAgeHours: num(process.env.REQUEST_MIN_AGE_HOURS, 24),
-});
+/** The desk's own money, on the mainnet that prices come from. */
+const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
+
+/**
+ * A pool token must clear these before an agent will be asked to trade it.
+ * With test money any token may be asked for, so long as it traded in the last day and its
+ * price is therefore a live one. With real money the desk keeps to established markets.
+ */
+export function requestLimits() {
+  const real = process.env.ROBINHOOD_NETWORK === "mainnet";
+  return {
+    minLiquidityUsd: num(process.env.REQUEST_MIN_LIQUIDITY_USD, real ? 50_000 : 0),
+    minVolumeUsd: num(process.env.REQUEST_MIN_VOLUME_USD, real ? 10_000 : 100),
+    minAgeHours: num(process.env.REQUEST_MIN_AGE_HOURS, real ? 24 : 0),
+  };
+}
 
 interface Pair {
   chainId: string;
@@ -83,22 +95,95 @@ async function lookupStock(query: string): Promise<AssetPreview | null> {
   };
 }
 
+// --- GeckoTerminal, for a token DexScreener has no price for ---
+
+interface GeckoPool {
+  id: string;
+  attributes: { address: string; reserve_in_usd?: string; pool_created_at?: string; price_change_percentage?: { h24?: string }; volume_usd?: { h24?: string } };
+  relationships: { base_token: { data: { id: string } } };
+}
+interface GeckoToken {
+  data?: {
+    attributes: { address: string; name: string; symbol: string; price_usd?: string | null };
+    relationships?: { top_pools?: { data?: Array<{ id: string }> } };
+  };
+  included?: GeckoPool[];
+}
+
+const geckoToken = (address: string) =>
+  getJson<GeckoToken>(`${GECKOTERMINAL}/tokens/${address.toLowerCase()}?include=top_pools`).catch((e) => {
+    // The service answers "not found" for a token it has never seen trade.
+    if (e instanceof Error && e.message.includes("(404)")) return {} as GeckoToken;
+    throw e;
+  });
+
+/** The token's most liquid pool, and the token's quote as GeckoTerminal reports it. `pool` names the pool to read, when it is known. */
+export async function geckoQuote(address: string, pool?: string): Promise<{ quote: AssetQuote; pool: GeckoPool; name: string; symbol: string } | null> {
+  const found = await geckoToken(address);
+  const token = found.data?.attributes;
+  const pools = found.included ?? [];
+  const top = (pool && pools.find((p) => same(p.attributes.address, pool))) || pools.find((p) => p.id === found.data?.relationships?.top_pools?.data?.[0]?.id) || pools[0];
+  if (!token || !top || !(Number(token.price_usd) > 0)) return null;
+
+  // A pool reports the change in the price of the token it is named after. For the other token of the pair, the candles say.
+  const named = same(top.relationships.base_token.data.id.split("_")[1] ?? "", address);
+  const change = named
+    ? Number(top.attributes.price_change_percentage?.h24 ?? 0)
+    : await poolCandles(top.attributes.address, address, "1h", 60)
+        .then((c) => (c.length > 24 ? (c[c.length - 1].close / c[c.length - 25].close - 1) * 100 : 0))
+        .catch(() => 0);
+  return {
+    pool: top,
+    name: token.name,
+    symbol: token.symbol,
+    // Liquidity and volume are the pool's own. Summed over every pool a token is in, one bad pool spoils the figure.
+    quote: { price: Number(token.price_usd), change24h: isFinite(change) ? change : 0, liquidityUsd: Number(top.attributes.reserve_in_usd ?? 0), volume24hUsd: Number(top.attributes.volume_usd?.h24 ?? 0) },
+  };
+}
+
+// --- the chain itself, to tell a token nobody trades from an address that is not a token ---
+
+const ERC20 = parseAbi(["function symbol() view returns (string)"]);
+let mainnet: ReturnType<typeof createPublicClient> | undefined;
+
+/** The symbol of the token at this address on Robinhood Chain, or null if there is no token there or the chain can't be reached. */
+function symbolOnChain(address: string): Promise<string | null> {
+  mainnet ??= createPublicClient({ chain: robinhood, transport: http(process.env.ROBINHOOD_MAINNET_RPC_URL || undefined, { timeout: 6_000 }) });
+  return mainnet
+    .readContract({ address: address as `0x${string}`, abi: ERC20, functionName: "symbol" })
+    .then((s) => cleanSymbol(String(s)))
+    .catch(() => null);
+}
+
 async function lookupPool(address: string): Promise<AssetPreview> {
+  if (same(address, USDG)) return { ok: false, error: "USDG is the money the desk trades with. Name a token for the agent to buy with it." };
+
   const pairs = (await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/tokens/${address}`)).pairs ?? [];
   const best = pairs
     .filter((p) => p.chainId === CHAIN && same(p.baseToken.address, address) && Number(p.priceUsd) > 0)
     .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
-  if (!best) return { ok: false, error: "No trading pool was found for that address on Robinhood Chain." };
 
-  const quote = poolQuote(best);
-  const symbol = best.baseToken.symbol.replace(/^\$/, "");
-  const thin = tooThin(symbol, quote, best.pairCreatedAt ? (Date.now() - best.pairCreatedAt) / 3_600_000 : Infinity);
+  let found: { quote: AssetQuote; asset: Omit<Asset, "key">; since: number | undefined };
+  if (best) {
+    found = { quote: poolQuote(best), since: best.pairCreatedAt, asset: { symbol: best.baseToken.symbol, name: best.baseToken.name, address: best.baseToken.address, kind: "pool", pool: best.pairAddress } };
+  } else {
+    const gecko = await geckoQuote(address);
+    if (!gecko) {
+      const symbol = await symbolOnChain(address);
+      return { ok: false, error: symbol ? `${symbol} is a token on Robinhood Chain, but nobody trades it in a pool yet, so it has no price the agents could trade at.` : "No token that trades on Robinhood Chain was found at that address." };
+    }
+    const created = Date.parse(gecko.pool.attributes.pool_created_at ?? "");
+    found = { quote: gecko.quote, since: isFinite(created) ? created : undefined, asset: { symbol: gecko.symbol, name: gecko.name, address, kind: "pool", pool: gecko.pool.attributes.address, feed: "gecko" } };
+  }
+
+  const symbol = found.asset.symbol.replace(/^\$/, "");
+  const thin = tooThin(symbol, found.quote, found.since ? (Date.now() - found.since) / 3_600_000 : Infinity);
   if (thin) return { ok: false, error: thin };
 
-  const asset = { symbol, name: best.baseToken.name, address: best.baseToken.address, kind: "pool" as const, pool: best.pairAddress };
+  const asset = { ...found.asset, symbol };
   // Anyone can launch a token called TSLA. One that borrows a Stock Token's symbol must not be mistaken for it.
   const taken = isToken(cleanSymbol(symbol)) || (await stockTokens().catch(() => new Map())).has(cleanSymbol(symbol));
-  return { ok: true, quote, asset: { ...asset, key: taken ? longKey(asset) : cleanSymbol(symbol) } };
+  return { ok: true, quote: found.quote, asset: { ...asset, key: taken ? longKey(asset) : cleanSymbol(symbol) } };
 }
 
 /** Finds the token a funder named, by contract address or by a Stock Token's symbol. */
@@ -125,6 +210,13 @@ export function assetQuote(asset: Asset): Promise<AssetQuote> {
       const q = quotes[asset.symbol];
       if (!q) throw new Error(`No live price for ${asset.symbol}`);
       return { price: q.price, change24h: q.change, liquidityUsd: null, volume24hUsd: q.volumeUsd, session: q.session };
+    });
+  }
+  if (asset.feed === "gecko") {
+    return cached(`quote:gecko:${asset.address}`, 30_000, async () => {
+      const found = await geckoQuote(asset.address, asset.pool);
+      if (!found) throw new Error(`No live price for ${asset.symbol}`);
+      return found.quote;
     });
   }
   return cached(`quote:${asset.pool}`, 10_000, async () => {
@@ -166,11 +258,16 @@ const SIZES = [60, 300, 1000];
  */
 export async function assetCandles(asset: Asset, span: Interval, limit: number, patient = false): Promise<Candle[]> {
   if (asset.kind === "stock") return stockCandles(asset.symbol, span, limit, patient);
+  return poolCandles(asset.pool ?? "", asset.address, span, limit, patient);
+}
+
+/** A pool's candles, priced in USD, for the one of its two tokens that is named. */
+async function poolCandles(pool: string, token: string, span: Interval, limit: number, patient = false): Promise<Candle[]> {
   const { unit, every, seconds, freshMs } = SPAN[span];
   const wanted = Math.min(Math.max(limit, 1), 1000);
   const count = SIZES.find((n) => n >= wanted) ?? 1000;
-  const all = await cached(`candles:${asset.pool}:${span}:${count}`, freshMs, async () => {
-    const url = `${GECKOTERMINAL}/pools/${asset.pool}/ohlcv/${unit}?aggregate=${every}&limit=${count}&currency=usd`;
+  const all = await cached(`candles:${pool}:${token.toLowerCase()}:${span}:${count}`, freshMs, async () => {
+    const url = `${GECKOTERMINAL}/pools/${pool}/ohlcv/${unit}?aggregate=${every}&limit=${count}&currency=usd&token=${token.toLowerCase()}`;
     const body = await getJson<{ data?: { attributes?: { ohlcv_list?: number[][] } } }>(url, patient);
     const rows = (body.data?.attributes?.ohlcv_list ?? []).map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
     return evenly(rows.sort((a, b) => a.time - b.time), seconds).slice(-count);

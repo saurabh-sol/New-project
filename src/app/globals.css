@@ -1,8 +1,55 @@
 @import "tailwindcss";
 
+/*
+ * Two themes, both black and white. The site is written in white ink on black paper, and the
+ * light theme changes the two around: every `white` and `black` in the markup follows.
+ * The trading floor is a lit stage and stays dark in both.
+ */
+:root,
+.stage {
+  --ink: #ffffff;
+  --paper: #000000;
+  --surface: #0a0a0a;
+  --color-green-400: #05df72;
+  --color-emerald-400: #00d294;
+  --color-red-400: #ff6568;
+  --color-red-300: #ffa3a3;
+}
 :root {
   --background: #000000;
   --foreground: #f5f5f5;
+  --shade: rgba(0, 0, 0, 0.9);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --ink: #0a0a0a;
+  --paper: #ffffff;
+  --surface: #ffffff;
+  --background: #f4f4f4;
+  --foreground: #0a0a0a;
+  --shade: rgba(0, 0, 0, 0.3);
+  /* Gains and losses, dark enough to read on white. */
+  --color-green-400: #15803d;
+  --color-emerald-400: #047857;
+  --color-red-400: #dc2626;
+  --color-red-300: #b91c1c;
+  color-scheme: light;
+}
+:root[data-theme="light"] .stage {
+  --ink: #ffffff;
+  --paper: #000000;
+  --surface: #0a0a0a;
+  --color-green-400: #05df72;
+  --color-emerald-400: #00d294;
+  --color-red-400: #ff6568;
+  --color-red-300: #ffa3a3;
+  color-scheme: dark;
+}
+:root,
+:root[data-theme="light"],
+.stage {
+  --color-white: var(--ink);
+  --color-black: var(--paper);
 }
 
 @theme inline {
@@ -26,8 +73,8 @@ body {
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(color-mix(in srgb, var(--ink) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 4%, transparent) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 20%, transparent 75%);
 }
@@ -36,8 +83,8 @@ body {
 .panel {
   position: relative;
   border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #0a0a0a;
+  border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  background: var(--surface);
 }
 
 .panel-title {
@@ -45,24 +92,24 @@ body {
   font-size: 11px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--ink) 50%, transparent);
 }
 
 /* A panel that should stand out: a brighter edge, nothing more. */
 .panel-strong {
-  border-color: rgba(255, 255, 255, 0.28);
+  border-color: color-mix(in srgb, var(--ink) 28%, transparent);
 }
 
-/* The main action: white on black. */
+/* The main action: the ink's colour, filled. */
 .btn-primary {
-  background: #ffffff;
-  color: #000000;
+  background: var(--ink);
+  color: var(--paper);
   font-weight: 600;
   border-radius: 9999px;
   transition: background 0.15s;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #d4d4d4;
+  background: color-mix(in srgb, var(--ink) 82%, var(--paper));
 }
 .btn-primary:disabled {
   opacity: 0.35;
@@ -71,16 +118,16 @@ body {
 
 .btn-ghost {
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: color-mix(in srgb, var(--ink) 80%, transparent);
   transition:
     background 0.15s,
     border-color 0.15s;
 }
 .btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+  border-color: color-mix(in srgb, var(--ink) 22%, transparent);
 }
 .btn-ghost:disabled {
   opacity: 0.4;
@@ -102,7 +149,7 @@ body {
 }
 
 /*
- * Light mode for small computers such as a Raspberry Pi: no blur, no glow filters,
+ * A lighter page for small computers such as a Raspberry Pi: no blur, no glow filters,
  * no large shadows. Movement stays, because it only uses transforms.
  */
 html.lite * {

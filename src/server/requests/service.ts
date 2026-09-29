@@ -11,13 +11,17 @@ import { nameOf } from "../council/context";
 import { assetStats } from "../council/stats";
 import { db, hasDb, num } from "../db";
 import { fundConfig } from "../fund/config";
-import { assetQuote, longKey, lookupAsset, tooThin } from "../market/assets";
+import { assetCandles, assetQuote, longKey, lookupAsset, tooThin } from "../market/assets";
 
 type Row = Record<string, unknown>;
 
 /** A request is given this many sessions before it is dropped, when sessions break or its market data can't be reached. */
 const MAX_ATTEMPTS = 6;
 const GAVE_UP = "The council could not hear this request: its sessions broke off, or the token's market data could not be reached.";
+/** The chart the agents read, as `assetStats` asks for it, and how much of it they need. */
+const STATS_SPAN = "5m";
+const STATS_CANDLES = 60;
+const STATS_NEEDS = 30;
 /** How many unusable requests one session will go through before it carries on without one. */
 const MAX_SKIPS = 3;
 
@@ -36,7 +40,14 @@ const toRequest = (r: Row): TradeRequest => ({
 /** `token` is a contract address on Robinhood Chain, or a Stock Token's symbol. */
 export async function previewAsset(token: unknown): Promise<AssetPreview> {
   if (typeof token !== "string" || !token.trim()) return { ok: false, error: "Enter a token's address or a Stock Token's symbol." };
-  return lookupAsset(token);
+  const found = await lookupAsset(token);
+  if (!found.ok || found.asset.kind !== "pool") return found;
+  // The agents read a token's chart before they trade it. Better to say so now than after the deposit.
+  const candles = await assetCandles(found.asset, STATS_SPAN, STATS_CANDLES).catch(() => null);
+  if (candles && candles.length < STATS_NEEDS) {
+    return { ok: false, error: `${found.asset.symbol} has under three hours of trading on record. That is too little for the agents to read, so try again later.` };
+  }
+  return found;
 }
 
 /** What is stored with a deposit that carries a request, until the deposit is paid. */

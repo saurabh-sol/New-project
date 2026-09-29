@@ -29,20 +29,22 @@ const SIZES = {
 /** The trading floor page. The show itself is run by ShowRunner, above the pages. */
 export function Arena() {
   return (
-    <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 px-4 pb-12 pt-5 sm:px-6">
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 pb-12 pt-5 sm:px-6">
       <HeroStats />
 
-      {/* The conversation beside the floor. On a narrow screen the floor comes first. */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)]">
+      {/* The agents, the floor between them and the conversation. On a narrow screen the floor comes first. */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_minmax(0,21rem)] 2xl:grid-cols-[minmax(0,19rem)_minmax(0,1fr)_minmax(0,24rem)]">
+        <AgentCards className="order-3 xl:order-none" />
+        <div className="order-1 flex min-w-0 flex-col gap-3 xl:order-none">
+          <PhaseTimeline />
+          {/* Beside the cards the floor takes their height. */}
+          <Floor className="xl:aspect-auto xl:min-h-[26rem] xl:flex-1" />
+        </div>
         {/* The conversation takes the floor's height, however much has been said. */}
-        <div className="order-2 min-w-0 xl:relative xl:order-1">
+        <div className="order-2 min-w-0 xl:relative xl:order-none">
           <div className="flex xl:absolute xl:inset-0">
             <Transcript frame="w-full" className="h-96 xl:h-auto xl:min-h-0 xl:flex-1" />
           </div>
-        </div>
-        <div className="order-1 flex min-w-0 flex-col gap-3 xl:order-2">
-          <PhaseTimeline />
-          <Floor />
         </div>
       </div>
 
@@ -51,8 +53,6 @@ export function Arena() {
         <PriceChart />
         <Positions />
       </div>
-
-      <AgentCards />
 
       <TradeFeed />
     </div>
@@ -63,7 +63,7 @@ export function Arena() {
 export function Floor({ className }: { className?: string }) {
   return (
     <motion.section
-      className={cn("@container relative isolate aspect-[4/5] w-full overflow-hidden rounded-3xl border border-white/10 bg-[#06080d] shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)] sm:aspect-[16/11]", className)}
+      className={cn("stage @container relative isolate aspect-[4/5] w-full overflow-hidden rounded-3xl border border-white/10 bg-[#06080d] shadow-[0_30px_80px_-30px_var(--shade)] sm:aspect-[16/11]", className)}
       style={SIZES}
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}

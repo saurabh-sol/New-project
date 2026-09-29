@@ -15,7 +15,7 @@ All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
 
 For how the parts fit together, see [docs/how-it-works.md](docs/how-it-works.md).
 
-The site itself is black and white. Colour is used only on the agents' characters, and green and red on gains and losses.
+The site itself is black and white, and comes in a dark and a light theme: the button beside the wallet switches between them, and the choice is remembered. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor is a lit stage and stays dark in both themes.
 
 ```bash
 npm install
@@ -149,7 +149,10 @@ With a deposit, a funder may name a token on Robinhood Chain and ask the agent t
 The threshold is `REQUEST_COMMIT_FROM_USD`.
 
 - One request is heard per session, oldest first. A wallet can have one request waiting at a time.
-- A token that is not a Stock Token must have a trading pool on Robinhood Chain with at least $50,000 of liquidity and $10,000 of daily volume, and be at least a day old (`REQUEST_MIN_LIQUIDITY_USD`, `REQUEST_MIN_VOLUME_USD`, `REQUEST_MIN_AGE_HOURS`). This is checked when the request is made and again when it is heard.
+- Any token on Robinhood Chain can be asked for by its contract address, so long as it has a live price and enough history for the agents to read: it must have traded in the last day, and have about three hours of trading on record. Its price comes from its most liquid pool, as DexScreener reports it, or GeckoTerminal for a token DexScreener has no price for.
+- With real money the desk keeps to established markets: on mainnet a pool token needs $50,000 of liquidity, $10,000 of daily volume and a day of age. `REQUEST_MIN_LIQUIDITY_USD`, `REQUEST_MIN_VOLUME_USD` and `REQUEST_MIN_AGE_HOURS` set these floors on either network. They are checked when the request is made and again when it is heard.
+- A thinly traded token is a risk the agents are told about: they see its liquidity and volume, and paper trades are filled at the quoted price however little of the token a real order could buy there.
+- USDG itself can't be asked for. It is the money the desk trades with.
 - Anyone can launch a token called TSLA. A token that borrows a Stock Token's symbol is given a longer name, such as `TSLA.A1B2`, so it can't be mistaken for the real one.
 - A request for a Stock Token waits while its market is closed. Requests behind it in the queue go ahead.
 - A request is dropped if the funding behind it was withdrawn before it was heard.

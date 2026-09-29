@@ -7,8 +7,8 @@ import type { AgentId, Pt, Spot } from "./types";
 
 /** Arena height / width on desktop, so vertical distance is weighted correctly. */
 const ARENA_ASPECT = 11 / 16;
-/** Walking speed, in % of arena width per second. */
-const WALK_SPEED = 24;
+/** Walking speed, in % of arena width per second. Slow enough that the feet keep up with the floor. */
+const WALK_SPEED = 13;
 
 export const DESKS: Record<AgentId, Pt & { side: "left" | "right" }> = {
   quant: { x: 17, y: 44, side: "left" },

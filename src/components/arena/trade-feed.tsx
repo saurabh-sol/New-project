@@ -70,8 +70,8 @@ export function TradeFeed() {
                   <motion.tr
                     key={f.id}
                     layout
-                    initial={{ opacity: 0, backgroundColor: "#ffffff33" }}
-                    animate={{ opacity: 1, backgroundColor: "#00000000" }}
+                    initial={{ opacity: 0, backgroundColor: "#80808055" }}
+                    animate={{ opacity: 1, backgroundColor: "#80808000" }}
                     transition={{ duration: 1.6 }}
                     className="border-t border-white/5"
                   >

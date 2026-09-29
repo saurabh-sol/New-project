@@ -6,6 +6,7 @@ import { ModeBadge } from "@/components/arena/mode-badge";
 import { ConnectButton } from "@/components/wallet/connect-button";
 import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
+import { ThemeToggle } from "./theme-toggle";
 import { Ticker } from "./ticker";
 
 const NAV = [
@@ -19,7 +20,7 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-[3000] border-b border-white/5 bg-black/80 backdrop-blur-xl">
       {/* On a phone the pages get a row of their own, so none is hidden behind the wallet button. */}
-      <div className="mx-auto flex w-full max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6 sm:py-3">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6 sm:py-3">
         <Link href="/" className="flex shrink-0 items-center gap-3">
           <Logo />
           <span className="flex flex-col leading-none">
@@ -47,8 +48,9 @@ export function SiteHeader() {
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <ModeBadge />
+          <ThemeToggle />
           <ConnectButton />
         </div>
       </div>

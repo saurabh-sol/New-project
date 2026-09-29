@@ -16,6 +16,11 @@ export interface Asset {
   kind: "stock" | "pool";
   /** For a pool token: the pool its price and candles come from. */
   pool?: string;
+  /**
+   * For a pool token: who reports its price. DexScreener does, when it is left out.
+   * GeckoTerminal does for a token DexScreener has no price for, such as one that pools are priced in.
+   */
+  feed?: "gecko";
 }
 
 export interface AssetQuote {

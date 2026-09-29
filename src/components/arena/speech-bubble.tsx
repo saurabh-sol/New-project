@@ -59,7 +59,7 @@ export function SpeechBubble({ message, tail }: { message: ChatMessage; tail: nu
       style={{ transformOrigin: `${tail}% 100%` }}
       initial={{ opacity: 0, scale: 0.5, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.8 }}
+      exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.12 } }}
       transition={{ type: "spring", stiffness: 320, damping: 24 }}
     >
       <div className="mb-1 flex items-center gap-2 font-mono text-[9px] tracking-[0.2em] text-white">

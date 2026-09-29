@@ -1,13 +1,14 @@
 "use client";
 
 import "@rainbow-me/rainbowkit/styles.css";
-import { darkTheme, RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { darkTheme, lightTheme, RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { defineChain } from "viem";
 import { createConfig, http, WagmiProvider, type Transport } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 import { robinhood, robinhoodTestnet } from "wagmi/chains";
+import { useTheme } from "@/lib/theme";
 
 const network = process.env.NEXT_PUBLIC_ROBINHOOD_NETWORK === "mainnet" ? robinhood : robinhoodTestnet;
 const rpcUrl = process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL;
@@ -42,11 +43,15 @@ const config = createConfig({
 });
 
 // Black and white, to match the rest of the site.
-const theme = darkTheme({ accentColor: "#ffffff", accentColorForeground: "#000000", borderRadius: "large", overlayBlur: "small" });
+const THEMES = {
+  dark: darkTheme({ accentColor: "#ffffff", accentColorForeground: "#000000", borderRadius: "large", overlayBlur: "small" }),
+  light: lightTheme({ accentColor: "#000000", accentColorForeground: "#ffffff", borderRadius: "large", overlayBlur: "small" }),
+};
 
 /** RainbowKit and what it depends on, for Ethereum-type wallets on Robinhood Chain. */
 export function Web3Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
+  const theme = THEMES[useTheme()];
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>

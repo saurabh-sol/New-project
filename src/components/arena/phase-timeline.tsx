@@ -30,7 +30,7 @@ export function PhaseTimeline() {
             )}
             <div
               className={cn(
-                "relative whitespace-nowrap px-2 py-1.5 text-center font-mono text-[10px] uppercase tracking-wider transition-colors sm:text-[11px]",
+                "relative whitespace-nowrap px-1.5 py-1.5 text-center font-mono text-[10px] uppercase tracking-wider transition-colors sm:px-2 sm:text-[11px] xl:px-1.5 xl:text-[10px] 2xl:px-2 2xl:text-[11px]",
                 i === active ? "text-white" : i < active ? "text-white/50" : "text-white/25",
               )}
             >

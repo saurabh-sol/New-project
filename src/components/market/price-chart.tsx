@@ -31,12 +31,24 @@ import {
   type Candle,
   type Interval,
 } from "@/lib/market";
+import { useTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { useMarket } from "@/store/market";
 
 const UP = "#22c55e";
 const DOWN = "#ef4444";
+
+/** The chart is drawn on a canvas, which the page's styles don't reach. */
+const chartColors = (theme: Theme) => {
+  const ink = theme === "light" ? "#000000" : "#ffffff";
+  return {
+    layout: { textColor: theme === "light" ? "#52525b" : "#8b95a7" },
+    grid: { vertLines: { color: `${ink}0d` }, horzLines: { color: `${ink}0d` } },
+    rightPriceScale: { borderColor: `${ink}1a` },
+    timeScale: { borderColor: `${ink}1a` },
+  };
+};
 
 interface ChartApi {
   chart: IChartApi;
@@ -75,6 +87,7 @@ export function PriceChart() {
 
   const boxRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<ChartApi | null>(null);
+  const theme = useTheme();
 
   useEffect(() => {
     if (!boxRef.current) return;
@@ -82,15 +95,12 @@ export function PriceChart() {
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#8b95a7",
         fontFamily: "var(--font-geist-mono), monospace",
         fontSize: 11,
         attributionLogo: true,
       },
-      grid: { vertLines: { color: "#ffffff0a" }, horzLines: { color: "#ffffff0a" } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: "#ffffff14" },
-      timeScale: { borderColor: "#ffffff14", timeVisible: true, secondsVisible: false, rightOffset: 6 },
+      timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 6 },
     });
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: UP,
@@ -109,6 +119,10 @@ export function PriceChart() {
       chart.remove();
     };
   }, []);
+
+  useEffect(() => {
+    apiRef.current?.chart.applyOptions(chartColors(theme));
+  }, [theme]);
 
   useEffect(() => {
     const api = apiRef.current;
@@ -233,7 +247,7 @@ export function PriceChart() {
       <div className="relative min-h-[340px] flex-1">
         <div ref={boxRef} className="absolute inset-0" />
         {status !== "live" && (
-          <div className="absolute inset-0 grid place-items-center bg-[#07090d]/70 text-sm text-white/50 backdrop-blur-sm">
+          <div className="absolute inset-0 grid place-items-center bg-black/70 text-sm text-white/50 backdrop-blur-sm">
             {status === "loading" ? (
               <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.4, repeat: Infinity }}>
                 Loading {token} candles…
