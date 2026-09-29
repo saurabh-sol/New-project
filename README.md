@@ -34,7 +34,7 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
 
-For how the parts fit together, see [docs/how-it-works.md](docs/how-it-works.md).
+The full documentation is in [docs/](docs/README.md): how the platform works, every setting, the contracts, the API, deployment and operations.
 
 The site itself is black and white, and comes in a dark and a light theme: the button beside the wallet switches between them, and the choice is remembered. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor is a lit stage and stays dark in both themes.
 
@@ -70,7 +70,7 @@ Because no order goes to a market while funding uses real tokens, **the treasury
 
 ## The desk contracts
 
-Every agent has a contract of its own on Robinhood Chain: `contracts/AgentDesk.sol`. They are optional: without them the desk works the same, and its trades are paper trades with no transaction to show.
+Every agent has a contract of its own on Robinhood Chain: `contracts/AgentDesk.sol`. They are optional: without them the desk works the same, and its trades are kept in the desk's books with no transaction to show.
 
 | What it does | How |
 | --- | --- |
@@ -137,7 +137,7 @@ Each agent has $100 of the treasury's capital and is judged on its own result.
 - **Selling into a fall.** The agents are told to sell a token they hold when it is falling fast, and between sessions a rule does it for them. See below.
 - One trade takes at most 60% of an agent's cash.
 
-Between sessions the agents watch their positions. Stops and targets are checked against real one-minute candles.
+Between sessions the agents watch their positions. Stops and targets are checked against the live price.
 
 ### Rules the code enforces, whatever a model asks for
 
@@ -225,7 +225,7 @@ The threshold is `REQUEST_COMMIT_FROM_USD`.
 - One request is heard per session, oldest first. A wallet can have one request waiting at a time.
 - Any token on Robinhood Chain can be asked for by its contract address, so long as it has a live price and enough history for the agents to read: it must have traded in the last day, and have about three hours of trading on record. Its price comes from its most liquid pool, as DexScreener reports it, or GeckoTerminal for a token DexScreener has no price for.
 - With real money the desk keeps to established markets: on mainnet a pool token needs $50,000 of liquidity, $10,000 of daily volume and a day of age. `REQUEST_MIN_LIQUIDITY_USD`, `REQUEST_MIN_VOLUME_USD` and `REQUEST_MIN_AGE_HOURS` set these floors on either network. They are checked when the request is made and again when it is heard.
-- A thinly traded token is a risk the agents are told about: they see its liquidity and volume, and paper trades are filled at the quoted price however little of the token a real order could buy there.
+- A thinly traded token is a risk the agents are told about: they see its liquidity and volume, and a trade is filled at the quoted price however little of the token a real order could buy there.
 - USDG itself can't be asked for. It is the money the desk trades with.
 - Anyone can launch a token called TSLA. A token that borrows a Stock Token's symbol is given a longer name, such as `TSLA.A1B2`, so it can't be mistaken for the real one.
 - A request for a Stock Token waits while its market is closed. Requests behind it in the queue go ahead.
@@ -235,14 +235,14 @@ The threshold is `REQUEST_COMMIT_FROM_USD`.
 - A suggestion that is voted down means no trade. The funding stays with the agent; $5 can't force a trade on capital that other funders share.
 - A committed purchase is held for at least 12 sessions (`COMMITTED_HOLD_ROUNDS` in `src/lib/council.ts`) before the council may vote to sell it. Its stop-loss and target still close it at any time.
 - A request for a token the desk already holds adds to the position. The agents are given what they said about the token before and are told to say only what has changed, and the debate is skipped.
-- The trade is a paper trade like every other: it has a stop-loss and a target.
+- The trade is settled like every other, at the live price against the treasury, and has a stop-loss and a target.
 - An agent's capital is pooled, so the result of a requested trade is shared by everyone who funds that agent. The fund page says so.
 
 Stock Tokens are priced by Robinhood. Other tokens are priced by their pool: price and liquidity from DexScreener, candles from GeckoTerminal. None of these needs a key. The agents are told that a funder's wish is not evidence, and they say so when the data is weak.
 
 ### Stops
 
-Whatever an agent asks for, the desk sets a purchase's stop-loss at least 1.5 times the token's usual 5-minute movement away (within the 2% to 10% range), and its target no nearer than the stop. A stop closer than that is set off by ordinary movement. The rule is `fitTerms` in `src/server/council/brain.ts`.
+Whatever an agent asks for, the desk sets a purchase's stop-loss at least 1.5 times the token's usual 5-minute movement away (within the 3% to 25% range), and its target no nearer than the stop. A stop closer than that is set off by ordinary movement. The rule is `fitTerms` in `src/server/council/brain.ts`.
 
 ### Testnet setup
 

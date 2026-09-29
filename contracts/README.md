@@ -11,7 +11,7 @@ The `.json` files hold each contract's compiled code, which the scripts in `scri
 
 ## Where they are deployed
 
-See the table in the project's README, under "Where the contracts are". On mainnet they are verified on Sourcify (exact match) and on Blockscout.
+See [docs/07-contracts.md](../docs/07-contracts.md#where-the-contracts-are), which also says how to deploy and replace them. On mainnet they are verified on Sourcify (exact match) and on Blockscout.
 
 ## What a trade is
 
