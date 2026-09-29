@@ -1,12 +1,12 @@
 "use client";
 
 import { AnimatePresence } from "motion/react";
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore } from "react";
 import { erc20Abi } from "viem";
 import { useAccount, useConnect, useDisconnect, useSignMessage, useSwitchChain, useWriteContract, type Connector } from "wagmi";
 import type { ChainId, DepositProof, PreparedDeposit } from "@/lib/chains";
 import { ConnectWindow, type WalletOption } from "./connect-window";
-import { CHAIN, WALLETCONNECT } from "./web3-providers";
+import { CHAIN, UNNAMED, WALLETCONNECT } from "./web3-providers";
 
 interface WalletContext {
   /** "robinhood" once a wallet is connected, null before. */
@@ -31,16 +31,22 @@ export function useWallet(): WalletContext {
   return ctx;
 }
 
-const METAMASK = "io.metamask";
+/** MetaMask names itself io.metamask, and its developer build io.metamask.flask. */
+const isMetaMask = (c: Connector) => c.id.startsWith("io.metamask");
 const INSTALL = { MetaMask: "https://metamask.io/download", "Robinhood Wallet": "https://robinhood.com/us/en/web3-wallet/" };
 
 /** A wallet that announced itself to the page, as opposed to a built-in fallback connector. */
 const announced = (c: Connector) => c.type === "injected" && c.id.includes(".");
+
+/** Whether the browser has a wallet at all, announced or not. */
+const hasProvider = () => typeof window !== "undefined" && !!(window as { ethereum?: unknown }).ethereum;
+const never = () => () => {};
 const cancelled = (e: unknown) => /reject|denied|cancel|declin/i.test(e instanceof Error ? e.message : String(e));
 
 /** The connected wallet on Robinhood Chain, and the window for choosing one. */
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [showing, setShowing] = useState(false);
+  const provider = useSyncExternalStore(never, hasProvider, () => false);
 
   const account = useAccount();
   const { connectors, connectAsync } = useConnect();
@@ -60,7 +66,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   // MetaMask and Robinhood Wallet are always offered. Every other installed wallet is listed under them.
   const { popular, installed } = useMemo(() => {
-    const metamask = connectors.find((c) => c.id === METAMASK);
+    const metamask = connectors.find(isMetaMask);
     const phone = connectors.find((c) => c.id === WALLETCONNECT);
     const popular: WalletOption[] = [
       { key: "metamask", name: "MetaMask", note: "Browser extension", icon: metamask?.icon ?? "/wallets/metamask.svg", connect: metamask ? () => connect(metamask) : undefined, installUrl: INSTALL.MetaMask },
@@ -75,10 +81,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       },
     ];
     const installed = connectors
-      .filter((c) => announced(c) && c.id !== METAMASK)
+      .filter((c) => announced(c) && !isMetaMask(c))
       .map((c): WalletOption => ({ key: c.id, name: c.name, note: "Installed", icon: c.icon ?? null, connect: () => connect(c) }));
+    // A wallet that is in the browser but announced nothing can still be reached, without its name.
+    const unnamed = connectors.find((c) => c.id === UNNAMED);
+    if (provider && unnamed && !metamask && installed.length === 0) {
+      installed.push({ key: UNNAMED, name: "Browser wallet", note: "Installed", icon: null, connect: () => connect(unnamed) });
+    }
     return { popular, installed };
-  }, [connectors, connect]);
+  }, [connectors, connect, provider]);
 
   const disconnect = useCallback(async () => {
     await disconnectAsync().catch(() => {});
