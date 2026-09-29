@@ -150,6 +150,16 @@ body {
   }
 }
 
+/* The block a terminal leaves where the next line will be written. */
+.cursor-blink {
+  animation: cursor-blink 1.1s steps(1) infinite;
+}
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 /*
  * A lighter page for small computers such as a Raspberry Pi: no blur, no glow filters,
  * no large shadows. Movement stays, because it only uses transforms.

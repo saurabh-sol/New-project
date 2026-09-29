@@ -52,6 +52,7 @@ npm run dev -- -p 3210
 | `/fund` | Fund an agent, and withdraw |
 | `/claim` | Arena Rewards |
 | `/kiosk` | Full-screen display for a wall screen or Raspberry Pi |
+| `/admin` | The admin's display: the floor with the trades, positions and system state set as a terminal shows them. Needs a sign-in |
 
 ## What is real and what is not
 
@@ -281,11 +282,45 @@ chromium-browser --kiosk --noerrdialogs --disable-infobars --app=http://<server-
 
 Turn off screen blanking in `raspi-config` so the display stays on. A Pi 4 or 5 with a 1080p screen is the target.
 
+## The admin's display
+
+`/admin` is one page for the person who runs the desk, made to be left on a Raspberry Pi's screen. Only the admin can open it.
+
+| On the screen | What it shows |
+| --- | --- |
+| Top line | Session number and stage, time to the next session, pool equity and result, whether the agents are on their AI models, the clock |
+| Prices | The tokens on the board and those held, running under the top line |
+| The floor | The council, as on the front page |
+| Agents | Each agent's model, what it is doing, its result, cash, money in trades, and its contract's balance |
+| `trades.log` | Every trade, the newest written at the bottom: time, side, token, size, price, who led it, why, the result, and how many of the agents' contracts hold it |
+| `positions` | What is held, the price against the stop and the target, who holds it and for how long |
+| `system` | The gateway and today's sessions, the last session and risk check, the price feed, the contracts, the treasury's gas and USDG, the server's version and uptime. A line turns red when something needs attention |
+
+**The account.** There is one, and it lives in three settings. Make them with:
+
+```bash
+node scripts/admin-password.mjs --out .data/admin.env
+```
+
+This writes `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` and `ADMIN_SESSION_SECRET` to the file, with the password on its third line. Set the three on the server. The password itself is stored nowhere else: the server keeps only a hash of it. To change the password, run the script again and set the new values. Changing `ADMIN_SESSION_SECRET` signs every browser out.
+
+- Five wrong guesses from one address lock it out for a quarter of an hour.
+- A browser stays signed in for 90 days after it was last used, so a display that is left on never has to sign in again.
+- The page asks search engines not to list it.
+
+**On the Pi.** Sign in once with a keyboard, then start the browser on the page:
+
+```bash
+chromium-browser --kiosk --noerrdialogs --disable-infobars --app=https://<your-site>/admin
+```
+
+The browser must keep its cookies between restarts, so don't start it with `--incognito`. The page loads itself afresh after a new version of the site goes live and every six hours, always between sessions. A display that is left open also keeps the desk running: sessions start while a page is open.
+
 ## Hosting on Render
 
 `render.yaml` describes the service: a Node web service that builds with `npm ci && npm run build`, starts with `npm run start`, and is checked at `/api/health`.
 
-Secrets are set on Render, in the service's Environment page, and are never committed: `AI_GATEWAY_API_KEY`, `DATABASE_URL`, `CLAIM_SECRET`, `TREASURY_PRIVATE_KEY`, `USDG_ADDRESS`, and the six `DESK_` settings that `scripts/deploy-desks.mjs` writes.
+Secrets are set on Render, in the service's Environment page, and are never committed: `AI_GATEWAY_API_KEY`, `DATABASE_URL`, `CLAIM_SECRET`, `TREASURY_PRIVATE_KEY`, `USDG_ADDRESS`, the six `DESK_` settings that `scripts/deploy-desks.mjs` writes, and the three `ADMIN_` settings that `scripts/admin-password.mjs` writes.
 
 Three things to know:
 

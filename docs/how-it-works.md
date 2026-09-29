@@ -322,6 +322,8 @@ A session is played **once per browser**. Coming back to the trading floor shows
 
 `/kiosk` is the same floor laid out for one screen with no scrolling, for a wall display or a Raspberry Pi. It hides the cursor and switches off effects a Pi's graphics chip handles poorly.
 
+`/admin` is the display for the person who runs the desk, and only they can open it. Beside the floor it shows, set as a terminal shows them: every trade, the newest written at the bottom; what is held, against its stop and target; each agent's figures and its contract's balance; and the state of what the desk runs on, from the gateway's budget to the treasury's gas. There is one admin account, kept in the server's settings as a username, a hash of the password and a secret that signs the cookie of a signed-in browser (`src/server/admin/auth.ts`). Five wrong guesses lock an address out for a quarter of an hour. A display that is left on stays signed in, and loads the page afresh by itself between sessions.
+
 The site is black and white, in a dark and a light theme. The button in the header switches between them and the choice is kept in the browser. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor stays dark in both themes.
 
 ## 12. Keeping the conversation fresh
@@ -394,9 +396,11 @@ Without a database the desk's state is kept in a local file, and funding is swit
 | `/fund` | Fund an agent, ask for a trade, withdraw |
 | `/claim` | Rewards |
 | `/kiosk` | Full-screen display |
+| `/admin` | The admin's display, behind a sign-in at `/admin/login` |
 
 | Route | Purpose |
 | --- | --- |
+| `GET /api/admin/status` | The state of what the desk runs on. For the signed-in admin only |
 | `GET /api/council/state` | The desk as it stands now |
 | `POST /api/council/round` | The session to watch, streamed stage by stage, or how long to wait |
 | `GET /api/council/round?round=N` | The record of a finished session |
@@ -423,6 +427,7 @@ src/
     fund/              the fund page
     claim/             the rewards page
     kiosk/             the full-screen display
+    admin/             the admin's display and its sign-in
     wallet/            wallet picker and connection
     home/, site/       header, footer, ticker, summary cards
   lib/                 shared by server and browser
@@ -434,6 +439,7 @@ src/
     assets.ts            requested tokens
   server/
     council/           session engine, agents' brains, risk, memory, state
+    admin/             the admin's account, sign-in and status
     fund/              deposits, withdrawals, bonuses, faucet
     requests/          the trade request queue
     rewards/           reward claims and payouts
