@@ -125,7 +125,7 @@ export function AgentCards() {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {ranked.map((id, i) => (
-          <Card key={id} id={id} rank={i + 1} funding={status?.agents.find((f) => f.agent === id)} canFund={!!status?.chains.some((c) => c.enabled)} />
+          <Card key={id} id={id} rank={i + 1} funding={status?.agents.find((f) => f.agent === id)} canFund={!!status?.chain.enabled} />
         ))}
       </div>
     </section>

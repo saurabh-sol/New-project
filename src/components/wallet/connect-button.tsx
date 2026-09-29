@@ -5,10 +5,8 @@ import { shortAddress } from "@/lib/wallet";
 import { cn } from "@/lib/utils";
 import { useWallet } from "./wallet-provider";
 
-const NETWORK = { solana: "Solana", base: "Base" };
-
 export function ConnectButton({ className }: { className?: string }) {
-  const { chain, address, walletName, icon, connecting, open, openAccount, disconnect } = useWallet();
+  const { address, walletName, icon, open, disconnect } = useWallet();
   const [menu, setMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -20,32 +18,26 @@ export function ConnectButton({ className }: { className?: string }) {
     return () => document.removeEventListener("mousedown", close);
   }, [menu]);
 
-  if (!chain || !address) {
+  if (!address) {
     return (
-      <button onClick={open} disabled={connecting} className={cn("btn-primary px-4 py-2 text-sm", className)}>
-        {connecting ? "Connecting…" : "Connect wallet"}
+      <button onClick={open} className={cn("btn-primary px-4 py-2 text-sm", className)}>
+        Connect wallet
       </button>
     );
   }
 
   return (
     <div ref={box} className={cn("relative", className)}>
-      {/* Ethereum-type wallets get RainbowKit's own account window. Solana wallets get a small menu. */}
-      <button
-        onClick={() => (chain === "base" ? openAccount() : setMenu((m) => !m))}
-        className="btn-ghost flex items-center gap-2 py-1.5 pl-1.5 pr-3 text-sm"
-        aria-expanded={chain === "solana" ? menu : undefined}
-      >
+      <button onClick={() => setMenu((m) => !m)} className="btn-ghost flex items-center gap-2 py-1.5 pl-1.5 pr-3 text-sm" aria-expanded={menu}>
         {icon ? (
           // eslint-disable-next-line @next/next/no-img-element -- wallet icons are inline data URIs
           <img src={icon} alt="" className="size-6 rounded-full" />
         ) : (
-          <span className="grid size-6 place-items-center rounded-full bg-white font-mono text-[9px] font-bold text-black">0x</span>
+          <span className="size-6 rounded-full bg-white" />
         )}
         <span className="font-mono text-xs text-white">{shortAddress(address)}</span>
-        <span className="hidden rounded-full bg-white/10 px-1.5 py-px text-[10px] text-white/60 sm:inline">{NETWORK[chain]}</span>
       </button>
-      {menu && chain === "solana" && (
+      {menu && (
         <div className="panel absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden p-1.5 text-sm">
           <div className="px-3 py-2 text-xs text-white/40">{walletName}</div>
           <button

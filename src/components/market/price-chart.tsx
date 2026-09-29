@@ -20,12 +20,13 @@ import {
   fetchCandles,
   INTERVAL_SECONDS,
   INTERVALS,
+  isToken,
   priceDecimals,
   subscribeCandles,
   TOKENS,
+  type AssetKey,
   type Candle,
   type Interval,
-  type Token,
 } from "@/lib/market";
 import { cn } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -44,15 +45,29 @@ interface ChartApi {
 /** The chart library plots UTC; shift so the axis reads in the viewer's local time. */
 const toChartTime = (unixSeconds: number) => (unixSeconds - new Date().getTimezoneOffset() * 60) as UTCTimestamp;
 
+/** How often the chart of a DEX-traded token asks for new candles. Its data source allows few requests. */
+const POOL_REFRESH_MS = 20_000;
+
+/** Candles of a token a funder asked for, which the server reads from the token's trading pool. */
+async function poolCandles(token: AssetKey, interval: Interval, signal: AbortSignal): Promise<Candle[]> {
+  const res = await fetch(`/api/market/candles?token=${encodeURIComponent(token)}&interval=${interval}`, { signal, cache: "no-store" });
+  if (!res.ok) throw new Error("Candles unavailable");
+  return ((await res.json()) as { candles: Candle[] }).candles;
+}
+
 const candleBar = (c: Candle) => ({ time: toChartTime(c.time), open: c.open, high: c.high, low: c.low, close: c.close });
 const volumeBar = (c: Candle) => ({ time: toChartTime(c.time), value: c.volume, color: c.close >= c.open ? `${UP}55` : `${DOWN}55` });
 
 export function PriceChart() {
   const councilToken = useArena((s) => s.focus);
   const fills = useArena((s) => s.fills);
-  const [pinned, setPinned] = useState<Token | null>(null);
+  const held = useArena((s) => s.portfolio.positions);
+  const [pinned, setPinned] = useState<AssetKey | null>(null);
   const [interval, setChartInterval] = useState<Interval>("1m");
-  const token: Token = pinned ?? councilToken ?? "SOL";
+  const token: AssetKey = pinned ?? councilToken ?? "SOL";
+  const listed = isToken(token);
+  // Tokens funders asked for get a tab while the desk holds them or is debating them.
+  const extra = [...new Set([...held.map((p) => p.token), councilToken ?? "", pinned ?? ""])].filter((t) => t && !isToken(t));
   const key = `${token}:${interval}`;
   const quote = useMarket((s) => s.quotes[token]);
 
@@ -104,27 +119,52 @@ export function PriceChart() {
     const ctrl = new AbortController();
     const alive = () => !ctrl.signal.aborted && apiRef.current === api;
     let unsubscribe = () => {};
+    // Never leave another token's candles under this token's name.
+    api.candles.setData([]);
+    api.volume.setData([]);
 
-    fetchCandles(token, interval, 300, ctrl.signal)
-      .then((rows) => {
-        if (!alive() || rows.length === 0) return;
-        const decimals = priceDecimals(rows[rows.length - 1].close);
-        api.candles.applyOptions({ priceFormat: { type: "price", precision: decimals, minMove: 10 ** -decimals } });
-        api.candles.setData(rows.map(candleBar));
-        api.volume.setData(rows.map(volumeBar));
-        api.chart.timeScale().setVisibleLogicalRange({ from: rows.length - 90, to: rows.length + 6 });
-        setLoaded(`${token}:${interval}`);
+    const draw = (rows: Candle[], reframe: boolean) => {
+      const decimals = priceDecimals(rows[rows.length - 1].close);
+      api.candles.applyOptions({ priceFormat: { type: "price", precision: decimals, minMove: 10 ** -decimals } });
+      api.candles.setData(rows.map(candleBar));
+      api.volume.setData(rows.map(volumeBar));
+      if (reframe) api.chart.timeScale().setVisibleLogicalRange({ from: rows.length - 90, to: rows.length + 6 });
+      setLoaded(`${token}:${interval}`);
+    };
 
-        unsubscribe = subscribeCandles(token, interval, (c) => {
-          if (!alive()) return;
-          api.candles.update(candleBar(c));
-          api.volume.update(volumeBar(c));
-          useMarket.getState().setPrice(token, c.close);
+    if (isToken(token)) {
+      fetchCandles(token, interval, 300, ctrl.signal)
+        .then((rows) => {
+          if (!alive() || rows.length === 0) return;
+          draw(rows, true);
+          unsubscribe = subscribeCandles(token, interval, (c) => {
+            if (!alive()) return;
+            api.candles.update(candleBar(c));
+            api.volume.update(volumeBar(c));
+            useMarket.getState().setPrice(token, c.close);
+          });
+        })
+        .catch(() => {
+          if (alive()) setFailed(`${token}:${interval}`);
         });
-      })
-      .catch(() => {
-        if (alive()) setFailed(`${token}:${interval}`);
-      });
+    } else {
+      // A DEX pool has no live stream to subscribe to, so its candles are fetched again every so often.
+      let first = true;
+      const load = () =>
+        poolCandles(token, interval, ctrl.signal)
+          .then((rows) => {
+            if (!alive() || rows.length === 0) return;
+            draw(rows, first);
+            first = false;
+            useMarket.getState().setPrice(token, rows[rows.length - 1].close);
+          })
+          .catch(() => {
+            if (alive() && first) setFailed(`${token}:${interval}`);
+          });
+      void load();
+      const timer = setInterval(load, POOL_REFRESH_MS);
+      unsubscribe = () => clearInterval(timer);
+    }
 
     return () => {
       ctrl.abort();
@@ -158,7 +198,7 @@ export function PriceChart() {
         <div className="flex items-baseline gap-2">
           <h2 className="text-base font-semibold text-white">
             {token}
-            <span className="text-white/35">/USDT</span>
+            <span className="text-white/35">{listed ? "/USDT" : "/USD"}</span>
           </h2>
           {quote && (
             <>
@@ -175,8 +215,8 @@ export function PriceChart() {
             <span className={cn("mr-1 inline-block size-1.5 rounded-full", pinned === null ? "animate-pulse bg-white" : "bg-white/30")} />
             Follow council
           </Tab>
-          {TOKENS.map((t) => (
-            <Tab key={t} active={pinned === t} onClick={() => setPinned(t)}>
+          {[...TOKENS, ...extra].map((t) => (
+            <Tab key={t} active={pinned === t} onClick={() => setPinned(t)} title={isToken(t) ? undefined : "Asked for by a funder"}>
               {t}
             </Tab>
           ))}
@@ -211,7 +251,7 @@ export function PriceChart() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-4 py-2 text-[11px] text-white/40">
         <span className="flex items-center gap-1.5">
           <span className={cn("size-1.5 rounded-full", status === "live" ? "animate-pulse bg-white" : "bg-white/30")} />
-          {status === "live" ? "Live prices · Binance spot" : "Offline"}
+          {status !== "live" ? "Offline" : listed ? "Live prices · Binance spot" : "DEX pool prices · GeckoTerminal"}
         </span>
         <span>Arrows mark the council&apos;s paper trades</span>
       </div>

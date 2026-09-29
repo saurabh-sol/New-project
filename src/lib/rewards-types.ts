@@ -10,9 +10,9 @@ export interface ClaimRecord {
 }
 
 export interface RewardsStatus {
-  /** demo: no treasury is configured on this chain, so nothing is ever sent. */
+  /** demo: no treasury is configured, so nothing is ever sent. */
   mode: "live" | "demo";
-  /** The chain the reward would be paid on: the connected wallet's chain. */
+  /** The network the reward is paid on. */
   chain: ChainStatus;
   amount: number;
   remainingToday: number;

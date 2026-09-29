@@ -7,6 +7,15 @@
 export const TOKENS = ["SOL", "JUP", "BONK", "WIF", "JTO", "PYTH"] as const;
 export type Token = (typeof TOKENS)[number];
 
+/**
+ * Names any asset the desk can hold: a listed token's symbol ("SOL"), or a key made for a
+ * token a funder asked for by contract address.
+ */
+export type AssetKey = string;
+
+/** Latest price of each asset. An asset with no live price is simply absent. */
+export type Prices = Record<AssetKey, number | undefined>;
+
 export const INTERVALS = ["1m", "5m", "15m", "1h"] as const;
 export type Interval = (typeof INTERVALS)[number];
 
@@ -41,6 +50,16 @@ const GECKO_ID: Record<Token, string> = {
   WIF: "dogwifcoin",
   JTO: "jito-governance-token",
   PYTH: "pyth-network",
+};
+
+/** Mint address of each listed token on Solana. */
+export const MINTS: Record<Token, string> = {
+  SOL: "So11111111111111111111111111111111111111112",
+  JUP: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+  BONK: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  WIF: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+  JTO: "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+  PYTH: "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
 };
 
 const pair = (token: string) => `${token}USDT`;

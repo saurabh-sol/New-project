@@ -8,7 +8,7 @@ import { experimental_evaluate as evaluate, type Experimental_EvaluationQuestion
 import type { Emotion } from "@/lib/council";
 import type { Proposal } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { clamp, type Brain } from "./brain";
+import { clamp, presents, requestStake, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefingState, describeDebate, describePitches, describeProposal, nameOf, px, type RoundCtx } from "./context";
 import { freshest, fundingLevel } from "./skills";
@@ -120,6 +120,23 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         if (askBreakout) return `, ${pct(a.probability(`break_${token}`))} to break its 1h high`;
         return "";
       };
+
+      if (presents(agent, ctx)) {
+        const r = ctx.request!;
+        const t = r.asset.key;
+        const p = a.probability(`up_${t}`);
+        const stake = requestStake(ctx, agent, 0);
+        const read = `${pct(p)} odds ${t} is higher in an hour${also(t)}`;
+        return {
+          ...base,
+          action: "BUY",
+          token: t,
+          stakeUsd: stake,
+          conviction: p >= 0.5 ? conviction(p) : 1,
+          emotion: p >= BUY_ABOVE ? "confident" : p < 0.5 ? "skeptical" : "neutral",
+          say: r.mode === "commit" ? `Funder's request: ${t}. ${read}. Committed for $${stake}.` : `Funder's request: ${t}. ${read}. The desk decides.`,
+        };
+      }
 
       const weakest = odds.filter((o) => ctx.sellable.includes(o.token)).sort((x, y) => x.p - y.p)[0];
       if (weakest && weakest.p < SELL_BELOW) {
@@ -233,6 +250,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
 
     // A closing line carries no judgement, so it needs no model call.
     async closing(_agent, _ctx, proposal, input) {
+      if (input.alone) return { emotion: "neutral", say: `Vote ${input.yes} to ${4 - input.yes}. I'm committed. Buying $${input.totalUsd.toFixed(0)} ${proposal.token}.` };
       if (!input.approved) {
         return { emotion: "neutral", say: `Fails ${input.yes} to ${4 - input.yes}. No trade.` };
       }

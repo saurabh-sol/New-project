@@ -1,6 +1,6 @@
-import { EMOTIONS, type Emotion } from "@/lib/council";
+import { EMOTIONS, MIN_ORDER_USD, type Emotion } from "@/lib/council";
 import type { Exchange, Line, Pitch, Pledge, Proposal } from "@/lib/council-types";
-import { isToken, type Token } from "@/lib/market";
+import type { AssetKey } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import type { RoundCtx } from "./context";
 
@@ -11,9 +11,12 @@ export type PledgeOut = SayOut & { support: boolean; stakeUsd: number; reason: s
 
 export interface ClosingInput {
   pledges: Pledge[];
+  /** Whether the trade goes ahead. */
   approved: boolean;
   yes: number;
   totalUsd: number;
+  /** The trade goes ahead on the leader's commitment to a funder, without the votes to pass. */
+  alone: boolean;
 }
 
 /** How one agent thinks. Implemented by language models, the evaluation model, and a scripted stand-in. */
@@ -47,10 +50,26 @@ export function cleanSay(text: unknown): string {
 }
 
 export const asEmotion = (v: unknown): Emotion => ((EMOTIONS as readonly string[]).includes(String(v)) ? (v as Emotion) : "neutral");
-export const asToken = (v: unknown, fallback: Token): Token => {
-  const t = String(v ?? "").toUpperCase();
-  return isToken(t) ? t : fallback;
+/** The token the model named, if it is one the desk is looking at this round. Otherwise the first on the board. */
+export const asToken = (v: unknown, ctx: RoundCtx): AssetKey => {
+  const t = String(v ?? "").trim().toUpperCase();
+  return ctx.stats.find((s) => s.token.toUpperCase() === t)?.token ?? ctx.stats[0].token;
 };
+
+/** Whether this agent is the one presenting a funder's request this round. */
+export const presents = (agent: AgentId, ctx: RoundCtx) => ctx.request?.agent === agent;
+
+/**
+ * The cash an agent puts behind a funder's request. Committed, it is the funding that came
+ * with the request. Suggested, it is what the agent chose, but never less than that funding
+ * or the desk's smallest order.
+ */
+export function requestStake(ctx: RoundCtx, agent: AgentId, chosen: number): number {
+  const r = ctx.request!;
+  const cash = ctx.portfolio.cash[agent];
+  const floor = Math.max(r.usd, MIN_ORDER_USD);
+  return Math.floor(Math.min(cash, r.mode === "commit" ? floor : Math.max(chosen, floor)));
+}
 
 /**
  * Forces a pitch to obey the desk's rules, whatever the model asked for:
@@ -66,6 +85,8 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
     sellPct: out.sellPct >= 75 ? 100 : 50,
     say: cleanSay(out.say),
   };
+  // A funder's request is always presented as a purchase of the token asked for.
+  if (presents(agent, ctx)) return { ...p, action: "BUY", token: ctx.request!.asset.key, stakeUsd: requestStake(ctx, agent, out.stakeUsd), sellPct: 100 };
   if (p.action === "SELL" && !ctx.sellable.includes(p.token)) p.action = "HOLD";
   if (p.action === "BUY") {
     p.stakeUsd = Math.floor(clamp(p.stakeUsd, 0, cash));

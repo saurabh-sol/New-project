@@ -1,12 +1,15 @@
 import { create } from "zustand";
-import { fetchQuotes, isToken, type Quote, type Token } from "@/lib/market";
+import { fetchQuotes, type AssetKey, type Prices, type Quote } from "@/lib/market";
 
 interface MarketStore {
-  quotes: Partial<Record<Token, Quote>>;
+  /** Listed tokens come from the public price feed; tokens a funder asked for come from the server. */
+  quotes: Record<AssetKey, Quote | undefined>;
   /** "live" once real quotes arrived, "down" if the feed can't be reached. */
   status: "loading" | "live" | "down";
-  setQuotes: (q: Partial<Record<Token, Quote>>) => void;
-  setPrice: (token: Token, price: number) => void;
+  setQuotes: (q: Record<AssetKey, Quote | undefined>) => void;
+  /** Quotes the server passed on for tokens funders asked for. They say nothing about the public feed's health. */
+  setAssetQuotes: (q: Record<AssetKey, Quote>) => void;
+  setPrice: (token: AssetKey, price: number) => void;
   setStatus: (s: MarketStore["status"]) => void;
 }
 
@@ -14,6 +17,7 @@ export const useMarket = create<MarketStore>((set) => ({
   quotes: {},
   status: "loading",
   setQuotes: (q) => set((s) => ({ quotes: { ...s.quotes, ...q }, status: "live" })),
+  setAssetQuotes: (q) => set((s) => ({ quotes: { ...s.quotes, ...q } })),
   setPrice: (token, price) =>
     set((s) => {
       const prev = s.quotes[token];
@@ -23,15 +27,14 @@ export const useMarket = create<MarketStore>((set) => ({
 }));
 
 /** Latest real price of every token the feed has delivered. */
-export const livePrices = (): Partial<Record<Token, number>> => {
-  const out: Partial<Record<Token, number>> = {};
-  for (const [token, quote] of Object.entries(useMarket.getState().quotes)) out[token as Token] = quote.price;
+export const livePrices = (): Prices => {
+  const out: Prices = {};
+  for (const [token, quote] of Object.entries(useMarket.getState().quotes)) out[token] = quote?.price;
   return out;
 };
 
 /** Latest real quote for a token, if the feed has delivered one. */
-export const liveQuote = (token: string): Quote | undefined =>
-  isToken(token) ? useMarket.getState().quotes[token] : undefined;
+export const liveQuote = (token: AssetKey): Quote | undefined => useMarket.getState().quotes[token];
 
 const POLL_MS = 10_000;
 

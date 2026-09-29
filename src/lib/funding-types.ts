@@ -1,3 +1,4 @@
+import type { TradeRequest } from "./assets";
 import type { ChainStatus } from "./chains";
 import type { FundingTerms } from "./funding";
 import type { AgentId } from "./types";
@@ -46,9 +47,7 @@ export interface FundEvent {
 }
 
 export interface FundStatus {
-  /** Every chain the app supports, and whether funding works on each. */
-  chains: ChainStatus[];
-  /** The chain these figures are for: the connected wallet's chain, or the first one that is ready. */
+  /** The network funding runs on, and whether it is ready. */
   chain: ChainStatus;
   terms: FundingTerms;
   agents: AgentFunding[];
@@ -59,6 +58,8 @@ export interface FundStatus {
     /** True while this wallet can still earn its one first-deposit bonus. */
     bonusAvailable: boolean;
     events: FundEvent[];
+    /** Trades this wallet asked its agents for, newest first. */
+    requests: TradeRequest[];
   };
 }
 

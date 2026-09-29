@@ -1,7 +1,7 @@
 /** Stop-loss and profit-target exits, checked against real 1-minute candles. */
 import { sell, type Fill } from "@/lib/council";
 import { nameOf, px, signed } from "./context";
-import { extremesSince } from "./stats";
+import { extremesSince, refreshAssets } from "./stats";
 import type { CouncilState } from "./store";
 
 const MIN_GAP_MS = 20_000;
@@ -18,9 +18,13 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
   const fills: Fill[] = [];
   const recent: string[] = [];
 
+  const assets = await refreshAssets(state.assets, state.portfolio.positions.map((p) => p.token)).catch(() => state.assets);
+
   for (const pos of state.portfolio.positions) {
     const since = Math.max(state.lastRiskCheck, pos.openedAt);
-    const candles = await extremesSince(pos.token, since, now);
+    // A token whose candles can't be read is checked again next time, from the same point.
+    const candles = await extremesSince(pos.token, since, now, assets).catch(() => null);
+    if (!candles) return { ...state, assets };
     // Skip the candle the position was opened in: its low and high include prices from before the entry.
     const hit = candles.find((c) => c.time * 1000 > since && (c.low <= pos.stop || c.high >= pos.target));
     if (!hit) continue;
@@ -44,5 +48,5 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
     );
   }
 
-  return { ...state, portfolio, fills: [...state.fills, ...fills], recent: [...state.recent, ...recent], lastRiskCheck: now };
+  return { ...state, portfolio, assets, fills: [...state.fills, ...fills], recent: [...state.recent, ...recent], lastRiskCheck: now };
 }

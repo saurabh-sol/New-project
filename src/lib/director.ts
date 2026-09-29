@@ -3,12 +3,13 @@
  * do; this file decides how it is staged: who walks where, and how long each line is held.
  */
 import { AGENT_ORDER, AGENTS } from "./agents";
+import type { DeskAsset } from "./assets";
 import { agentPnl, type Emotion, type Fill } from "./council";
 import type { CouncilSnapshot, Line, RoundResponse, Stage } from "./council-types";
 import { walkSeconds } from "./layout";
 import type { AgentId, AgentState, ArenaEvent, MessageKind, Spot } from "./types";
 import { fmtPrice, fmtSigned } from "./utils";
-import { livePrices } from "@/store/market";
+import { livePrices, useMarket } from "@/store/market";
 
 const HOME: Spot = { kind: "home" };
 const TABLE: Spot = { kind: "table" };
@@ -18,6 +19,12 @@ const POLL_MS = 15_000;
 class Stopped extends Error {}
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+/** Passes the server's prices for requested tokens to everything on the page that shows a price. */
+function learn(assets: Record<string, DeskAsset>) {
+  const quotes = Object.fromEntries(Object.values(assets).map((a) => [a.key, { price: a.quote.price, change24h: a.quote.change24h }]));
+  if (Object.keys(quotes).length) useMarket.getState().setAssetQuotes(quotes);
+}
 /** Time a speech bubble needs to type out, plus a beat to read it. */
 const readTime = (text: string) => Math.min(text.length * 26 + 1400, 5000);
 
@@ -106,6 +113,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       if (!res.ok) return null;
       const snapshot = (await res.json()) as CouncilSnapshot;
       emit({ type: "sync", snapshot });
+      learn(snapshot.assets ?? {});
       return snapshot;
     } catch (e) {
       if (e instanceof Stopped || signal.aborted) throw new Stopped();
@@ -203,6 +211,22 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     system(`Session ${open.round} opens. The desk is reading the market.`);
     const scanStarted = Date.now();
 
+    const request = open.request ?? null;
+    if (request) {
+      const seen = open.stats.find((s) => s.token === request.asset.key);
+      const quote = { price: seen?.price ?? 0, change24h: seen?.change24h ?? 0, liquidityUsd: request.liquidityUsd, volume24hUsd: request.volume24hUsd };
+      const asset: DeskAsset = { ...request.asset, quote, quotedAt: Date.now() };
+      emit({ type: "assets", assets: { [asset.key]: asset } });
+      if (seen) learn({ [asset.key]: asset });
+      const who = AGENTS[request.agent].name;
+      system(
+        request.mode === "commit"
+          ? `A funder put $${request.usd.toFixed(0)} behind ${who} and asked for ${request.asset.key}. ${who} is committed to the trade. The others decide whether to join.`
+          : `A funder put $${request.usd.toFixed(0)} behind ${who} and asked for ${request.asset.key}. ${who} presents it once, and the council votes.`,
+        request.agent,
+      );
+    }
+
     // 1. Pitches
     const pitched = await next("pitches");
     if (!pitched) return open.round;
@@ -227,7 +251,9 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     const buying = proposal.action === "BUY";
     emit({ type: "focus", token: proposal.token });
     system(
-      buying
+      request && proposal.token === request.asset.key
+        ? `${AGENTS[leader].name} puts the funder's request to the desk: buy ${proposal.token}.`
+        : buying
         ? `${AGENTS[leader].name} leads with a proposal to buy ${proposal.token}.`
         : `${AGENTS[leader].name} leads with a proposal to sell ${proposal.sellPct}% of the desk's ${proposal.token}.`,
       leader,

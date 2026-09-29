@@ -1,13 +1,14 @@
 /** What the server sends the browser about a council session. */
+import type { DeskAsset, RequestBrief } from "./assets";
 import type { Emotion, Fill, Portfolio } from "./council";
-import type { Token } from "./market";
+import type { AssetKey } from "./market";
 import type { AgentId } from "./types";
 
 /** model: written by the AI model. scripted: rule-based stand-in, used when a model can't be reached. */
 export type Source = "model" | "scripted";
 
 export interface TokenStats {
-  token: Token;
+  token: AssetKey;
   price: number;
   change24h: number; // percent
   change1h: number; // percent
@@ -26,12 +27,14 @@ export interface TokenStats {
   vsSol1h: number;
   high1h: number;
   low1h: number;
+  /** Set for a token traded on a DEX pool rather than listed on the exchange feed. */
+  pool?: { name: string; liquidityUsd: number; volume24hUsd: number };
 }
 
 export interface Pitch {
   agent: AgentId;
   action: "BUY" | "SELL" | "HOLD";
-  token: Token;
+  token: AssetKey;
   stakeUsd: number;
   stopPct: number;
   targetPct: number;
@@ -44,7 +47,7 @@ export interface Pitch {
 export interface Proposal {
   leader: AgentId;
   action: "BUY" | "SELL";
-  token: Token;
+  token: AssetKey;
   stopPct: number;
   targetPct: number;
   /** Share of the position to sell. Only used for SELL. */
@@ -85,10 +88,11 @@ export interface ModelInfo {
 export type CouncilMode = "live" | "scripted";
 
 export type Stage =
-  | { stage: "open"; round: number; mode: CouncilMode; stats: TokenStats[]; portfolio: Portfolio; startedAt: number }
+  | { stage: "open"; round: number; mode: CouncilMode; stats: TokenStats[]; portfolio: Portfolio; startedAt: number; request?: RequestBrief | null }
   | { stage: "pitches"; pitches: Pitch[]; proposal: Proposal | null }
   | { stage: "debate"; exchanges: Exchange[] }
-  | { stage: "decision"; pledges: Pledge[]; closing: Line; votes: Vote[]; approved: boolean }
+  /** `committed`: the leader was bound by a funder's request to trade whatever the vote. */
+  | { stage: "decision"; pledges: Pledge[]; closing: Line; votes: Vote[]; approved: boolean; committed?: boolean }
   | { stage: "outcome"; fill: Fill | null; portfolio: Portfolio; note: string }
   | { stage: "error"; message: string };
 
@@ -99,6 +103,8 @@ export interface CouncilSnapshot {
   models: Record<AgentId, ModelInfo>;
   round: number;
   portfolio: Portfolio;
+  /** Tokens funders asked for, with the last price seen for each. */
+  assets: Record<AssetKey, DeskAsset>;
   fills: Fill[];
   nextRoundAt: number;
   intervalMs: number;

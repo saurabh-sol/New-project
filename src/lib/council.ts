@@ -5,7 +5,7 @@
  * more agents, and its value and PnL are split between them by stake.
  */
 import { AGENT_ORDER } from "./agents";
-import type { Token } from "./market";
+import type { AssetKey, Prices } from "./market";
 import type { AgentId } from "./types";
 
 export const EMOTIONS = ["neutral", "confident", "excited", "skeptical", "worried", "annoyed", "happy", "sad"] as const;
@@ -23,7 +23,7 @@ export const MIN_HOLD_ROUNDS = 2;
 export type Stakes = Record<AgentId, number>;
 
 export interface Position {
-  token: Token;
+  token: AssetKey;
   qty: number;
   /** USDC paid for the quantity still held. */
   cost: number;
@@ -53,7 +53,7 @@ export interface Fill {
   round: number;
   ts: number;
   side: "BUY" | "SELL";
-  token: Token;
+  token: AssetKey;
   qty: number;
   price: number;
   usd: number;
@@ -92,7 +92,6 @@ export const positionOf = (p: Portfolio, token: string) => p.positions.find((x) 
 export const positionValue = (pos: Position, price: number) => pos.qty * price;
 export const unrealized = (pos: Position, price: number) => positionValue(pos, price) - pos.cost;
 
-type Prices = Partial<Record<Token, number>>;
 /** Falls back to entry price when no live price is available, so PnL reads zero rather than wrong. */
 const mark = (pos: Position, prices: Prices) => prices[pos.token] ?? pos.entryPrice;
 
@@ -140,7 +139,7 @@ export function fitStakes(p: Portfolio, token: string, wanted: Stakes, prices: P
 }
 
 interface BuyOrder {
-  token: Token;
+  token: AssetKey;
   price: number;
   stakes: Stakes;
   stopPct: number;
@@ -197,7 +196,7 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
 }
 
 interface SellOrder {
-  token: Token;
+  token: AssetKey;
   price: number;
   /** Share of the position to sell, 0..1. */
   fraction: number;

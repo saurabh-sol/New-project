@@ -4,9 +4,9 @@ export type Fate = "landed" | "dead" | "unknown";
 
 /** A payment from the treasury that has been signed but not sent. */
 export interface SignedPayment {
-  /** Transaction signature (Solana) or hash (Base). Known before sending, so it can be recorded first. */
+  /** Transaction signature. Known before sending, so it can be recorded first. */
   id: string;
-  /** Used later to decide whether the payment can still land: last valid block height (Solana) or nonce (Base). */
+  /** The last block height at which the payment can still land. */
   expiry: number;
   /** Sends it and waits for confirmation. Throws if the network rejects it or it fails. */
   send(): Promise<void>;
@@ -21,8 +21,8 @@ export interface DepositIntent {
 }
 
 /**
- * Everything the app needs from a blockchain. Funding and rewards are written
- * against this, so they work the same on every chain.
+ * Everything the app needs from the blockchain. Funding and rewards are written
+ * against this, so none of them talks to the network directly.
  */
 export interface Chain {
   readonly id: ChainId;

@@ -1,6 +1,6 @@
 /**
  * Funding an agent: deposits, withdrawals, the first-deposit bonus and the testnet faucet.
- * Works the same on every chain; what differs sits behind `Chain`.
+ * Everything that touches the network sits behind `Chain`.
  *
  * Every change to a user's balance is written in the same database statement as the
  * change to the agent's books, guarded by the state's version, so the two can't drift apart.
@@ -8,20 +8,22 @@
  */
 import { randomBytes } from "node:crypto";
 import { AGENT_ORDER, AGENTS } from "@/lib/agents";
+import type { TradeRequest } from "@/lib/assets";
 import type { DepositProof, PreparedDeposit } from "@/lib/chains";
 import { agentNav, fundIn, fundOut, userFunding, type Portfolio } from "@/lib/council";
 import { bonusFor, withdrawFee } from "@/lib/funding";
 import type { AgentFunding, FundBonus, FundEvent, FundPosition, FundResult, FundStatus } from "@/lib/funding-types";
-import { fetchQuotes, type Token } from "@/lib/market";
+import type { Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
-import { allChains, chainFor, type Chain } from "../chains";
+import { chain as network, chainFor, type Chain } from "../chains";
 import { FUNDING_LEVELS, fundingLevel } from "../council/skills";
+import { deskPrices } from "../council/stats";
 import { inTurn, readVersioned, trimmed, type CouncilState } from "../council/store";
 import { db, num } from "../db";
+import { checkRequest, openRequest, requestsFor, type PendingRequest } from "../requests/service";
 import { checkMessage, issueMessage } from "../rewards/challenge";
 import { fundConfig, type FundConfig } from "./config";
 
-type Prices = Partial<Record<Token, number>>;
 type Row = Record<string, unknown>;
 
 const INTENT_TTL_MS = 10 * 60_000;
@@ -33,12 +35,7 @@ const cents = (n: number) => Math.round(n * 100) / 100;
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
 const NOT_A_WALLET = "That doesn't look like a wallet address.";
 
-async function livePrices(): Promise<Prices> {
-  const quotes = await fetchQuotes(AbortSignal.timeout(10_000));
-  return Object.fromEntries(Object.entries(quotes).map(([t, q]) => [t, q.price])) as Prices;
-}
-
-/** The wallet's chain, once funding is known to work on it. */
+/** The wallet's address in standard form, once funding is known to be working. */
 async function ready(wallet: unknown): Promise<{ ok: true; chain: Chain; address: string } | { ok: false; error: string }> {
   const found = chainFor(wallet);
   if (!found) return fail(NOT_A_WALLET);
@@ -91,21 +88,21 @@ const toEvent = (r: Row): FundEvent => ({
 export async function fundStatus(wallet: unknown): Promise<FundStatus> {
   const cfg = fundConfig();
   const { state } = await readVersioned();
-  const [prices, chains] = await Promise.all([livePrices().catch(() => ({}) as Prices), Promise.all(allChains().map((c) => c.status()))]);
+  const [prices, chain] = await Promise.all([deskPrices(state).catch(() => ({}) as Prices), network().status()]);
   const found = chainFor(wallet);
-  const chain = (found && chains.find((c) => c.id === found.chain.id)) ?? chains.find((c) => c.enabled) ?? chains[0];
 
-  const base: FundStatus = { chains, chain, terms: cfg.terms, agents: agentView(state.portfolio, prices), wallet: null };
+  const base: FundStatus = { chain, terms: cfg.terms, agents: agentView(state.portfolio, prices), wallet: null };
   if (!found || !chain.enabled) return base;
 
   const { address } = found;
   await settle(found.chain, address).catch((e) => console.error("[fund] settle failed:", e));
   const sql = await db();
-  const [positions, bonuses, events, balance] = await Promise.all([
+  const [positions, bonuses, events, balance, requests] = await Promise.all([
     sql`select * from fund_positions where wallet = ${address} and shares > ${DUST}`,
     sql`select * from fund_bonuses where wallet = ${address}`,
     sql`select * from fund_events where wallet = ${address} order by id desc limit 12`,
     found.chain.balance(address),
+    requestsFor(address),
   ]);
   const navs = Object.fromEntries(base.agents.map((a) => [a.agent, a.nav])) as Record<AgentId, number>;
 
@@ -121,13 +118,20 @@ export async function fundStatus(wallet: unknown): Promise<FundStatus> {
       bonus: bonuses[0] ? toBonus(bonuses[0]) : null,
       bonusAvailable: bonuses.length === 0,
       events: events.map(toEvent),
+      requests,
     },
   };
 }
 
 // --- deposit ---
 
-export async function prepareDeposit(wallet: unknown, agent: AgentId, usd: number): Promise<FundResult<{ intentId: string; deposit: PreparedDeposit }>> {
+/** `token` is the address of a token the funder asks the agent to trade, if they ask for one. */
+export async function prepareDeposit(
+  wallet: unknown,
+  agent: AgentId,
+  usd: number,
+  token?: unknown,
+): Promise<FundResult<{ intentId: string; deposit: PreparedDeposit; request: PendingRequest | null }>> {
   const on = await ready(wallet);
   if (!on.ok) return on;
   const { chain, address } = on;
@@ -142,12 +146,19 @@ export async function prepareDeposit(wallet: unknown, agent: AgentId, usd: numbe
   const balance = await chain.balance(address);
   if (balance < amount) return fail(`Your wallet holds ${balance.toFixed(2)} of the funding token, which is less than $${amount.toFixed(2)}.`);
 
+  let request: PendingRequest | null = null;
+  if (token !== undefined && token !== null && token !== "") {
+    const checked = await checkRequest(address, token, amount);
+    if (!checked.ok) return checked;
+    request = checked.request;
+  }
+
   const { payload, check } = await chain.prepareDeposit(address, amount);
   const intentId = randomBytes(12).toString("hex");
   await sql`
-    insert into fund_intents (id, wallet, agent, usd, status, expires_at, message_hash)
-    values (${intentId}, ${address}, ${agent}, ${amount}, 'pending', ${new Date(Date.now() + INTENT_TTL_MS).toISOString()}, ${check})`;
-  return { ok: true, intentId, deposit: payload };
+    insert into fund_intents (id, wallet, agent, usd, status, expires_at, message_hash, request)
+    values (${intentId}, ${address}, ${agent}, ${amount}, 'pending', ${new Date(Date.now() + INTENT_TTL_MS).toISOString()}, ${check}, ${request ? JSON.stringify(request) : null}::jsonb)`;
+  return { ok: true, intentId, deposit: payload, request };
 }
 
 /**
@@ -158,7 +169,7 @@ async function withBooks<T>(work: (state: CouncilState, prices: Prices, version:
   return inTurn(async () => {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const { state, version } = await readVersioned();
-      const result = await work(state, await livePrices(), version);
+      const result = await work(state, await deskPrices(state), version);
       if (result.done) return result.value;
     }
     throw new Error("The agent's books changed too often to complete this. Try again.");
@@ -168,7 +179,7 @@ async function withBooks<T>(work: (state: CouncilState, prices: Prices, version:
 export async function confirmDeposit(
   intentId: string,
   proof: DepositProof,
-): Promise<FundResult<{ signature: string; usd: number; shares: number; nav: number; bonus: FundBonus | null }>> {
+): Promise<FundResult<{ signature: string; usd: number; shares: number; nav: number; bonus: FundBonus | null; request: TradeRequest | null }>> {
   const sql = await db();
   const [intent] = await sql`select * from fund_intents where id = ${intentId}`;
   if (!intent) return fail("This deposit request was not found. Start again.");
@@ -219,7 +230,9 @@ export async function confirmDeposit(
   if (!event) return fail("This deposit request was already paid by another transfer.");
   if (event.intent !== intentId) return fail("That transfer was already used for an earlier deposit.");
   const bonus = await grantBonus(chain, fundConfig(), address, agent, usd);
-  return { ok: true, signature, usd, shares: num(event.shares), nav: num(event.nav), bonus };
+  // The deposit stands whether or not its request could be queued.
+  const request = await openRequest(intent).catch((e) => (console.error("[fund] could not queue the trade request:", e), null));
+  return { ok: true, signature, usd, shares: num(event.shares), nav: num(event.nav), bonus, request };
 }
 
 // --- bonus ---

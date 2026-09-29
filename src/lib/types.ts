@@ -1,6 +1,7 @@
+import type { DeskAsset } from "./assets";
 import type { Emotion, Fill, Portfolio } from "./council";
 import type { CouncilMode, CouncilSnapshot, Source } from "./council-types";
-import type { Token } from "./market";
+import type { AssetKey } from "./market";
 
 export type AgentId = "quant" | "guardian" | "degen" | "oracle";
 
@@ -56,7 +57,9 @@ export type ArenaEvent =
   | { type: "sync"; snapshot: CouncilSnapshot }
   | { type: "round_start"; round: number; mode: CouncilMode; portfolio: Portfolio }
   | { type: "phase"; phase: Phase }
-  | { type: "focus"; token: Token | null }
+  | { type: "focus"; token: AssetKey | null }
+  /** Tokens funders asked for that the desk has just learned of. */
+  | { type: "assets"; assets: Record<AssetKey, DeskAsset> }
   | { type: "agent_state"; agent: AgentId; state: AgentState }
   | { type: "emotion"; agent: AgentId; emotion: Emotion }
   | { type: "move"; agent: AgentId; to: Spot }

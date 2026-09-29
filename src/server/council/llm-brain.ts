@@ -4,9 +4,8 @@ import { z } from "zod";
 import { AGENTS } from "@/lib/agents";
 import { EMOTIONS, MIN_HOLD_ROUNDS } from "@/lib/council";
 import type { Exchange } from "@/lib/council-types";
-import { TOKENS } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
-import { asEmotion, asToken, cleanSay, STOP_RANGE, TARGET_RANGE, type Brain } from "./brain";
+import { asEmotion, asToken, cleanSay, presents, requestStake, STOP_RANGE, TARGET_RANGE, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefing, describeDebate, describePitches, describeProposal, nameOf, usd, type RoundCtx } from "./context";
 import { repeats } from "./skills";
@@ -29,6 +28,7 @@ How the desk works:
 - The desk trades spot only. It can BUY a token with USDC, SELL a token it already holds, or HOLD.
 - A position must be held for at least ${MIN_HOLD_ROUNDS} rounds before the council may sell it. Stop-losses and targets execute automatically.
 - The council makes at most one trade per round, and it needs 3 of 4 votes.
+- A user who funds a trader may ask it to buy a Solana token of their choice. The trader presents that request to the desk. A small request is only a suggestion; a request funded with a larger amount commits that trader to the trade with its own cash.
 - This is paper trading on live prices.
 
 Rules for what you say:
@@ -64,7 +64,7 @@ export function extractJson(text: string): unknown {
 
 const say = z.object({ emotion: z.unknown(), say: z.string().min(1) });
 const pitchShape = say.extend({
-  action: z.enum(["BUY", "SELL", "HOLD"]),
+  action: z.enum(["BUY", "SELL", "HOLD"]).catch("HOLD"),
   token: z.unknown(),
   stakeUsd: z.coerce.number().catch(0),
   stopPct: z.coerce.number().catch(4),
@@ -120,6 +120,27 @@ export function llmBrain(cfg: CouncilConfig): Brain {
     async pitch(agent, ctx) {
       const cash = ctx.portfolio.cash[agent];
       const lens = ctx.lens[agent];
+      if (presents(agent, ctx)) {
+        const r = ctx.request!;
+        const stake = requestStake(ctx, agent, 0);
+        const task = `TASK: Present your funder's request to the desk: a purchase of ${r.asset.key}.
+${
+  r.mode === "commit"
+    ? `You are committed to it with ${usd(stake)} of your own cash. Say so, and give your honest reading of ${r.asset.key} from its figures, including the main risk.`
+    : `Say it is a funder's request, and give your honest reading of ${r.asset.key} from its figures. If the data is weak, say so: the desk decides.`
+}
+JSON shape:
+{"action": "BUY",
+ "token": "${r.asset.key}",
+ "stakeUsd": ${r.mode === "commit" ? stake : `your own cash to commit, from ${stake} to ${cash.toFixed(0)}`},
+ "stopPct": stop-loss distance in percent, ${STOP_RANGE[0]} to ${STOP_RANGE[1]},
+ "targetPct": profit target distance in percent, ${TARGET_RANGE[0]} to ${TARGET_RANGE[1]},
+ "conviction": 1 to 5, your own honest conviction in this trade,
+ "emotion": "...",
+ "say": "how you present it"}`;
+        const o = await ask(agent, ctx, task, pitchShape);
+        return { ...o, ...spoken(o), action: "BUY", token: r.asset.key };
+      }
       const task = `YOUR FOCUS THIS ROUND: ${lens.name}
 ${lens.brief} Build your pitch on this angle.
 
@@ -127,7 +148,7 @@ TASK: Pitch your trade for this round.
 You may SELL only these tokens: ${ctx.sellable.length ? ctx.sellable.join(", ") : "none this round"}.
 JSON shape:
 {"action": "BUY" | "SELL" | "HOLD",
- "token": one of ${TOKENS.join(", ")},
+ "token": one of ${ctx.stats.map((s) => s.token).join(", ")},
  "stakeUsd": your own cash to commit if BUY, from 0 to ${cash.toFixed(0)},
  "stopPct": stop-loss distance in percent, ${STOP_RANGE[0]} to ${STOP_RANGE[1]},
  "targetPct": profit target distance in percent, ${TARGET_RANGE[0]} to ${TARGET_RANGE[1]},
@@ -136,7 +157,7 @@ JSON shape:
  "emotion": "...",
  "say": "your pitch"}`;
       const o = await ask(agent, ctx, task, pitchShape);
-      return { ...o, ...spoken(o), token: asToken(o.token, ctx.stats[0].token) };
+      return { ...o, ...spoken(o), token: asToken(o.token, ctx) };
     },
 
     async challenge(agent, ctx, proposal, pitches, debate) {
@@ -187,7 +208,9 @@ JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixe
 
     async closing(agent, ctx, proposal, input) {
       const votes = input.pledges.map((p) => `- ${nameOf(p.agent)}: ${p.support ? "YES" : "NO"} ("${p.say}")`).join("\n");
-      const result = input.approved
+      const result = input.alone
+        ? `The vote was ${input.yes} to ${4 - input.yes}, short of the 3 needed. You are committed to your funder, so you buy ${usd(input.totalUsd)} of ${proposal.token} without the desk's approval.`
+        : input.approved
         ? proposal.action === "BUY"
           ? `The trade passes ${input.yes} to ${4 - input.yes}. Total size ${usd(input.totalUsd)} of ${proposal.token}.`
           : `The sale passes ${input.yes} to ${4 - input.yes}.`

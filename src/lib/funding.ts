@@ -13,6 +13,8 @@ export interface FundingTerms {
   feePct: number;
   /** Hours the deposit must stay in before the bonus is paid. Withdrawing earlier forfeits it. */
   bonusLockHours: number;
+  /** A trade request that comes with at least this much funding binds the agent to take the trade. */
+  commitFrom: number;
 }
 
 export const DEFAULT_TERMS: FundingTerms = {
@@ -27,6 +29,7 @@ export const DEFAULT_TERMS: FundingTerms = {
   feeMin: 1,
   feePct: 2,
   bonusLockHours: 168,
+  commitFrom: 20,
 };
 
 const cents = (n: number) => Math.round(n * 100) / 100;

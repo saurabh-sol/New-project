@@ -1,8 +1,9 @@
 /** Everything an agent is told at the start of a round, as text and as structured data. */
 import { AGENTS } from "@/lib/agents";
+import type { RequestBrief } from "@/lib/assets";
 import { agentPnl, canSell, poolCapital, poolEquity, unrealized, type Portfolio } from "@/lib/council";
 import type { Exchange, Pitch, Proposal, TokenStats } from "@/lib/council-types";
-import { priceDecimals, type Token } from "@/lib/market";
+import { priceDecimals, type AssetKey, type Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import type { Effort, Skill } from "./skills";
 
@@ -10,9 +11,9 @@ export interface RoundCtx {
   round: number;
   stats: TokenStats[];
   portfolio: Portfolio;
-  prices: Partial<Record<Token, number>>;
+  prices: Prices;
   /** Tokens the council is allowed to sell this round. */
-  sellable: Token[];
+  sellable: AssetKey[];
   recent: string[];
   /** What each agent said lately, including earlier in this round. Grows as the round goes on. */
   said: Record<AgentId, string[]>;
@@ -20,12 +21,30 @@ export interface RoundCtx {
   lens: Record<AgentId, Skill>;
   /** How hard each agent may think, set by how much users have funded it. */
   effort: Record<AgentId, Effort>;
+  /** The funder's trade request this session is hearing, if there is one. */
+  request: RequestBrief | null;
 }
 
 export const usd = (n: number) => `$${n.toFixed(2)}`;
 export const px = (n: number) => `$${n.toFixed(priceDecimals(n))}`;
 export const signed = (n: number, unit = "%") => `${n >= 0 ? "+" : ""}${n.toFixed(unit === "" ? 2 : unit === "pp" ? 2 : 1)}${unit}`;
 export const nameOf = (a: AgentId) => AGENTS[a].name;
+
+const big = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+
+/** What the desk has been asked to do by a funder, and how far that binds it. */
+export function describeRequest(r: RequestBrief): string {
+  const who = nameOf(r.agent);
+  const rule =
+    r.mode === "commit"
+      ? `${who} is committed to buy it with up to ${usd(r.usd)} of its own cash, whatever the vote. Every other trader decides freely whether to add its own cash.`
+      : `${who} presents it once. The desk buys it only if 3 of 4 traders back it.`;
+  return [
+    `A user who funded ${who} with ${usd(r.usd)} asked the desk to buy ${r.asset.key} (${r.asset.name}), a Solana token traded on a DEX pool with ${big(r.liquidityUsd)} of liquidity.`,
+    rule,
+    "Judge it on the data, like any other trade. A funder's wish is not evidence.",
+  ].join("\n");
+}
 
 export function marketTable(stats: TokenStats[]): string {
   const rows = stats.map((s) =>
@@ -43,6 +62,7 @@ export function marketTable(stats: TokenStats[]): string {
       `at ${s.rangePos}% of 24h range`,
       s.token === "SOL" ? null : `vs SOL 1h ${signed(s.vsSol1h, "pp")}`,
       `1h range ${px(s.low1h)} to ${px(s.high1h)}`,
+      s.pool ? `DEX pool, liquidity ${big(s.pool.liquidityUsd)}, 24h volume ${big(s.pool.volume24hUsd)}` : null,
     ]
       .filter(Boolean)
       .join(" | "),
@@ -76,6 +96,7 @@ export function briefing(ctx: RoundCtx, agent: AgentId): string {
     "MARKET (live spot prices, USDT pairs)",
     marketTable(ctx.stats),
     "",
+    ...(ctx.request ? ["A FUNDER'S REQUEST THIS ROUND", describeRequest(ctx.request), ""] : []),
     "DESK",
     deskReport(ctx, agent),
     "",
@@ -112,8 +133,10 @@ export function describeDebate(exchanges: Exchange[]): string {
 export function briefingState(ctx: RoundCtx, agent: AgentId) {
   return {
     round: ctx.round,
+    funderRequest: ctx.request ? describeRequest(ctx.request) : null,
     market: ctx.stats.map((s) => ({
       token: s.token,
+      dexPoolLiquidityUsd: s.pool?.liquidityUsd ?? null,
       priceUsd: s.price,
       change15mPct: +s.change15m.toFixed(2),
       change1hPct: +s.change1h.toFixed(2),

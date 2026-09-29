@@ -3,7 +3,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { AGENTS } from "@/lib/agents";
 import { agentPnl, poolEquity } from "@/lib/council";
-import type { Token } from "@/lib/market";
+import type { Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { useArena } from "./arena";
 import { useMarket } from "./market";
@@ -12,8 +12,8 @@ import { useMarket } from "./market";
 export const usePrices = () =>
   useMarket(
     useShallow((s) => {
-      const out: Partial<Record<Token, number>> = {};
-      for (const [token, quote] of Object.entries(s.quotes)) out[token as Token] = quote.price;
+      const out: Prices = {};
+      for (const [token, quote] of Object.entries(s.quotes)) out[token] = quote?.price;
       return out;
     }),
   );

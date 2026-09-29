@@ -7,13 +7,17 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { DeskAsset } from "@/lib/assets";
 import { newPortfolio, normalizePortfolio, type Fill, type Portfolio } from "@/lib/council";
+import type { AssetKey } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { db, hasDb } from "../db";
 
 export interface CouncilState {
   round: number;
   portfolio: Portfolio;
+  /** Tokens funders asked the desk to trade, by the name the desk uses for each. */
+  assets: Record<AssetKey, DeskAsset>;
   fills: Fill[];
   /** One line per finished round, newest last, given to the agents as memory. */
   recent: string[];
@@ -34,6 +38,8 @@ export interface Versioned {
 const FILE = path.join(process.cwd(), ".data", "council.json");
 const MAX_FILLS = 100;
 const MAX_RECENT = 5;
+/** Tokens the desk no longer holds are remembered up to this many, so their past trades can still be charted. */
+const MAX_IDLE_ASSETS = 20;
 const MAX_ATTEMPTS = 8;
 
 export const today = () => new Date().toISOString().slice(0, 10);
@@ -41,6 +47,7 @@ export const today = () => new Date().toISOString().slice(0, 10);
 const fresh = (): CouncilState => ({
   round: 0,
   portfolio: newPortfolio(),
+  assets: {},
   fills: [],
   recent: [],
   lenses: { quant: [], degen: [], guardian: [], oracle: [] },
@@ -55,7 +62,16 @@ const hydrate = (raw: Partial<CouncilState>): CouncilState => {
   return { ...base, portfolio: normalizePortfolio(base.portfolio) };
 };
 
-export const trimmed = (s: CouncilState): CouncilState => ({ ...s, fills: s.fills.slice(-MAX_FILLS), recent: s.recent.slice(-MAX_RECENT) });
+function trimAssets(s: CouncilState): CouncilState["assets"] {
+  const all = Object.values(s.assets);
+  if (all.length <= MAX_IDLE_ASSETS) return s.assets;
+  const held = new Set(s.portfolio.positions.map((p) => p.token));
+  const idle = all.filter((a) => !held.has(a.key)).sort((a, b) => b.quotedAt - a.quotedAt);
+  const keep = [...all.filter((a) => held.has(a.key)), ...idle.slice(0, MAX_IDLE_ASSETS)];
+  return Object.fromEntries(keep.map((a) => [a.key, a]));
+}
+
+export const trimmed = (s: CouncilState): CouncilState => ({ ...s, assets: trimAssets(s), fills: s.fills.slice(-MAX_FILLS), recent: s.recent.slice(-MAX_RECENT) });
 
 // --- file backend ---
 

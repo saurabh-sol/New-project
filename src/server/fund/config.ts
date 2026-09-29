@@ -11,7 +11,7 @@ const num = (raw: string | undefined, fallback: number) => {
   return raw !== undefined && raw !== "" && isFinite(n) && n >= 0 ? n : fallback;
 };
 
-/** The terms of funding, which are the same on every chain. */
+/** The terms of funding. */
 export function fundConfig(): FundConfig {
   const env = process.env;
   return {
@@ -22,6 +22,7 @@ export function fundConfig(): FundConfig {
       feeMin: num(env.WITHDRAW_FEE_MIN_USD, DEFAULT_TERMS.feeMin),
       feePct: num(env.WITHDRAW_FEE_PCT, DEFAULT_TERMS.feePct),
       bonusLockHours: num(env.BONUS_LOCK_HOURS, DEFAULT_TERMS.bonusLockHours),
+      commitFrom: num(env.REQUEST_COMMIT_FROM_USD, DEFAULT_TERMS.commitFrom),
     },
     bonusDailyBudget: num(env.BONUS_DAILY_BUDGET_USD, 50),
   };

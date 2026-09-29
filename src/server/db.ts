@@ -93,6 +93,23 @@ async function migrate(sql: Sql) {
       expires_at timestamptz not null,
       created_at timestamptz not null default now()
     )`;
+  await sql`
+    create table if not exists trade_requests (
+      id bigserial primary key,
+      wallet text not null,
+      agent text not null,
+      intent text not null unique,
+      asset jsonb not null,
+      mode text not null,
+      usd numeric not null,
+      status text not null,
+      round int,
+      attempts int not null default 0,
+      note text,
+      created_at timestamptz not null default now()
+    )`;
+  await sql`create index if not exists trade_requests_wallet on trade_requests (wallet, id desc)`;
+  await sql`create index if not exists trade_requests_queue on trade_requests (status, id)`;
 
   // Columns added after the first version of the tables.
   await sql`alter table fund_events add column if not exists nonce text unique`;
@@ -100,6 +117,7 @@ async function migrate(sql: Sql) {
   await sql`alter table fund_bonuses add column if not exists last_valid_block_height bigint`;
   await sql`alter table fund_intents add column if not exists message_hash text`;
   await sql`alter table fund_events add column if not exists intent text`;
+  await sql`alter table fund_intents add column if not exists request jsonb`;
 }
 
 /** The query function, once the tables exist. */

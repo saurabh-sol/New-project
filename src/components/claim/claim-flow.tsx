@@ -32,11 +32,11 @@ const fetchStatus = async (address?: string) =>
 function readable(e: unknown): string {
   const text = e instanceof Error ? e.message : String(e);
   if (/reject|denied|cancel|declin/i.test(text)) return "You cancelled in your wallet. Nothing was sent.";
-  return text || "Something went wrong. Try again.";
+  return text.split("\n")[0] || "Something went wrong. Try again.";
 }
 
 export function ClaimFlow() {
-  const { address, walletName, open, connecting, signMessage } = useWallet();
+  const { address, walletName, open, signMessage } = useWallet();
   const [agent, setAgent] = useState<AgentId | null>(null);
   const [status, setStatus] = useState<RewardsStatus | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -102,7 +102,7 @@ export function ClaimFlow() {
       <div className="mb-6 text-center">
         <h1 className="font-display text-4xl font-bold tracking-tight text-white">Arena Rewards</h1>
         <p className="mt-2 text-sm text-white/55">
-          Back an agent and claim <span className="font-semibold text-white/80">{status ? `${status.amount} USDC` : "USDC"}</span>, paid on {status?.chain.network ?? "Solana or Base"}. One
+          Back an agent and claim <span className="font-semibold text-white/80">{status ? `${status.amount} USDC` : "USDC"}</span>, paid on {status?.chain.network ?? "Solana"}. One
           claim per wallet. You pay no fee.
         </p>
       </div>
@@ -127,9 +127,9 @@ export function ClaimFlow() {
             {step === 0 && (
               <Pane key="connect">
                 <h2 className="font-display text-lg font-semibold text-white">Connect your wallet</h2>
-                <p className="mt-1 text-sm text-white/50">Use an Ethereum-type wallet on Base, or a Solana wallet. Connecting only shares your public address.</p>
-                <button onClick={open} disabled={connecting} className="btn-primary mt-5 w-full py-3.5 text-sm">
-                  {connecting ? "Waiting for wallet…" : "Connect wallet"}
+                <p className="mt-1 text-sm text-white/50">Use any Solana wallet. Connecting only shares your public address.</p>
+                <button onClick={open} className="btn-primary mt-5 w-full py-3.5 text-sm">
+                  Connect wallet
                 </button>
               </Pane>
             )}

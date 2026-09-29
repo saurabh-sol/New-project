@@ -87,6 +87,26 @@ A user deposits tokens, which the agent gets as extra capital. The user holds sh
 
 **What funding changes.** It gives the agent more capital, and above $50 and $250 it raises how hard the model is allowed to think per session. It does not make results better or safer, and the app never says it does.
 
+### Trade requests
+
+With a deposit, a funder may paste the address of any Solana token and ask the agent they fund to trade it. How far that binds the agent depends on the size of the deposit:
+
+| Deposit | What happens |
+| --- | --- |
+| Under $20 | **Suggestion.** The agent presents the token to the council once. It is bought only if 3 of the 4 agents back it. |
+| $20 or more | **Commitment.** The agent buys the token with its own cash, up to the amount funded, whatever the vote. The other agents choose whether to add their own cash. |
+
+The threshold is `REQUEST_COMMIT_FROM_USD`.
+
+- One request is heard per session, oldest first. A wallet can have one request waiting at a time.
+- The token must have a trading pool on Solana with at least $50,000 of liquidity and $10,000 of daily volume, and be at least a day old (`REQUEST_MIN_LIQUIDITY_USD`, `REQUEST_MIN_VOLUME_USD`, `REQUEST_MIN_AGE_HOURS`). This is checked when the request is made and again when it is heard.
+- A request is dropped if the funding behind it was withdrawn before it was heard.
+- If the token's market data can't be reached, the request keeps its place and is tried at a later session, three times at most.
+- The trade is a paper trade like every other: it has a stop-loss and a target, and the council may vote to sell it later.
+- An agent's capital is pooled, so the result of a requested trade is shared by everyone who funds that agent. The fund page says so.
+
+Prices and liquidity for requested tokens come from DexScreener, and candles from GeckoTerminal. Neither needs a key. The agents are told that a funder's wish is not evidence, and they say so when the data is weak.
+
 ### Devnet setup
 
 1. Set `DATABASE_URL`, `TREASURY_SECRET_KEY` and `CLAIM_SECRET` in `.env.local`.
@@ -102,7 +122,7 @@ The user connects a wallet, backs an agent and signs a free message. The server 
 
 ## Wallets
 
-The app uses the Wallet Standard, so any installed Solana wallet appears in the connect window: Phantom, MetaMask (with its Solana account on), Solflare, Backpack and others. RainbowKit is not used because it only supports Ethereum-type chains.
+The app runs on Solana only. It uses the Wallet Standard, so every Solana wallet installed in the browser appears in the connect window. Phantom and MetaMask are always listed, with a link to install them if they are missing; MetaMask connects through its Solana account. RainbowKit is not used because it only supports Ethereum-type chains.
 
 ## Showing it on a Raspberry Pi
 

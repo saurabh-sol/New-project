@@ -6,7 +6,7 @@
 import type { Emotion } from "@/lib/council";
 import type { Proposal, TokenStats } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { clamp, type Brain } from "./brain";
+import { clamp, presents, requestStake, type Brain } from "./brain";
 import { nameOf, signed, type RoundCtx } from "./context";
 import { freshest } from "./skills";
 
@@ -64,6 +64,22 @@ export function scriptedBrain(): Brain {
     async pitch(agent, ctx) {
       const ranked = ctx.stats.map((s) => ({ s, e: edge(agent, s) })).sort((a, b) => b.e - a.e);
       const base = { stopPct: STOP[agent], targetPct: STOP[agent] * 2, sellPct: 100, stakeUsd: 0 };
+
+      if (presents(agent, ctx)) {
+        const r = ctx.request!;
+        const s = statsFor(ctx, r.asset.key);
+        const e = edge(agent, s);
+        const stake = requestStake(ctx, agent, 0);
+        return {
+          ...base,
+          action: "BUY",
+          token: r.asset.key,
+          stakeUsd: stake,
+          conviction: Math.round(clamp(1 + e * 5, 1, 5)),
+          emotion: e > BUY_ABOVE[agent] ? "confident" : "neutral",
+          say: r.mode === "commit" ? `Funder's request: ${facts(s)}. Committed for $${stake}.` : `Funder's request: ${facts(s)}. The desk decides.`,
+        };
+      }
 
       const weak = ranked.filter((r) => ctx.sellable.includes(r.s.token)).sort((a, b) => a.e - b.e)[0];
       if (weak && weak.e < SELL_BELOW[agent]) {
@@ -142,6 +158,7 @@ export function scriptedBrain(): Brain {
     },
 
     async closing(_agent, _ctx, proposal, input) {
+      if (input.alone) return { emotion: "neutral", say: `Vote ${input.yes} to ${4 - input.yes}. I'm committed. Buying $${input.totalUsd.toFixed(0)} ${proposal.token}.` };
       if (!input.approved) return { emotion: "sad", say: `Fails ${input.yes} to ${4 - input.yes}. No trade.` };
       return {
         emotion: "happy",

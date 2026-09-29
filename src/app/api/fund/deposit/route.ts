@@ -13,12 +13,13 @@ interface Body {
   usd?: unknown;
   intentId?: unknown;
   proof?: unknown;
+  /** Address of a token the funder asks the agent to trade. Optional. */
+  token?: unknown;
 }
 
 function asProof(v: unknown): DepositProof | null {
-  const p = v as { kind?: unknown; transaction?: unknown; hash?: unknown } | null;
+  const p = v as { kind?: unknown; transaction?: unknown } | null;
   if (p?.kind === "solana" && typeof p.transaction === "string") return { kind: "solana", transaction: p.transaction };
-  if (p?.kind === "base" && typeof p.hash === "string") return { kind: "base", hash: p.hash as `0x${string}` };
   return null;
 }
 
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     if (!isAgentId(body.agent)) return fail(400, "Pick an agent to fund.");
     const usd = Number(body.usd);
     if (!isFinite(usd) || usd <= 0) return fail(400, "Enter an amount to deposit.");
-    const result = await prepareDeposit(body.wallet, body.agent, usd);
+    const result = await prepareDeposit(body.wallet, body.agent, usd, body.token);
     return Response.json(result, { status: result.ok ? 200 : 400 });
   }
 

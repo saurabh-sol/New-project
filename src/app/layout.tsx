@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { WalletProvider } from "@/components/wallet/wallet-provider";
-import { Web3Providers } from "@/components/wallet/web3-providers";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -20,9 +19,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
         <div className="backdrop" />
-        <Web3Providers>
-          <WalletProvider>{children}</WalletProvider>
-        </Web3Providers>
+        <WalletProvider>{children}</WalletProvider>
       </body>
     </html>
   );

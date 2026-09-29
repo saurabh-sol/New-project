@@ -2,11 +2,13 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Character } from "@/components/arena/character";
 import { Face } from "@/components/arena/face";
 import { useWallet } from "@/components/wallet/wallet-provider";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
+import { requestMode, type AssetPreview, type TradeRequest } from "@/lib/assets";
+import { priceDecimals } from "@/lib/market";
 import { bonusFor, estimate, withdrawFee, type FundingTerms } from "@/lib/funding";
 import type { FundBonus, FundPosition, FundResult, FundStatus } from "@/lib/funding-types";
 import type { AgentId } from "@/lib/types";
@@ -26,16 +28,38 @@ async function post<T>(url: string, body: object): Promise<FundResult<T>> {
 function readable(e: unknown): string {
   const text = e instanceof Error ? e.message : String(e);
   if (/reject|denied|cancel|declin/i.test(text)) return "You cancelled in your wallet. Nothing was moved.";
-  return text || "Something went wrong. Try again.";
+  return text.split("\n")[0] || "Something went wrong. Try again.";
 }
 
 const isAgent = (v: string | null): v is AgentId => !!v && v in AGENTS;
+const shortName = (agent: AgentId) => AGENTS[agent].name.replace("The ", "");
+const waiting = (r: TradeRequest) => r.status === "pending" || r.status === "presenting";
+
+/** Looks up the token at `address` a moment after the user stops typing. Null until an answer for that address is in. */
+function useTokenPreview(address: string): AssetPreview | null {
+  const [found, setFound] = useState<{ address: string; preview: AssetPreview } | null>(null);
+  useEffect(() => {
+    if (!address) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`/api/market/asset?address=${encodeURIComponent(address)}`, { signal: ctrl.signal, cache: "no-store" })
+        .then((res) => res.json() as Promise<AssetPreview>)
+        .then((preview) => setFound({ address, preview }))
+        .catch(() => !ctrl.signal.aborted && setFound({ address, preview: { ok: false, error: "Token data is unavailable right now. Try again in a moment." } }));
+    }, 450);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [address]);
+  return found?.address === address ? found.preview : null;
+}
 
 type Notice = { tone: "good" | "bad"; text: string; signature?: string };
 
 export function FundDesk() {
   const params = useSearchParams();
-  const { address, chain: walletChain, open, signMessage, deposit: sendDeposit } = useWallet();
+  const { address, open, signMessage, deposit: sendDeposit } = useWallet();
   const { status, failed, refresh } = useFundStatus(address);
 
   const asked = params.get("agent");
@@ -43,10 +67,14 @@ export function FundDesk() {
   const [amount, setAmount] = useState("5");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [tokenInput, setTokenInput] = useState("");
 
   const usd = Number(amount);
   const terms = status?.terms;
   const wallet = status?.wallet ?? null;
+  const tokenAddress = tokenInput.trim();
+  const preview = useTokenPreview(tokenAddress);
+  const openRequest = wallet?.requests.find(waiting) ?? null;
   const chain = status?.chain;
   const symbol = chain?.tokenSymbol ?? "USDC";
   const link = (id: string) => (chain ? explorerLink(chain, id) : "#");
@@ -62,7 +90,11 @@ export function FundDesk() {
           ? `The smallest deposit is ${money(terms.minDeposit)}.`
           : wallet && usd > wallet.balance
             ? `Your wallet holds ${wallet.balance.toFixed(2)} ${symbol}.`
-            : null;
+            : tokenAddress && !preview
+              ? "Looking up the token…"
+              : tokenAddress && preview && !preview.ok
+                ? "Fix the token address, or clear it to fund without a request."
+                : null;
 
   async function run(label: string, work: () => Promise<Notice>) {
     setNotice(null);
@@ -87,20 +119,36 @@ export function FundDesk() {
   const deposit = () =>
     run("deposit", async () => {
       if (!address) throw new Error("Connect a wallet first.");
-      const prep = await post<{ intentId: string; deposit: PreparedDeposit }>("/api/fund/deposit", { step: "prepare", wallet: address, agent, usd });
+      const prep = await post<{ intentId: string; deposit: PreparedDeposit }>("/api/fund/deposit", {
+        step: "prepare",
+        wallet: address,
+        agent,
+        usd,
+        token: tokenAddress || undefined,
+      });
       if (!prep.ok) throw new Error(prep.error);
       setBusy("sign");
       const proof = await sendDeposit(prep.deposit);
       setBusy("confirm");
-      const done = await post<{ signature: string; usd: number; bonus: FundBonus | null }>("/api/fund/deposit", { step: "confirm", intentId: prep.intentId, proof });
+      const done = await post<{ signature: string; usd: number; bonus: FundBonus | null; request: TradeRequest | null }>("/api/fund/deposit", {
+        step: "confirm",
+        intentId: prep.intentId,
+        proof,
+      });
       if (!done.ok) throw new Error(done.error);
+      const asked = done.request
+        ? ` Your request for ${done.request.asset.key} goes to the council at one of its next sessions.`
+        : tokenAddress
+          ? " Your request could not be queued, because another of yours is still waiting."
+          : "";
+      setTokenInput("");
       const bonus =
         done.bonus?.status === "paid"
           ? ` Your ${money(done.bonus.usd)} bonus was sent to your wallet.`
           : done.bonus?.status === "locked"
             ? ` Your ${money(done.bonus.usd)} bonus unlocks on ${new Date(done.bonus.unlockAt).toLocaleString()}.`
             : "";
-      return { tone: "good", text: `${money(done.usd)} is now working with ${AGENTS[agent].name}.${bonus}`, signature: done.signature };
+      return { tone: "good", text: `${money(done.usd)} is now working with ${AGENTS[agent].name}.${asked}${bonus}`, signature: done.signature };
     });
 
   const withdraw = (from: AgentId, percent: number) =>
@@ -151,9 +199,9 @@ export function FundDesk() {
           paper trades.
         </Banner>
       )}
-      {status && <Networks status={status} active={walletChain} />}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-5">
         {/* 1. choose */}
         <section className="panel p-5 sm:p-6">
           <h2 className="panel-title">1 · Choose an agent</h2>
@@ -198,9 +246,43 @@ export function FundDesk() {
           </p>
         </section>
 
-        {/* 2. amount */}
-        <section className="panel panel-strong p-5 sm:p-6">
-          <h2 className="panel-title">2 · Choose an amount</h2>
+        {/* 2. request */}
+        <section className="panel p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="panel-title">2 · Ask for a trade</h2>
+            <span className="text-[10px] uppercase tracking-widest text-white/35">Optional</span>
+          </div>
+          {openRequest ? (
+            <p className="mt-4 text-sm leading-relaxed text-white/60">
+              Your request for <span className="font-mono text-white">{openRequest.asset.key}</span> is waiting to be heard by the council. You can send
+              another once it has been decided.
+            </p>
+          ) : (
+            <>
+              <p className="mt-3 text-sm leading-relaxed text-white/55">
+                Paste the address of any Solana token, and {AGENTS[agent].name} takes it to the council.
+              </p>
+              <label className="mt-3 block">
+                <span className="sr-only">Solana token address</span>
+                <input
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value.replace(/\s/g, ""))}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="Token address"
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-white/60"
+                />
+              </label>
+              {tokenAddress && <TokenPreview preview={preview} />}
+              {terms && <RequestRules agent={agent} usd={usd} commitFrom={terms.commitFrom} token={preview?.ok ? preview.asset.key : null} />}
+            </>
+          )}
+        </section>
+        </div>
+
+        {/* 3. amount */}
+        <section className="panel panel-strong self-start p-5 sm:p-6">
+          <h2 className="panel-title">3 · Choose an amount</h2>
 
           <label className="mt-4 block">
             <span className="sr-only">Amount in {symbol}</span>
@@ -244,7 +326,7 @@ export function FundDesk() {
                     ? "Check your wallet…"
                     : busy === "confirm"
                       ? `Confirming on ${chain?.network ?? "the network"}…`
-                      : `Fund ${AGENTS[agent].name.replace("The ", "")} with ${isFinite(usd) ? money(usd) : "$0"}`}
+                      : `Fund ${shortName(agent)} with ${isFinite(usd) ? money(usd) : "$0"}${preview?.ok && tokenAddress ? ` and ask for ${preview.asset.key}` : ""}`}
               </button>
             )}
             {address && problem && <p className="text-center text-xs text-white/80">{problem}</p>}
@@ -291,28 +373,93 @@ export function FundDesk() {
         )}
       </section>
 
+      {wallet && wallet.requests.length > 0 && <Requests requests={wallet.requests} />}
+
       {wallet && wallet.events.length > 0 && <Activity status={status!} />}
       {terms && <Terms terms={terms} symbol={symbol} />}
     </div>
   );
 }
 
-/** Which networks funding works on, so a user knows what each kind of wallet will use. */
-function Networks({ status, active }: { status: FundStatus; active: string | null }) {
+const compact = (n: number) => `$${Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n)}`;
+
+function TokenPreview({ preview }: { preview: AssetPreview | null }) {
+  if (!preview) return <p className="mt-3 text-xs text-white/40">Looking up the token…</p>;
+  if (!preview.ok) {
+    return (
+      <p className="mt-3 text-xs text-red-300" role="alert">
+        {preview.error}
+      </p>
+    );
+  }
+  const { asset, quote } = preview;
   return (
-    <ul className="flex flex-wrap gap-2 text-xs" aria-label="Networks">
-      {status.chains.map((c) => (
-        <li
-          key={c.id}
-          title={c.reason ?? undefined}
-          className={cn("flex items-center gap-2 rounded-full border px-3 py-1", c.id === active ? "border-white/50 text-white" : "border-white/10 text-white/55")}
-        >
-          <span className={cn("size-1.5 rounded-full", c.enabled ? "bg-white" : "bg-white/25")} />
-          {c.network}
-          <span className="text-white/35">{c.enabled ? (c.id === active ? "connected" : "ready") : "not set up"}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="font-display font-semibold text-white">{asset.key}</span>
+        <span className="min-w-0 truncate text-xs text-white/45">{asset.name}</span>
+        <span className="ml-auto font-mono text-sm text-white">${quote.price.toFixed(priceDecimals(quote.price))}</span>
+        <span className={cn("font-mono text-xs", quote.change24h >= 0 ? "text-emerald-400" : "text-red-400")}>
+          {quote.change24h >= 0 ? "+" : ""}
+          {quote.change24h.toFixed(1)}% 24h
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-4 font-mono text-[11px] text-white/45">
+        <span>liquidity {compact(quote.liquidityUsd)}</span>
+        <span>24h volume {compact(quote.volume24hUsd)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** What the request will bind the agent to, at the amount now entered. */
+function RequestRules({ agent, usd, commitFrom, token }: { agent: AgentId; usd: number; commitFrom: number; token: string | null }) {
+  const name = AGENTS[agent].name;
+  const committed = isFinite(usd) && requestMode(usd, commitFrom) === "commit";
+  const it = token ?? "the token";
+  const rows = [
+    { on: !committed, label: `Under ${money(commitFrom)}`, text: `${name} presents ${it} once. It is bought only if 3 of the 4 agents back it.` },
+    { on: committed, label: `${money(commitFrom)} or more`, text: `${name} is committed: it buys ${it} with up to the amount you fund, whatever the vote. The others choose whether to join.` },
+  ];
+  return (
+    <>
+      <ul className="mt-4 grid gap-2">
+        {rows.map((r) => (
+          <li key={r.label} className={cn("rounded-xl border px-3.5 py-2.5 text-xs leading-relaxed", r.on ? "border-white/50 text-white/85" : "border-white/10 text-white/40")}>
+            <span className="mr-2 font-mono uppercase tracking-wider">{r.label}</span>
+            {r.text}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs leading-relaxed text-white/40">
+        One request per session, in the order they arrive. The trade is a paper trade with a stop-loss, made with the agent&apos;s capital, so its result is
+        shared by everyone who funds that agent. Asking for a token does not make it a good trade.
+      </p>
+    </>
+  );
+}
+
+function Requests({ requests }: { requests: TradeRequest[] }) {
+  const label = { pending: "waiting", presenting: "being heard", executed: "bought", rejected: "turned down", failed: "not placed" };
+  return (
+    <section className="panel p-5 sm:p-6">
+      <h2 className="panel-title">Your trade requests</h2>
+      <ul className="mt-3 divide-y divide-white/5 text-sm">
+        {requests.map((r) => (
+          <li key={r.id} className="grid gap-1 py-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="font-mono font-semibold text-white">{r.asset.key}</span>
+              <span className="text-white/50">{AGENTS[r.agent].name}</span>
+              <span className="font-mono text-white/70">{money(r.usd)}</span>
+              <span className="text-xs text-white/45">{r.mode === "commit" ? "committed" : "suggestion"}</span>
+              <span className={cn("rounded-full px-2.5 py-0.5 text-xs", r.status === "executed" ? "bg-white text-black" : "bg-white/10 text-white/75")}>{label[r.status]}</span>
+              <span className="ml-auto font-mono text-xs text-white/35">{r.round ? `session ${r.round}` : new Date(r.ts).toLocaleString()}</span>
+            </div>
+            {r.note && <p className="text-xs leading-relaxed text-white/45">{r.note}</p>}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -504,6 +651,11 @@ function Terms({ terms, symbol }: { terms: FundingTerms; symbol: string }) {
           <li>
             <strong className="font-medium text-white/85">Withdrawals.</strong> Paid from the agent&apos;s free cash. Cash inside an open position
             becomes free when that position closes.
+          </li>
+          <li>
+            <strong className="font-medium text-white/85">Trade requests.</strong> With a deposit you may name one Solana token. Under{" "}
+            {money(terms.commitFrom)} the council votes on it; from {money(terms.commitFrom)} the agent you fund is committed to buy it. The token must
+            have an active trading pool.
           </li>
           <li>
             <strong className="font-medium text-white/85">Limits.</strong> {money(terms.minDeposit)} to {money(terms.maxDeposit)} per agent, in {symbol}.

@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import { AGENT_ORDER } from "@/lib/agents";
+import type { DeskAsset } from "@/lib/assets";
 import { agentPnl, newPortfolio, type Emotion, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, ModelInfo } from "@/lib/council-types";
 import { pointOf, sameSpot } from "@/lib/layout";
-import type { Token } from "@/lib/market";
+import type { AssetKey, Prices } from "@/lib/market";
 import type { AgentId, AgentState, ArenaEvent, ChatMessage, Phase, Pt, Spot } from "@/lib/types";
 
 export interface AgentRuntime {
@@ -30,9 +31,11 @@ interface ArenaStore {
   modeNote: string | null;
   models: Record<AgentId, ModelInfo> | null;
   /** Token the council is discussing, which the chart follows. */
-  focus: Token | null;
+  focus: AssetKey | null;
   consensus: number;
   portfolio: Portfolio;
+  /** Tokens funders asked the desk to trade. */
+  assets: Record<AssetKey, DeskAsset>;
   fills: Fill[];
   /** Server clock minus this browser's clock, in ms. */
   clockSkew: number;
@@ -43,7 +46,7 @@ interface ArenaStore {
   tickets: Ticket[];
   apply: (e: ArenaEvent) => void;
   arrive: (id: AgentId) => void;
-  samplePnl: (prices: Partial<Record<Token, number>>) => void;
+  samplePnl: (prices: Prices) => void;
   removeCoin: (id: string) => void;
   removeTicket: (id: string) => void;
 }
@@ -76,6 +79,7 @@ export const useArena = create<ArenaStore>((set) => ({
   focus: null,
   consensus: 0,
   portfolio: newPortfolio(),
+  assets: {},
   fills: [],
   clockSkew: 0,
   nextRoundAt: null,
@@ -105,6 +109,7 @@ export const useArena = create<ArenaStore>((set) => ({
             modeNote: snap.modeNote,
             models: snap.models,
             portfolio: snap.portfolio,
+            assets: { ...s.assets, ...snap.assets },
             fills: [...snap.fills].sort(byTime),
             clockSkew: snap.serverTime - Date.now(),
             nextRoundAt: snap.nextRoundAt,
@@ -129,6 +134,8 @@ export const useArena = create<ArenaStore>((set) => ({
           return { phase: e.phase };
         case "focus":
           return { focus: e.token };
+        case "assets":
+          return { assets: { ...s.assets, ...e.assets } };
         case "agent_state": {
           const prev = s.agents[e.agent];
           // Drop the speech bubble once the agent stops talking.

@@ -3,9 +3,10 @@
  * The models supply opinions; this file decides what is allowed to happen.
  */
 import { AGENT_ORDER } from "@/lib/agents";
+import type { DeskAsset } from "@/lib/assets";
 import { buy, canSell, fitStakes, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, Exchange, Line, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
-import type { Token } from "@/lib/market";
+import type { AssetKey, Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { clamp, enforcePitch, STOP_RANGE, TARGET_RANGE, type Brain } from "./brain";
 import { isEvaluationModel, type CouncilConfig } from "./config";
@@ -15,7 +16,9 @@ import { llmBrain } from "./llm-brain";
 import { recentLines, saveRound } from "./memory";
 import { scriptedBrain } from "./scripted-brain";
 import { fundingLevel, pickLens, type Effort, type Skill } from "./skills";
-import { fetchPrice, fetchStats } from "./stats";
+import { liveRequests, type ActiveRequest, type RequestSource } from "../requests/service";
+import { assetQuote } from "../market/assets";
+import { fetchPrice, fetchStats, poolStats } from "./stats";
 import { updateState, type CouncilState } from "./store";
 
 const VOTES_TO_PASS = 3;
@@ -107,7 +110,7 @@ function chooseChallengers(pitches: Pitch[], proposal: Proposal): AgentId[] {
 /** Where a round gets its market data. Replaceable so a round can be tested against a chosen market. */
 export interface MarketSource {
   stats(): Promise<TokenStats[]>;
-  price(token: Token): Promise<number>;
+  price(token: AssetKey, assets: Record<AssetKey, DeskAsset>): Promise<number>;
 }
 
 const liveMarket: MarketSource = { stats: fetchStats, price: fetchPrice };
@@ -119,13 +122,48 @@ const perAgent = <T,>(fn: (a: AgentId) => T) => Object.fromEntries(AGENT_ORDER.m
  * Runs the session that `opening` has already claimed (its round number and start
  * time are saved), so no other server starts the same one.
  */
-export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilMode, opening: CouncilState, market: MarketSource = liveMarket): Promise<void> {
+export async function runRound(
+  run: RoundRun,
+  cfg: CouncilConfig,
+  mode: CouncilMode,
+  opening: CouncilState,
+  market: MarketSource = liveMarket,
+  requests: RequestSource = liveRequests,
+): Promise<void> {
+  let heardRequest: ActiveRequest | null = null;
+  let settled = false;
   try {
     const startedAt = opening.lastRoundAt;
-    const stats = await market.stats();
-    if (stats.length === 0) throw new Error("No market data available");
-    const prices = Object.fromEntries(stats.map((s) => [s.token, s.price])) as Partial<Record<Token, number>>;
+    const listed = await market.stats();
+    if (listed.length === 0) throw new Error("No market data available");
     const before = opening.portfolio;
+
+    // A funder's request, if one is waiting. A failure here must not cost the desk its session.
+    const solChange = listed.find((s) => s.token === "SOL")?.change1h ?? 0;
+    const asked = await requests.take(run.id, before.cash, opening.assets, solChange).catch((e) => {
+      console.error("[council] could not read the request queue:", e instanceof Error ? e.message : e);
+      return null;
+    });
+    heardRequest = asked;
+    const request = asked?.brief ?? null;
+    let assets = opening.assets;
+    if (asked && request) {
+      const quote = { price: asked.price, change24h: asked.stats.change24h, liquidityUsd: request.liquidityUsd, volume24hUsd: request.volume24hUsd };
+      assets = { ...assets, [request.asset.key]: { ...request.asset, quote, quotedAt: Date.now() } };
+      const known = assets;
+      await updateState((s) => ({ ...s, assets: { ...s.assets, [request.asset.key]: known[request.asset.key] } }));
+    }
+
+    // Requested tokens the desk already holds are on the board too, so the agents can judge and sell them.
+    const heldAssets = before.positions.map((p) => p.token).filter((t) => assets[t] && t !== request?.asset.key);
+    const heldStats = await Promise.all(
+      heldAssets.map(async (t) => {
+        const quote = await assetQuote(assets[t]).catch(() => null);
+        return quote ? poolStats(assets[t], quote, solChange).catch(() => null) : null;
+      }),
+    );
+    const stats = [...listed.filter((s) => s.token !== request?.asset.key), ...heldStats.filter((s): s is TokenStats => !!s), ...(asked ? [asked.stats] : [])];
+    const prices: Prices = Object.fromEntries(stats.map((s) => [s.token, s.price]));
 
     const lens: Record<AgentId, Skill> = perAgent((a) => pickLens(a, opening.lenses[a] ?? []));
     const effort: Record<AgentId, Effort> = perAgent((a) => fundingLevel(userFunding(before, a)).effort);
@@ -146,9 +184,10 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
       said,
       lens,
       effort,
+      request,
     };
     await updateState((s) => ({ ...s, lenses: perAgent((a) => [...(s.lenses[a] ?? []), lens[a].id].slice(-LENS_MEMORY)) }));
-    run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt });
+    run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt, request });
 
     const think = thinker(cfg, mode);
     const sellPct = { quant: 100, degen: 100, guardian: 100, oracle: 100 } as Record<AgentId, number>;
@@ -162,7 +201,16 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
         return heard({ agent, action: p.action, token: p.token, stakeUsd: p.stakeUsd, stopPct: p.stopPct, targetPct: p.targetPct, conviction: p.conviction, emotion: p.emotion, say: p.say, source: raw.source });
       }),
     );
-    let proposal = chooseProposal(pitches, sellPct);
+    // A funder's request takes the floor. Otherwise the strongest pitch does.
+    const asking = request && pitches.find((p) => p.agent === request.agent && p.action === "BUY" && p.token === request.asset.key);
+    if (asked && !asking) {
+      await requests.finish(asked.id, "failed", `${nameOf(asked.brief.agent)} had too little cash free to present the request.`);
+      settled = true;
+    }
+    let proposal: Proposal | null = asking
+      ? { leader: asking.agent, action: "BUY", token: asking.token, stopPct: asking.stopPct, targetPct: asking.targetPct, sellPct: 100 }
+      : chooseProposal(pitches, sellPct);
+    const bound = !!asking && request?.mode === "commit";
     run.push({ stage: "pitches", pitches, proposal });
 
     if (!proposal) {
@@ -209,7 +257,10 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
 
     const yes = 1 + pledges.filter((p) => p.support).length;
     const tooSmall = buying && totalUsd === 0;
-    const approved = yes >= VOTES_TO_PASS && !tooSmall;
+    const passed = yes >= VOTES_TO_PASS;
+    // A committed leader trades whatever the vote. Those who voted yes still join with their own cash.
+    const approved = (passed || bound) && !tooSmall;
+    const alone = approved && !passed;
 
     const votes: Vote[] = AGENT_ORDER.map((agent) => {
       if (agent === leader) return { agent, approve: true, reason: "leads the proposal" };
@@ -217,9 +268,9 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
       return { agent, approve: p.support, reason: p.reason };
     });
 
-    const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd }));
+    const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd, alone }));
     const closing: Line = { agent: leader, emotion: c.emotion, say: c.say, source: c.source };
-    run.push({ stage: "decision", pledges, closing, votes, approved });
+    run.push({ stage: "decision", pledges, closing, votes, approved, committed: bound });
 
     // 4. Order
     let fill: Fill | null = null;
@@ -227,9 +278,9 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
     let note: string;
 
     if (!approved) {
-      note = tooSmall && yes >= VOTES_TO_PASS ? "Passed the vote, but the order was under the desk's minimum size after limits. No trade." : `Proposal rejected ${yes} to ${4 - yes}. No trade this round.`;
+      note = tooSmall && (passed || bound) ? "The order was under the desk's minimum size after limits. No trade." : `Proposal rejected ${yes} to ${4 - yes}. No trade this round.`;
     } else {
-      const price = await market.price(final.token).catch(() => prices[final.token]!);
+      const price = await market.price(final.token, assets).catch(() => prices[final.token]!);
       const ts = Date.now();
       const id = `r${run.id}-${final.token}-${ts}`;
       const saved = await updateState((s) => {
@@ -245,18 +296,26 @@ export async function runRound(run: RoundRun, cfg: CouncilConfig, mode: CouncilM
       note = !f
         ? "The order could not be placed. No trade."
         : buying
-          ? `Bought ${usd(f.usd)} of ${f.token} at ${px(price)}. Stop ${final.stopPct}% below, target ${final.targetPct}% above.`
+          ? `${alone ? `Vote was ${yes} to ${4 - yes}. ${nameOf(leader)} was committed to its funder and bought` : "Bought"} ${usd(f.usd)} of ${f.token} at ${px(price)}. Stop ${final.stopPct}% below, target ${final.targetPct}% above.`
           : `Sold ${final.sellPct}% of ${f.token} at ${px(price)}. Realized ${signed(f.realized ?? 0, "")} USDC.`;
     }
 
+    const origin = asking ? " at a funder's request" : "";
     const summary = approved && fill
-      ? `Round ${run.id}: council ${buying ? "bought" : "sold"} ${final.token}, led by ${nameOf(leader)} (passed ${yes} to ${4 - yes}).`
-      : `Round ${run.id}: ${nameOf(leader)} proposed to ${final.action} ${final.token}; rejected ${yes} to ${4 - yes}.`;
+      ? alone
+        ? `Round ${run.id}: ${nameOf(leader)} bought ${final.token}${origin}, committed to it although the vote was ${yes} to ${4 - yes}.`
+        : `Round ${run.id}: council ${buying ? "bought" : "sold"} ${final.token}${origin}, led by ${nameOf(leader)} (passed ${yes} to ${4 - yes}).`
+      : `Round ${run.id}: ${nameOf(leader)} proposed to ${final.action} ${final.token}${origin}; ${passed || bound ? "no order was placed" : `rejected ${yes} to ${4 - yes}`}.`;
     await updateState((s) => ({ ...s, recent: [...s.recent, summary] }));
+    if (asked && asking) {
+      await requests.finish(asked.id, fill ? "executed" : passed || bound ? "failed" : "rejected", note);
+      settled = true;
+    }
     run.push({ stage: "outcome", fill, portfolio: after, note });
   } catch (e) {
     console.error("[council] round failed:", e);
     run.failed = true;
+    if (heardRequest && !settled) await requests.release(heardRequest.id).catch(() => {});
     run.push({ stage: "error", message: "The council could not complete this round. It will try again at the next session." });
   } finally {
     run.finish();

@@ -1,5 +1,7 @@
+import type { Asset, AssetQuote, DeskAsset } from "@/lib/assets";
 import type { TokenStats } from "@/lib/council-types";
-import { fetchCandles, fetchQuotes, geckoPrices, TOKENS, type Candle, type Quote, type Token } from "@/lib/market";
+import { fetchCandles, fetchQuotes, geckoPrices, isToken, TOKENS, type AssetKey, type Candle, type Prices, type Quote, type Token } from "@/lib/market";
+import { assetCandles, assetQuote } from "../market/assets";
 
 const pct = (from: number, to: number) => (from > 0 ? ((to - from) / from) * 100 : 0);
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -40,7 +42,7 @@ function atrPct(candles: Candle[], period = 14): number {
 }
 
 /** `candles` are five minutes apart, oldest first. */
-function summarize(token: Token, candles: Candle[], quote: Quote | undefined, hasVolume: boolean): TokenStats {
+function summarize(token: AssetKey, candles: Candle[], quote: Quote | undefined, hasVolume: boolean): TokenStats {
   const last = candles[candles.length - 1];
   const closes = candles.map((c) => c.close);
   const back = (n: number) => candles[Math.max(0, candles.length - n)];
@@ -98,19 +100,63 @@ export async function fetchStats(): Promise<TokenStats[]> {
   return stats.map((s) => ({ ...s, vsSol1h: round(s.change1h - sol) }));
 }
 
-export async function fetchPrice(token: Token): Promise<number> {
+/** The same figures for a token traded on a DEX pool. Null if the pool has too little history to read. */
+export async function poolStats(asset: Asset, quote: AssetQuote, solChange1h: number): Promise<TokenStats | null> {
+  const candles = await assetCandles(asset, "5m", 60);
+  if (candles.length < 30) return null;
+  // The pool's latest trade can be minutes old. The quote is the price an order would get now.
+  const last = candles[candles.length - 1];
+  const live = [...candles.slice(0, -1), { ...last, close: quote.price, high: Math.max(last.high, quote.price), low: Math.min(last.low, quote.price) }];
+  const s = summarize(asset.key, live, { price: quote.price, change24h: quote.change24h }, true);
+  return { ...s, vsSol1h: round(s.change1h - solChange1h), pool: { name: asset.name, liquidityUsd: quote.liquidityUsd, volume24hUsd: quote.volume24hUsd } };
+}
+
+type Assets = Record<AssetKey, DeskAsset>;
+
+export async function fetchPrice(token: AssetKey, assets: Assets = {}): Promise<number> {
+  if (!isToken(token)) {
+    const asset = assets[token];
+    if (!asset) throw new Error(`No live price for ${token}`);
+    return (await assetQuote(asset)).price;
+  }
   const quote = (await fetchQuotes(AbortSignal.timeout(10_000)))[token];
   if (!quote) throw new Error(`No live price for ${token}`);
   return quote.price;
+}
+
+/** Fresh quotes for the requested tokens the desk holds. One that can't be reached keeps its last quote. */
+export async function refreshAssets(assets: Assets, held: AssetKey[]): Promise<Assets> {
+  const wanted = held.filter((k) => assets[k]);
+  if (wanted.length === 0) return assets;
+  const quotes = await Promise.all(wanted.map((k) => assetQuote(assets[k]).catch(() => null)));
+  const out = { ...assets };
+  wanted.forEach((k, i) => {
+    const quote = quotes[i];
+    if (quote) out[k] = { ...assets[k], quote, quotedAt: Date.now() };
+  });
+  return out;
+}
+
+/**
+ * The price of everything the desk can hold: listed tokens from the exchange feed,
+ * requested tokens from their pools. Throws if the exchange feed can't be reached.
+ */
+export async function deskPrices(state: { assets: Assets; portfolio: { positions: Array<{ token: AssetKey }> } }): Promise<Prices> {
+  const held = state.portfolio.positions.map((p) => p.token).filter((t) => !isToken(t));
+  const [quotes, assets] = await Promise.all([fetchQuotes(AbortSignal.timeout(10_000)), refreshAssets(state.assets, held)]);
+  const prices: Prices = Object.fromEntries(Object.entries(quotes).map(([t, q]) => [t, q.price]));
+  for (const k of held) if (assets[k]) prices[k] = assets[k].quote.price;
+  return prices;
 }
 
 /**
  * Lowest and highest price seen since `sinceMs`, with the time each was reached.
  * Used to decide whether a stop or target was touched.
  */
-export async function extremesSince(token: Token, sinceMs: number, nowMs: number): Promise<Candle[]> {
+export async function extremesSince(token: AssetKey, sinceMs: number, nowMs: number, assets: Assets = {}): Promise<Candle[]> {
   const signal = AbortSignal.timeout(10_000);
   const minutes = Math.min(Math.ceil((nowMs - sinceMs) / 60_000) + 1, 1000);
+  if (!isToken(token)) return assets[token] ? assetCandles(assets[token], "1m", minutes) : [];
   try {
     return await fetchCandles(token, "1m", minutes, signal);
   } catch {
