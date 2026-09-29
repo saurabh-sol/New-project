@@ -63,8 +63,7 @@ export function councilConfig(): CouncilConfig {
   // An agent that is an evaluation model itself has odds of its own.
   const withOdds = (Object.keys(modelIds) as AgentId[]).filter((a) => asked.includes(a) && !isEvaluationModel(modelIds[a]));
   const nameOf = (id: string) => NAMES[id] ?? prettify(id);
-  // The name says so when a second model has a part in the agent's decisions.
-  const info = (a: AgentId): ModelInfo => ({ id: modelIds[a], name: withOdds.includes(a) ? `${nameOf(modelIds[a])} + ${nameOf(oddsModel)}` : nameOf(modelIds[a]) });
+  const info = (a: AgentId): ModelInfo => ({ id: modelIds[a], name: nameOf(modelIds[a]) });
 
   return {
     hasKey: !!(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN),
