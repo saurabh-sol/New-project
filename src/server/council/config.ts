@@ -3,7 +3,7 @@ import type { AgentId } from "@/lib/types";
 
 const DEFAULT_MODELS: Record<AgentId, string> = {
   quant: "openai/gpt-6-astra",
-  guardian: "anthropic/claude-opus-4.5",
+  guardian: "anthropic/claude-opus-5.5",
   degen: "google/gemini-2.5-pro",
   oracle: "typesafe-ai/jev",
 };
@@ -13,6 +13,7 @@ const NAMES: Record<string, string> = {
   "anthropic/claude-opus-4": "Claude Opus 4",
   "anthropic/claude-opus-4.5": "Claude Opus 4.5",
   "anthropic/claude-opus-4.8": "Claude Opus 4.8",
+  "anthropic/claude-opus-5.5": "Claude Opus 5.5",
   "google/gemini-2.5-pro": "Gemini 2.5 Pro",
   "spacexai/grok-4.7": "Grok 4.7",
   "typesafe-ai/jev": "Jev",

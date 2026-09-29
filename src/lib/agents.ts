@@ -35,7 +35,7 @@ export const AGENTS: Record<AgentId, AgentProfile> = {
     id: "guardian",
     name: "The Strategist",
     role: "Risk manager",
-    model: "Claude Opus 4.5",
+    model: "Claude Opus 5.5",
     provider: "Anthropic",
     color: "#fbbf24",
     body: "#ea8a2e",

@@ -28,7 +28,7 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
 | The Researcher | GPT-6 Astra | Momentum, RSI, volume | White |
-| The Strategist | Claude Opus 4.5 | Risk manager | Orange |
+| The Strategist | Claude Opus 5.5 | Risk manager | Orange |
 | The Observer | Gemini 2.5 Pro | Momentum specialist | Blue |
 | The Executor | Jev | Probabilities and odds | Pink |
 
