@@ -7,6 +7,8 @@ import { LOGIN_PATH, signIn, signOut } from "@/server/admin/session";
 
 export interface LoginState {
   error: string;
+  /** The name that was typed, put back in the form so that only the password is typed again. */
+  username?: string;
 }
 
 /** A wrong guess is answered no sooner than this, so guessing is slow. */
@@ -28,7 +30,7 @@ export async function login(_: LoginState | undefined, form: FormData): Promise<
   if (!username || !password || !(await checkLogin(username, password))) {
     noteWrongGuess(ip);
     await pause();
-    return { error: "Wrong username or password." };
+    return { error: "Wrong username or password.", username };
   }
 
   forgetGuesses(ip);

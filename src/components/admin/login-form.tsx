@@ -25,7 +25,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
           </p>
           <label className="block">
             <span className="text-[11px] uppercase tracking-widest text-white/40">login</span>
-            <input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required autoFocus className={FIELD} />
+            <input name="username" defaultValue={state?.username} autoComplete="username" autoCapitalize="none" spellCheck={false} required autoFocus className={FIELD} />
           </label>
           <label className="block">
             <span className="text-[11px] uppercase tracking-widest text-white/40">password</span>

@@ -191,8 +191,9 @@ export function SystemPane({ status, reached, now, className }: { status: AdminS
         </Row>
         {status && (
           <>
-            <Row name="gateway" bad={!status.gateway.hasKey || status.gateway.outOfBudget || status.sessions.today >= status.sessions.perDay}>
-              {!status.gateway.hasKey ? "no key set" : status.gateway.outOfBudget ? "budget used up · raise it in Vercel" : "answering"} · {status.sessions.today} of {status.sessions.perDay} sessions today
+            <Row name="gateway" bad={!status.gateway.hasKey || status.gateway.outOfBudget || mode !== "live" || status.sessions.today >= status.sessions.perDay}>
+              {/* A server that has just started has not been refused yet, so scripted agents are not called "answering". */}
+              {!status.gateway.hasKey ? "no key set" : status.gateway.outOfBudget ? "budget used up · raise it in Vercel" : mode === "live" ? "answering" : "did not answer the last session"} · {status.sessions.today} of {status.sessions.perDay} sessions today
               {status.sessions.today >= status.sessions.perDay ? " · the day's limit is reached" : ""}
             </Row>
             <Row name="last run">

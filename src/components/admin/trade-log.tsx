@@ -13,7 +13,7 @@ const SHOWN = 80;
 
 const TRIGGER: Record<Fill["reason"], string> = { COUNCIL: "council", OWN: "own", STOP: "stop", TARGET: "target", FALLING: "falling" };
 
-const COLUMNS = "grid grid-cols-[8ch_4ch_minmax(6ch,1fr)_9ch_13ch_10ch_7ch_9ch_4ch] gap-x-[1ch]";
+const COLUMNS = "grid grid-cols-[8ch_4ch_minmax(6ch,1fr)_9ch_13ch_10ch_7ch_9ch_5ch] gap-x-[1ch]";
 
 const clock = (ts: number) => new Date(ts).toLocaleTimeString("en-GB", { hour12: false });
 const short = (name: string) => name.replace("The ", "").toUpperCase();
@@ -76,7 +76,7 @@ export function TradeLog({ className }: { className?: string }) {
     <Pane title="trades.log" command="tail -f trades.log" aside={`${fills.length} on record${desk ? " · chain = agents' contracts holding the trade" : ""}`} className={className}>
       {/* A screen too narrow for a whole line is moved sideways, as a terminal's window would be. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-x-auto [scrollbar-width:none]">
-        <div className="flex min-h-0 min-w-[78ch] flex-1 flex-col">
+        <div className="flex min-h-0 min-w-[79ch] flex-1 flex-col">
           <div className={cn(COLUMNS, "shrink-0 border-b border-white/10 pb-0.5 uppercase text-white/30")}>
             <span>time</span>
             <span>side</span>
