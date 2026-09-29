@@ -28,7 +28,7 @@ function AgentOverlay({ id }: { id: AgentId }) {
 
   return (
     <div className="absolute" style={{ left: `${p.x}%`, top: `calc(${p.y}% - var(--char-h) - 14px)` }}>
-      <div className="absolute bottom-0 hidden w-60 sm:block" style={{ left: 0, transform: `translateX(-${tail}%)` }}>
+      <div className="absolute bottom-0 w-40 sm:w-60" style={{ left: 0, transform: `translateX(-${tail}%)` }}>
         <AnimatePresence mode="wait">{rt.bubble && !rt.walking && <SpeechBubble key={rt.bubble.id} message={rt.bubble} tail={tail} />}</AnimatePresence>
       </div>
 

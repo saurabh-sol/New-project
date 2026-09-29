@@ -37,10 +37,10 @@ function useCountdown(): string | null {
 
 function Stat({ label, children, note, featured }: { label: string; children: React.ReactNode; note?: React.ReactNode; featured?: boolean }) {
   return (
-    <div className={cn("panel flex min-w-0 flex-col justify-between gap-2 px-5 py-4", featured && "panel-strong")}>
+    <div className={cn("panel flex min-w-0 flex-col justify-between gap-2 px-3.5 py-3.5 sm:px-5 sm:py-4", featured && "panel-strong")}>
       <div className="panel-title">{label}</div>
-      <div className="font-display text-2xl font-bold leading-none text-white sm:text-3xl">{children}</div>
-      <div className="min-h-4 truncate text-xs text-white/45">{note}</div>
+      <div className="font-display text-xl font-bold leading-none text-white sm:text-3xl">{children}</div>
+      <div className="min-h-4 text-[11px] leading-snug text-white/45 sm:truncate sm:text-xs">{note}</div>
     </div>
   );
 }
@@ -70,7 +70,7 @@ export function HeroStats() {
       <Stat label="Council result" note="paper trades at live prices">
         <span className={cn("tabular-nums", up ? "text-emerald-400" : "text-red-400")}>
           <RollingNumber value={pnl} format={(n) => fmtSigned(n)} />
-          <span className="ml-2 text-base font-semibold opacity-80">
+          <span className="ml-1.5 text-xs font-semibold opacity-80 sm:ml-2 sm:text-base">
             {pct >= 0 ? "+" : ""}
             {pct.toFixed(2)}%
           </span>
@@ -80,9 +80,9 @@ export function HeroStats() {
         <RollingNumber value={funded} format={(n) => `$${n.toFixed(2)}`} className="tabular-nums" />
       </Stat>
       <Stat label={`Session ${round || "—"}`} note={phase === "monitor" && countdown ? `next session in ${countdown}` : "in progress"}>
-        <span className="flex items-center gap-2.5 text-xl sm:text-2xl">
-          <span className={cn("size-2.5 shrink-0 rounded-full", phase === "monitor" ? "bg-white/30" : "animate-pulse bg-white")} />
-          <span className="truncate">{phase === "vote" && committed ? JOINING : PHASE[phase]}</span>
+        <span className="flex items-center gap-2 text-[15px] leading-tight sm:gap-2.5 sm:text-2xl">
+          <span className={cn("size-2 shrink-0 rounded-full sm:size-2.5", phase === "monitor" ? "bg-white/30" : "animate-pulse bg-white")} />
+          <span className="sm:truncate">{phase === "vote" && committed ? JOINING : PHASE[phase]}</span>
         </span>
       </Stat>
     </section>

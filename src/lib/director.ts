@@ -44,6 +44,23 @@ function markWatched(round: number) {
   } catch {}
 }
 
+// How far into the session on stage this browser has watched, counted in lines.
+// After a refresh the session picks up from there instead of starting over.
+const PROGRESS = "council:progress";
+function savedProgress(round: number): number {
+  try {
+    const p = JSON.parse(localStorage.getItem(PROGRESS) ?? "null") as { round?: number; lines?: number } | null;
+    return p?.round === round && typeof p.lines === "number" ? p.lines : 0;
+  } catch {
+    return 0;
+  }
+}
+function saveProgress(round: number, lines: number) {
+  try {
+    localStorage.setItem(PROGRESS, JSON.stringify({ round, lines }));
+  } catch {}
+}
+
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 // What the desk's notes say. Shared by a session as it plays and by the record of one that is over.
@@ -122,11 +139,25 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
   const knownFills = new Set<string>();
   /** The session on stage, or 0 between sessions. Every line is filed under it. */
   let playing = 0;
+  /** Lines of the session on stage shown so far, and how many of them this browser had already watched. */
+  let shown = 0;
+  let watchedLines = 0;
+  /** True while the show runs through what was watched before. Nothing is waited for, so it takes a moment. */
+  const catchingUp = () => shown < watchedLines;
+  /** Counts a line as shown. */
+  const line = () => {
+    shown++;
+    if (playing && shown > watchedLines) saveProgress(playing, shown);
+  };
 
   // --- staging primitives ---
 
   /** Waits, holding the show while the tab is hidden (browsers freeze animations there). */
   async function sleep(ms: number) {
+    if (catchingUp()) {
+      if (signal.aborted) throw new Stopped();
+      return;
+    }
     let left = ms;
     while (left > 0 || document.hidden) {
       if (signal.aborted) throw new Stopped();
@@ -152,8 +183,10 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
   const setState = (agent: AgentId, state: AgentState) => emit({ type: "agent_state", agent, state });
   const setAll = (state: AgentState) => AGENT_ORDER.forEach((a) => setState(a, state));
   const feel = (agent: AgentId, emotion: Emotion) => emit({ type: "emotion", agent, emotion });
-  const system = (text: string, agent: AgentId = "guardian") =>
+  const system = (text: string, agent: AgentId = "guardian") => {
     emit({ type: "message", message: { id: uid(), agent, kind: "system", text, ts: Date.now(), round: playing || undefined } });
+    if (playing) line();
+  };
 
   /** Starts a walk and returns how long it takes, in ms. */
   function walk(agent: AgentId, to: Spot): number {
@@ -165,6 +198,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
   const walkAndWait = async (agent: AgentId, to: Spot) => sleep(walk(agent, to) + SETTLE_MS);
   const walkAll = async (agents: AgentId[], to: Spot) => sleep(Math.max(0, ...agents.map((a) => walk(a, to))) + SETTLE_MS);
 
+  const count = line;
   async function say(line: Line, kind: MessageKind) {
     feel(line.agent, line.emotion);
     setState(line.agent, "speaking");
@@ -172,7 +206,9 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       type: "message",
       message: { id: uid(), agent: line.agent, to: line.to, kind, text: line.say, ts: Date.now(), emotion: line.emotion, source: line.source, round: playing || undefined },
     });
-    await sleep(readTime(line.say));
+    const quick = catchingUp();
+    count();
+    if (!quick) await sleep(readTime(line.say));
     setState(line.agent, "idle");
   }
 
@@ -288,6 +324,8 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     const open = await next("open");
     if (!open) return 0;
     playing = open.round;
+    shown = 0;
+    watchedLines = savedProgress(open.round);
     emit({ type: "round_start", round: open.round, mode: open.mode, portfolio: open.portfolio, committed: open.request?.mode === "commit" });
     emit({ type: "phase", phase: "scan" });
     const away = AGENT_ORDER.filter((a) => at[a].kind !== "home");
@@ -363,10 +401,13 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
         setState(pledge.agent, "speaking");
         emit({
           type: "message",
-          message: { id: uid(), agent: pledge.agent, to: leader, kind: "negotiate", text: pledge.say, ts: Date.now(), emotion: pledge.emotion, source: pledge.source },
+          message: { id: uid(), agent: pledge.agent, to: leader, kind: "negotiate", text: pledge.say, ts: Date.now(), emotion: pledge.emotion, source: pledge.source, round: playing },
         });
-        await sleep(1400);
-        emit({ type: "offer", id: uid(), from: pledge.agent, to: leader, amount: pledge.stakeUsd });
+        const quick = catchingUp();
+        line();
+        if (!quick) await sleep(1400);
+        // Coins that flew before the refresh don't fly again.
+        if (!quick) emit({ type: "offer", id: uid(), from: pledge.agent, to: leader, amount: pledge.stakeUsd });
         await sleep(Math.max(1600, readTime(pledge.say) - 1400));
         setState(pledge.agent, "idle");
         leaving = walk(pledge.agent, HOME);
@@ -393,6 +434,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
         type: "message",
         message: { id: uid(), agent: v.agent, kind: "vote", text: `${voteWord(v.approve, committed)}: ${v.reason}`, ts: Date.now(), round: playing },
       });
+      line();
       emit({ type: "consensus", value: yes / decision.votes.length });
       await sleep(1500);
     }
@@ -462,7 +504,11 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       if (!res.ok) {
         await sleep(8000);
       } else if (res.headers.get("content-type")?.includes("ndjson")) {
-        const played = await playRound(res).finally(() => (playing = 0));
+        const played = await playRound(res).finally(() => {
+          playing = 0;
+          shown = 0;
+          watchedLines = 0;
+        });
         seen = Math.max(seen, played);
         markWatched(played);
         await sync();

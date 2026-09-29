@@ -41,7 +41,7 @@ export function TradeFeed() {
         </p>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-xs">
+        <table className="w-full min-w-[720px] whitespace-nowrap text-left text-xs">
           <thead className="font-mono text-[10px] uppercase tracking-wider text-white/35">
             <tr>
               <th className="px-4 py-2 font-normal">Time</th>

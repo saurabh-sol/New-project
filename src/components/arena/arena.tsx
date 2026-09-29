@@ -1,14 +1,11 @@
 "use client";
 
 import { motion } from "motion/react";
-import { useEffect, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import { AgentCards } from "@/components/home/agent-cards";
 import { HeroStats } from "@/components/home/hero-stats";
 import { AGENT_ORDER } from "@/lib/agents";
-import { startShow } from "@/lib/director";
 import { cn } from "@/lib/utils";
-import { useArena } from "@/store/arena";
-import { livePrices, startQuotes, useMarket } from "@/store/market";
 import { PriceChart } from "../market/price-chart";
 import { AgentActor } from "./agent-actor";
 import { CouncilTable } from "./council-table";
@@ -29,30 +26,8 @@ const SIZES = {
   "--table-w": "clamp(110px, 24cqw, 230px)",
 } as CSSProperties;
 
-/** Starts the live prices and the council's show. Used by every page that displays the floor. */
-export function useCouncilShow() {
-  const apply = useArena((s) => s.apply);
-  const samplePnl = useArena((s) => s.samplePnl);
-  const feedSettled = useMarket((s) => s.status !== "loading");
-
-  useEffect(() => startQuotes(), []);
-
-  // Wait for the first real quotes so the desk opens on real prices.
-  useEffect(() => {
-    if (feedSettled) return startShow(apply);
-  }, [feedSettled, apply]);
-
-  // Sample each agent's PnL for the sparklines.
-  useEffect(() => {
-    if (!feedSettled) return;
-    const id = setInterval(() => samplePnl(livePrices()), 10_000);
-    return () => clearInterval(id);
-  }, [feedSettled, samplePnl]);
-}
-
+/** The trading floor page. The show itself is run by ShowRunner, above the pages. */
 export function Arena() {
-  useCouncilShow();
-
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 px-4 pb-12 pt-5 sm:px-6">
       <HeroStats />

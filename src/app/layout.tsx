@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { ShowRunner } from "@/components/arena/show-runner";
 import { WalletProvider } from "@/components/wallet/wallet-provider";
 import { Web3Providers } from "@/components/wallet/web3-providers";
 import "./globals.css";
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <div className="backdrop" />
         <Web3Providers>
+          <ShowRunner />
           <WalletProvider>{children}</WalletProvider>
         </Web3Providers>
       </body>

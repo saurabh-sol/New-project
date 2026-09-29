@@ -96,7 +96,7 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[5000] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[5000] grid items-end justify-items-center bg-black/70 p-3 backdrop-blur-sm sm:place-items-center sm:p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -106,7 +106,7 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Connect a wallet"
-        className="panel panel-strong relative grid max-h-[86vh] w-full max-w-3xl overflow-hidden md:grid-cols-[19rem_minmax(0,1fr)]"
+        className="panel panel-strong relative grid max-h-[86vh] w-full max-w-3xl overflow-y-auto md:grid-cols-[19rem_minmax(0,1fr)] md:overflow-hidden"
         initial={{ opacity: 0, y: 24, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -122,7 +122,7 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
         </button>
 
         {/* the list */}
-        <div className="overflow-y-auto border-b border-white/10 p-5 md:border-b-0 md:border-r">
+        <div className={cn("border-white/10 p-5 md:block md:overflow-y-auto md:border-r", pending && "hidden")}>
           <h2 className="font-display text-xl font-bold text-white">Connect a Wallet</h2>
           <p className="mt-1 text-xs text-white/40">On Robinhood Chain</p>
 
@@ -138,7 +138,7 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
         </div>
 
         {/* help, or progress once a wallet is chosen */}
-        <div className="flex min-h-[22rem] flex-col items-center justify-center overflow-y-auto px-8 py-10 text-center">
+        <div className={cn("flex-col items-center justify-center px-6 py-8 text-center md:flex md:min-h-[22rem] md:overflow-y-auto md:px-8 md:py-10", pending ? "flex" : "hidden")}>
           {pending ? (
             <>
               <Logo option={pending} size="size-16" />

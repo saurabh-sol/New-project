@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Floor, useCouncilShow } from "@/components/arena/arena";
+import { Floor } from "@/components/arena/arena";
 import { Leaderboard } from "@/components/arena/leaderboard";
 import { PhaseTimeline } from "@/components/arena/phase-timeline";
 import { Positions } from "@/components/arena/positions";
@@ -21,7 +21,6 @@ const HIDE_CURSOR_AFTER_MS = 3000;
  * nothing to click. Effects that need a strong graphics chip are switched off.
  */
 export function Kiosk() {
-  useCouncilShow();
   const mode = useArena((s) => s.mode);
   const portfolio = useArena((s) => s.portfolio);
   const equity = usePoolEquity();

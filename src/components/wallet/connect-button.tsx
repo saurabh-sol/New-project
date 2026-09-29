@@ -19,7 +19,7 @@ export function ConnectButton({ className }: { className?: string }) {
 
   if (!address) {
     return (
-      <button onClick={open} className={cn("btn-primary px-4 py-2 text-sm", className)}>
+      <button onClick={open} className={cn("btn-primary whitespace-nowrap px-3.5 py-2 text-[13px] sm:px-4 sm:text-sm", className)}>
         Connect wallet
       </button>
     );
@@ -34,7 +34,7 @@ export function ConnectButton({ className }: { className?: string }) {
         ) : (
           <span className="size-6 rounded-full bg-white" />
         )}
-        <span className="font-mono text-xs text-white">{shortAddress(address)}</span>
+        <span className="whitespace-nowrap font-mono text-xs text-white">{shortAddress(address)}</span>
       </button>
       {menu && (
         <div className="panel absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden p-1.5 text-sm">

@@ -55,7 +55,7 @@ export function SpeechBubble({ message, tail }: { message: ChatMessage; tail: nu
 
   return (
     <motion.div
-      className="relative rounded-2xl border border-white/30 bg-black/95 px-3.5 py-2.5 text-[13px] leading-snug text-white/90 shadow-2xl backdrop-blur-xl"
+      className="relative rounded-xl border border-white/30 bg-black/95 px-2.5 py-2 text-[11px] leading-snug text-white/90 shadow-2xl backdrop-blur-xl sm:rounded-2xl sm:px-3.5 sm:py-2.5 sm:text-[13px]"
       style={{ transformOrigin: `${tail}% 100%` }}
       initial={{ opacity: 0, scale: 0.5, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
