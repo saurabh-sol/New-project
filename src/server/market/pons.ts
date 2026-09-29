@@ -69,3 +69,34 @@ export async function launchedOnPons(token: string, poolCreatedAt: number): Prom
     return null;
   }
 }
+
+/** Blocks in one search of the factory's record. Searches are cut at round numbers, so that a finished one is never made twice. */
+const SEARCH = 1_000_000;
+
+/** Tokens that graduated in one stretch of blocks. A stretch that is over does not change. */
+const graduatedIn = (index: number, headBlock: number) => {
+  const from = index * SEARCH;
+  const over = from + SEARCH - 1 <= headBlock;
+  return cached(`pons:graduated:${index}`, over ? 7 * 86_400_000 : 60_000, async () => {
+    const logs = await chain().getLogs({ address: PONS_FACTORY, event: GRADUATED, fromBlock: BigInt(from), toBlock: BigInt(Math.min(from + SEARCH - 1, headBlock)) });
+    for (const log of logs) if (log.args.token) known().set(log.args.token.toLowerCase(), true);
+    return logs.flatMap((log) => (log.args.token ? [{ token: log.args.token.toLowerCase(), block: Number(log.blockNumber) }] : []));
+  });
+};
+
+/**
+ * Every token that graduated from Pons in the last `days`, newest first, as the factory recorded it.
+ * Throws if the chain can't be read.
+ */
+export async function graduates(days: number): Promise<Array<{ token: string; block: number }>> {
+  const { head, perSecond } = await pace();
+  const now = Number(head);
+  const oldest = Math.max(now - Math.round(days * 86_400 * perSecond), 0);
+  const stretches: number[] = [];
+  for (let i = Math.floor(now / SEARCH); i >= Math.floor(oldest / SEARCH); i--) stretches.push(i);
+  const found: Array<{ token: string; block: number }> = [];
+  // A few at a time: the public endpoint is shared with everyone.
+  for (let i = 0; i < stretches.length; i += 4) found.push(...(await Promise.all(stretches.slice(i, i + 4).map((s) => graduatedIn(s, now)))).flat());
+  const seen = new Set<string>();
+  return found.filter((g) => g.block >= oldest && !seen.has(g.token) && seen.add(g.token)).sort((a, b) => b.block - a.block);
+}

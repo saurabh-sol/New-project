@@ -9,9 +9,9 @@
  */
 import type { Asset, AssetQuote, DeskAsset } from "@/lib/assets";
 import { isToken } from "@/lib/market";
-import { assetQuotes, cleanSymbol, longKey } from "./assets";
+import { assetQuotes, cleanSymbol, listings, longKey, type Listing } from "./assets";
 import { cached, getJson } from "./http";
-import { launchedOnPons, PONS_DEXES } from "./pons";
+import { graduates, launchedOnPons, PONS_DEXES } from "./pons";
 import { stockTokens } from "./stocks";
 
 const GECKOTERMINAL = "https://api.geckoterminal.com/api/v2/networks/robinhood";
@@ -35,6 +35,30 @@ export const boardLimits = () => ({
   // The agents read three hours of candles. A pool younger than this has too few.
   minAgeHours: num(process.env.BOARD_MIN_AGE_HOURS, 6),
 });
+
+/** How far back the factory's record is read for tokens that graduated, in days. */
+const GRADUATED_WITHIN_DAYS = 30;
+/** How often every graduate is looked at again. In between, only the busiest are. */
+const SURVEY_MS = 30 * 60_000;
+const WATCHED = 60;
+
+/**
+ * Pons's graduates and how they are trading, busiest over the last hour first.
+ * The factory's record says which tokens they are, and DexScreener how each is trading.
+ */
+async function ponsListings(): Promise<Listing[]> {
+  const busiest = (all: Listing[]) => [...all].sort((a, b) => b.volume1hUsd - a.volume1hUsd || b.quote.volume24hUsd - a.quote.volume24hUsd);
+  const survey = await cached("pons:survey", SURVEY_MS, async () => {
+    const tokens = (await graduates(GRADUATED_WITHIN_DAYS)).map((g) => g.token);
+    const all = await listings(tokens);
+    if (tokens.length > 0 && all.length === 0) throw new Error("Pons's tokens could not be priced");
+    // Those worth a second look, by what they traded in a day.
+    return [...all].sort((a, b) => b.quote.volume24hUsd - a.quote.volume24hUsd).slice(0, WATCHED);
+  });
+  // The busiest are asked about again every time, so the order is this minute's.
+  const fresh = await cached("pons:watched", 45_000, () => listings(survey.map((l) => l.token))).catch(() => [] as Listing[]);
+  return busiest(fresh.length ? fresh : survey);
+}
 
 /** Not trending tokens in the desk's sense: money, and wrapped ETH, which everything else is priced in. */
 const MONEY = new Set(["USDG", "USDC", "USDT", "DAI", "USDE", "PYUSD", "WETH", "ETH"]);
@@ -80,6 +104,11 @@ export function trendingBoard(known: Record<string, DeskAsset> = {}): Promise<De
   return cached(`board:trending:${source}`, 60_000, async () => {
     const limits = boardLimits();
     const pons = source === "pons";
+    if (pons) {
+      // The first choice needs nothing but the chain and DexScreener.
+      const fromChain = await boardFromChain(limits, known).catch((e) => (console.error("[board] could not make the board from Pons's record:", e instanceof Error ? e.message.split("\n")[0] : e), []));
+      if (fromChain.length >= Math.min(3, limits.size)) return fromChain;
+    }
     const onPons = (p: Pool) => PONS_DEXES.includes(p.relationships.dex?.data?.id ?? "");
     // The data service allows few requests a minute, and the agents' candles need most of them. Pons's own lists change slowly, and are kept for five minutes.
     const list = (path: string, patient = false) =>
@@ -138,4 +167,28 @@ export function trendingBoard(known: Record<string, DeskAsset> = {}): Promise<De
     const live = await assetQuotes(board).catch(() => ({}) as Record<string, AssetQuote>);
     return board.map((a) => (live[a.key] ? { ...a, quote: live[a.key], quotedAt: Date.now() } : { ...a, feed: "gecko" as const }));
   });
+}
+
+/** The board made from the factory's record: graduates of Pons that clear the desk's limits, busiest first. */
+async function boardFromChain(limits: ReturnType<typeof boardLimits>, known: Record<string, DeskAsset>): Promise<DeskAsset[]> {
+  const [all, stocks] = await Promise.all([ponsListings(), stockTokens().catch(() => new Map<string, { address: string }>())]);
+  const byAddress = new Map(Object.values(known).map((a) => [a.address.toLowerCase(), a]));
+  const board: DeskAsset[] = [];
+  const taken = new Set<string>();
+  for (const l of all) {
+    if (board.length >= limits.size) break;
+    const symbol = l.symbol.replace(/^\$/, "");
+    if (MONEY.has(symbol.toUpperCase())) continue;
+    const ageHours = l.createdAt ? (Date.now() - l.createdAt) / 3_600_000 : Infinity;
+    if ((l.quote.liquidityUsd ?? 0) < limits.minLiquidityUsd || l.quote.volume24hUsd < limits.minVolumeUsd || ageHours < limits.minAgeHours) continue;
+
+    const asset: Omit<Asset, "key"> = { symbol, name: l.name, address: l.token, kind: "pool", pool: l.pool, ...(l.quoteToken ? { quoteToken: l.quoteToken } : {}), launchpad: "pons" };
+    const plain = cleanSymbol(symbol);
+    const clash = isToken(plain) || stocks.has(plain) || taken.has(plain) || (known[plain] && known[plain].address.toLowerCase() !== l.token);
+    const key = byAddress.get(l.token)?.key ?? (clash ? longKey(asset) : plain);
+    if (taken.has(key)) continue;
+    taken.add(key);
+    board.push({ ...asset, key, quote: l.quote, quotedAt: Date.now() });
+  }
+  return board;
 }

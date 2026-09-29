@@ -11,6 +11,8 @@
  *
  * It can be run again if it broke off: what is already written to the file is not deployed twice.
  * Pass --env <file> to write the settings somewhere else.
+ * Pass --no-approve to deploy the contracts and leave the treasury's USDG out of their reach
+ * for now. Run it again without the flag before the server is pointed at them.
  */
 import "./dns-fallback.mjs";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
@@ -24,6 +26,7 @@ const mainnet = process.env.ROBINHOOD_NETWORK === "mainnet";
 const chain = mainnet ? robinhood : robinhoodTestnet;
 
 const envFile = process.argv.includes("--env") ? process.argv[process.argv.indexOf("--env") + 1] : ".env.local";
+const approve = !process.argv.includes("--no-approve");
 if (mainnet && process.env.ALLOW_MAINNET_FUNDING !== "true") throw new Error("These contracts have not been audited. They deploy to mainnet only with ALLOW_MAINNET_FUNDING=true.");
 if (!process.env.TREASURY_PRIVATE_KEY) throw new Error("TREASURY_PRIVATE_KEY is not set in .env.local");
 const usdg = process.env.USDG_ADDRESS || (mainnet ? "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" : null);
@@ -87,10 +90,11 @@ for (const [name, agent] of Object.entries(AGENTS)) {
     await sent(`registering ${agent}'s desk`, () => wallet.writeContract({ address: getAddress(shares), abi: book.abi, functionName: "setDesk", args: [getAddress(address), true] }));
   }
   // It draws the agent's capital, and the gains of its trades, from the treasury.
-  if ((await pub.readContract({ address: getAddress(usdg), abi: erc20, functionName: "allowance", args: [account.address, getAddress(address)] })) < maxUint256 / 2n) {
+  if (approve && (await pub.readContract({ address: getAddress(usdg), abi: erc20, functionName: "allowance", args: [account.address, getAddress(address)] })) < maxUint256 / 2n) {
     await sent(`letting ${agent}'s desk draw USDG`, () => wallet.writeContract({ address: getAddress(usdg), abi: erc20, functionName: "approve", args: [getAddress(address), maxUint256] }));
   }
 }
 
 console.log(`\nThe settings are in ${envFile}. Set the same six on the host, then restart the server.`);
+if (!approve) console.log("The contracts can't draw USDG from the treasury yet. Run this again without --no-approve before they are used.");
 process.exit(0);

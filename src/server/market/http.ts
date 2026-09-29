@@ -71,7 +71,7 @@ export async function getJson<T>(url: string, patient = false): Promise<T> {
     try {
       const res = await inTurn(new URL(url).host, () => fetch(url, { signal: AbortSignal.timeout(8_000), headers: { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; TheCouncil/1.0)" } }));
       if (res.ok) return (await res.json()) as T;
-      problem = new Error(`Market data request failed (${res.status})`);
+      problem = new Error(`Market data request failed (${res.status}) at ${new URL(url).host}`);
       // Anything but "too many requests" or a server fault will fail the same way again.
       if (res.status !== 429 && res.status < 500) break;
     } catch (e) {

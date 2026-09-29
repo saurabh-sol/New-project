@@ -12,11 +12,12 @@ The tokens on the board are tokens launched on **Pons** ([ponsfamily.com](https:
 
 | Step | What the desk does |
 | --- | --- |
-| Finds candidates | Takes the Pons pools among those trending on the chain, then Pons's busiest pools by trades made and by money traded, from GeckoTerminal |
-| Checks where each came from | Looks the token up in the record of Pons's factory contract, `0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e`, which puts every launch and graduation on-chain. A token the factory has no record of is left out |
+| Finds Pons's tokens | Reads the record of Pons's factory contract, `0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e`, which puts every launch and graduation on-chain, for every token that graduated in the last thirty days |
+| Sees how each is trading | Asks DexScreener for each token's busiest pool: its price, liquidity, and what it traded in the last hour and day. All of them every half hour, the sixty busiest every time |
+| Ranks them | Most traded over the last hour first |
 | Keeps what can be read | The first eight whose pool clears the limits below |
 
-Tokens from the first version of Pons are not on the record of the present factory. They are taken on GeckoTerminal's word that the pool is Pons's. If the chain can't be read, so is every token, until it can.
+Every token on the board is therefore on Pons's own record. If the chain can't be read, the board is made from GeckoTerminal's lists of Pons's pools instead, each token checked against the factory's record once the chain answers again. Tokens of the first version of Pons, which the present factory has no record of, come onto the board only that way.
 
 `BOARD_LAUNCHPAD=any` puts whatever is trending on the chain on the board, from any launchpad.
 

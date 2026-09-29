@@ -47,9 +47,9 @@ interface Pair {
   quoteToken?: { address: string };
   priceUsd?: string;
   liquidity?: { usd?: number };
-  volume?: { h24?: number };
+  volume?: { h1?: number; h24?: number };
   priceChange?: { m5?: number; h1?: number; h24?: number };
-  txns?: { m5?: { buys?: number; sells?: number } };
+  txns?: { m5?: { buys?: number; sells?: number }; h1?: { buys?: number; sells?: number } };
   pairCreatedAt?: number;
 }
 
@@ -229,6 +229,56 @@ export function assetQuote(asset: Asset): Promise<AssetQuote> {
     if (!pair || !(Number(pair.priceUsd) > 0)) throw new Error(`No live price for ${asset.symbol}`);
     return poolQuote(pair);
   });
+}
+
+/** A token's busiest pool, as DexScreener reports it. */
+export interface Listing {
+  token: string;
+  symbol: string;
+  name: string;
+  pool: string;
+  quoteToken: string | undefined;
+  createdAt: number | undefined;
+  /** Traded in the last hour, in USD, and how many trades that was. */
+  volume1hUsd: number;
+  trades1h: number;
+  quote: AssetQuote;
+}
+
+/**
+ * The pool each of these tokens trades most in, with its figures. Tokens are asked for thirty
+ * at a time. One that has no pool on Robinhood Chain, or no price, is left out.
+ */
+export async function listings(tokens: string[]): Promise<Listing[]> {
+  const batches: string[][] = [];
+  for (let i = 0; i < tokens.length; i += BATCH) batches.push(tokens.slice(i, i + BATCH));
+  const out: Listing[] = [];
+  // A few requests at a time, so that a long list does not use up what the service allows in a minute.
+  for (let i = 0; i < batches.length; i += 5) {
+    const answers = await Promise.all(batches.slice(i, i + 5).map((batch) => getJson<Pair[] | null>(`https://api.dexscreener.com/tokens/v1/${CHAIN}/${batch.join(",")}`).catch(() => null)));
+    for (const pairs of answers) {
+      const best = new Map<string, Pair>();
+      for (const p of pairs ?? []) {
+        if (p.chainId !== CHAIN || !(Number(p.priceUsd) > 0)) continue;
+        const token = p.baseToken.address.toLowerCase();
+        if ((p.liquidity?.usd ?? 0) > (best.get(token)?.liquidity?.usd ?? -1)) best.set(token, p);
+      }
+      for (const [token, p] of best) {
+        out.push({
+          token,
+          symbol: p.baseToken.symbol,
+          name: p.baseToken.name,
+          pool: p.pairAddress,
+          quoteToken: p.quoteToken?.address,
+          createdAt: p.pairCreatedAt,
+          volume1hUsd: p.volume?.h1 ?? 0,
+          trades1h: (p.txns?.h1?.buys ?? 0) + (p.txns?.h1?.sells ?? 0),
+          quote: poolQuote(p),
+        });
+      }
+    }
+  }
+  return out;
 }
 
 /** DexScreener prices this many pools in one request. */
