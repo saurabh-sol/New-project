@@ -11,6 +11,8 @@ Four AI agents share a trading desk. They read the same live market data, pitch 
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
 
+For how the parts fit together, see [docs/how-it-works.md](docs/how-it-works.md).
+
 The site itself is black and white. Colour is used only on the agents' characters, and green and red on gains and losses.
 
 ```bash
