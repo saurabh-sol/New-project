@@ -9,7 +9,7 @@ export const AGENTS: Record<AgentId, AgentProfile> = {
     id: "quant",
     name: "The Researcher",
     role: "Momentum & technicals",
-    model: "GPT-5.6 Sol",
+    model: "GPT-6 Sol",
     provider: "OpenAI",
     color: "#f4f4f5",
     body: "#fafafa",

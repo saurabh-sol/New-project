@@ -2,7 +2,7 @@ import type { ModelInfo } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 
 const DEFAULT_MODELS: Record<AgentId, string> = {
-  quant: "openai/gpt-5.6-sol",
+  quant: "openai/gpt-6-sol",
   guardian: "anthropic/claude-opus-5.5",
   degen: "alibaba/qwen3.8-max",
   oracle: "typesafe-ai/jev",
@@ -10,6 +10,7 @@ const DEFAULT_MODELS: Record<AgentId, string> = {
 
 const NAMES: Record<string, string> = {
   "openai/gpt-6-astra": "GPT-6 Astra",
+  "openai/gpt-6-sol": "GPT-6 Sol",
   "openai/gpt-5.6-sol": "GPT-5.6 Sol",
   "spacexai/grok-4.6": "Grok 4.6",
   "alibaba/qwen3.8-max": "Qwen 3.8 Max",

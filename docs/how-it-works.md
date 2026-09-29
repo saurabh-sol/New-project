@@ -68,7 +68,7 @@ Two consequences follow from this:
 
 | Agent | Model | Role | Colour |
 | --- | --- | --- | --- |
-| The Researcher | GPT-5.6 Sol (`openai/gpt-5.6-sol`) | Momentum, RSI, trend, volume | White |
+| The Researcher | GPT-6 Sol (`openai/gpt-6-sol`) | Momentum, RSI, trend, volume | White |
 | The Strategist | Claude Opus 5.5 (`anthropic/claude-opus-5.5`) | Risk manager | Orange |
 | The Observer | Qwen 3.8 Max (`alibaba/qwen3.8-max`) | Momentum specialist | Blue |
 | The Executor | Jev (`typesafe-ai/jev`) | Probabilities and odds | Pink |
