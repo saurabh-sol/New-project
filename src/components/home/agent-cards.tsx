@@ -9,7 +9,7 @@ import { agentNav, agentPnl, userFunding } from "@/lib/council";
 import type { AgentFunding } from "@/lib/funding-types";
 import type { AgentId, AgentState } from "@/lib/types";
 import { useFundStatus } from "@/lib/use-fund";
-import { cn, fmtSigned } from "@/lib/utils";
+import { cn, fmtSigned, shortAddress } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { useModelName, usePrices } from "@/store/selectors";
 
@@ -29,6 +29,7 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
   const model = useModelName(id);
   const rt = useArena((s) => s.agents[id]);
   const portfolio = useArena((s) => s.portfolio);
+  const desk = useArena((s) => s.desk?.agents[id]);
   const prices = usePrices();
 
   const pnl = agentPnl(portfolio, id, prices);
@@ -81,6 +82,16 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
           <dd className="font-mono text-[13px] font-semibold tabular-nums text-white">${inTrades.toFixed(2)}</dd>
         </div>
       </dl>
+
+      {/* The agent's own contract, where its money is held and its trades are on record. */}
+      {desk && (
+        <a href={desk.explorerAddress} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 text-[11px] text-white/50 hover:text-white">
+          <span>
+            On-chain desk <span className="font-mono text-white/80 underline underline-offset-2">{shortAddress(desk.address)} ↗</span>
+          </span>
+          {desk.holds !== null && <span className="font-mono text-white/60">${desk.holds.toFixed(2)}</span>}
+        </a>
+      )}
 
       <div className="flex items-center gap-2.5">
         <div className="min-w-0 flex-1" title={funding?.nextLevelAt ? `$${Math.max(funding.nextLevelAt - funded, 0).toFixed(0)} more unlocks the next analysis level` : "Top analysis level"}>

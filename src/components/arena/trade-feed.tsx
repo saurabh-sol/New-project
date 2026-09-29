@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { AGENTS } from "@/lib/agents";
+import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
@@ -9,9 +9,12 @@ import { useArena } from "@/store/arena";
 
 const TRIGGER: Record<Fill["reason"], string> = { COUNCIL: "Council vote", OWN: "Own book", STOP: "Stop-loss", TARGET: "Profit target" };
 
+const short = (name: string) => name.replace("The ", "");
+
 /**
- * Every trade the desk has made. With a desk contract, each is recorded on Robinhood Chain
- * and links to its transaction. Without one they are paper trades and nothing more.
+ * Every trade the desk has made. With desk contracts, each agent's part of a trade is recorded
+ * on the agent's own contract on Robinhood Chain, and links to its transaction. Without them
+ * they are paper trades and nothing more.
  */
 export function TradeFeed() {
   const fills = useArena((s) => s.fills);
@@ -28,15 +31,17 @@ export function TradeFeed() {
       </div>
       {desk && (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 px-4 py-2.5 text-xs text-white/50">
-          <span>
-            Desk contract{" "}
-            <a href={desk.explorerAddress} target="_blank" rel="noreferrer" className="font-mono text-white/80 underline underline-offset-2 hover:text-white">
-              {shortAddress(desk.address)} ↗
-            </a>{" "}
-            on {desk.network}
-          </span>
-          {desk.holds !== null && <span className="font-mono text-white/70">holds ${desk.holds.toFixed(2)} USDG</span>}
-          {desk.solvent === false && <span className="text-red-300">holds less than it owes the agents</span>}
+          <span>Each agent has a desk contract of its own on {desk.network}:</span>
+          {AGENT_ORDER.map((id) => (
+            <span key={id}>
+              {short(AGENTS[id].name)}{" "}
+              <a href={desk.agents[id].explorerAddress} target="_blank" rel="noreferrer" className="font-mono text-white/80 underline underline-offset-2 hover:text-white">
+                {shortAddress(desk.agents[id].address)} ↗
+              </a>
+            </span>
+          ))}
+          {desk.holds !== null && <span className="font-mono text-white/70">holding ${desk.holds.toFixed(2)} USDG between them</span>}
+          {desk.solvent === false && <span className="text-red-300">a contract holds less than it owes its agent</span>}
           <span className="text-white/35">The treasury takes the other side of every trade.</span>
         </p>
       )}
@@ -97,7 +102,16 @@ export function TradeFeed() {
                     </td>
                     {desk && (
                       <td className="px-4 py-2.5 text-right font-mono">
-                        {f.tx ? (
+                        {f.txs && Object.keys(f.txs).length > 0 ? (
+                          // One transaction for each agent in the trade, on that agent's contract.
+                          <span className="flex flex-col items-end gap-0.5">
+                            {AGENT_ORDER.filter((id) => f.txs?.[id]).map((id) => (
+                              <a key={id} href={explorerLink(desk, f.txs![id]!)} target="_blank" rel="noreferrer" className="text-white/80 underline underline-offset-2 hover:text-white">
+                                <span className="font-sans text-white/45 no-underline">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)} ↗
+                              </a>
+                            ))}
+                          </span>
+                        ) : f.tx ? (
                           <a href={explorerLink(desk, f.tx)} target="_blank" rel="noreferrer" className="text-white/80 underline underline-offset-2 hover:text-white">
                             {shortHash(f.tx)} ↗
                           </a>

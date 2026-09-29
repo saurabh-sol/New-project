@@ -1,8 +1,8 @@
 /**
  * The council's paper portfolio. Pure functions, shared by server and UI.
  *
- * Each agent manages its own cash. A position is funded by stakes from one or
- * more agents, and its value and PnL are split between them by stake.
+ * Each agent manages its own cash. A position in a token can be held by one agent or by
+ * several. Each holds the tokens its own money bought, and gains or loses on those.
  */
 import { AGENT_ORDER } from "./agents";
 import type { AssetKey, Prices } from "./market";
@@ -39,6 +39,8 @@ export interface Position {
   entryPrice: number;
   /** Each agent's share of `cost`, in USDG. */
   stake: Stakes;
+  /** Tokens each agent holds. A position opened before this was kept has none, and its tokens are split by stake. */
+  units?: Stakes;
   stop: number;
   target: number;
   openedRound: number;
@@ -80,6 +82,12 @@ export interface Fill {
   unrecorded?: boolean;
   /** USDG each agent put in (buy) or got back (sell). */
   stake: Stakes;
+  /** Tokens each agent bought or sold. */
+  units?: Stakes;
+  /** A sale: the share of the position that was sold, 1 for all of it. */
+  fraction?: number;
+  /** The transaction on each agent's own desk contract, once there is one. `tx` is the first of them. */
+  txs?: Partial<Record<AgentId, string>>;
 }
 
 export const zeroStakes = (): Stakes => ({ quant: 0, degen: 0, guardian: 0, oracle: 0 });
@@ -105,6 +113,9 @@ const mapStakes = (fn: (a: AgentId) => number): Stakes => {
 
 export const positionOf = (p: Portfolio, token: string) => p.positions.find((x) => x.token === token);
 
+/** Tokens of the position that are this agent's. */
+export const unitsOf = (pos: Position, agent: AgentId) => pos.units?.[agent] ?? (pos.cost > 0 ? (pos.stake[agent] / pos.cost) * pos.qty : 0);
+
 export const positionValue = (pos: Position, price: number) => pos.qty * price;
 export const unrealized = (pos: Position, price: number) => positionValue(pos, price) - pos.cost;
 
@@ -114,9 +125,7 @@ const mark = (pos: Position, prices: Prices) => prices[pos.token] ?? pos.entryPr
 /** What one agent's holdings are worth: cash plus its share of every open position. */
 export function agentEquity(p: Portfolio, agent: AgentId, prices: Prices): number {
   let total = p.cash[agent];
-  for (const pos of p.positions) {
-    if (pos.cost > 0) total += (pos.stake[agent] / pos.cost) * positionValue(pos, mark(pos, prices));
-  }
+  for (const pos of p.positions) total += unitsOf(pos, agent) * mark(pos, prices);
   return total;
 }
 
@@ -199,6 +208,7 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
     cost,
     entryPrice,
     stake: mapStakes((a) => (held?.stake[a] ?? 0) + o.stakes[a]),
+    units: mapStakes((a) => (held ? unitsOf(held, a) : 0) + o.stakes[a] / o.price),
     stop: held && o.keepTerms ? held.stop : entryPrice * (1 - o.stopPct / 100),
     target: held && o.keepTerms ? held.target : entryPrice * (1 + o.targetPct / 100),
     openedRound: held?.openedRound ?? o.round,
@@ -226,6 +236,7 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
       leader: o.leader,
       realized: null,
       stake: o.stakes,
+      units: mapStakes((a) => o.stakes[a] / o.price),
     },
   };
 }
@@ -252,7 +263,8 @@ export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: 
   const qty = held.qty * fraction;
   const usd = qty * o.price;
   const costOut = held.cost * fraction;
-  const payout = mapStakes((a) => (held.stake[a] / held.cost) * usd);
+  const sold = mapStakes((a) => unitsOf(held, a) * fraction);
+  const payout = mapStakes((a) => sold[a] * o.price);
 
   const rest = p.positions.filter((x) => x.token !== o.token);
   if (fraction < 1) {
@@ -261,6 +273,7 @@ export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: 
       qty: held.qty - qty,
       cost: held.cost - costOut,
       stake: mapStakes((a) => held.stake[a] * (1 - fraction)),
+      units: mapStakes((a) => unitsOf(held, a) - sold[a]),
     });
   }
 
@@ -279,6 +292,8 @@ export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: 
       leader: o.leader,
       realized: round2(usd - costOut),
       stake: mapStakes((a) => round2(payout[a])),
+      units: sold,
+      fraction,
     },
   };
 }

@@ -37,36 +37,44 @@ npm run dev -- -p 3210
 | Prices | Real. Stock Tokens from Robinhood's Stock Token API; ETH from Binance, with CoinGecko as the backup |
 | Candles, RSI, trend, volume | Real. For Stock Tokens they are the underlying share's, from Yahoo Finance's public chart data, scaled to the token's price |
 | What the agents say and decide | Real model output, when a gateway key is set |
-| Trades and results | Settled at real prices, with the treasury as the other side. Nothing is bought or sold on a market. With the desk contract deployed, every trade is recorded on Robinhood Chain and moves real USDG |
+| Trades and results | Settled at real prices, with the treasury as the other side. Nothing is bought or sold on a market. With the desk contracts deployed, each agent's part of every trade is recorded on the agent's own contract on Robinhood Chain and moves real USDG |
 | Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
 
 A line tagged `scripted` in the conversation was written by a rule-based stand-in, because that model could not be reached or no key is configured.
 
 Because no order goes to a market while funding uses real tokens, **the treasury is the counterparty to the agents' results**: if an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a testnet demo. Do not run funding with real money until the agents trade for real.
 
-## The desk contract
+## The desk contracts
 
-`contracts/CouncilDesk.sol` is the agents' desk on Robinhood Chain. It is optional: without it the desk works the same, and its trades are paper trades with no transaction to show.
+Every agent has a contract of its own on Robinhood Chain: `contracts/AgentDesk.sol`. They are optional: without them the desk works the same, and its trades are paper trades with no transaction to show.
 
 | What it does | How |
 | --- | --- |
-| Holds the agents' USDG | Each of the four agents has its own cash balance in the contract |
-| Records every trade | A purchase or sale is a transaction, which the order history links to |
+| Gives each agent an address of its own | `AgentDesk` is deployed four times, once for each agent. What an agent did can be read at its address, on the block explorer |
+| Holds the agent's USDG | The agent's cash, and what its open positions cost, are in its own contract |
+| Records the agent's trades | An agent's part of a purchase or sale is a transaction on its own contract, which the order history links to. A trade three agents made together is three transactions |
+| Shows what the agent holds | For each position the contract holds a receipt, such as `cNVDA`, issued by `CouncilShares`. It appears among the contract's tokens on the explorer |
 | Settles gains and losses in USDG | When a position closes at a gain, the treasury pays the gain in. At a loss, the contract pays the treasury |
-| Stays fully backed | It always holds exactly the agents' cash plus what their open positions cost. `solvent()` says so |
-| Refuses everyone but the desk | Only the operator, which is the treasury, can fund agents and record trades |
+| Stays fully backed | It always holds exactly the agent's cash plus what its open positions cost. `solvent()` says so |
+| Refuses everyone but the desk | Only the operator, which is the treasury, can fund an agent and record its trades |
 
-What it is not: it does not swap tokens on a market. A trade is settled at the live price the server reports, and the contract has to trust that price. It has not been audited, and its deploy script refuses mainnet unless `ALLOW_MAINNET_FUNDING=true`.
+A receipt is a record, and no more than that. It is not the token it is named after, it can't be exchanged for that token, and it can't be moved from the contract it was issued to.
 
-The database is where the books are kept. After each trade, deposit and withdrawal the server makes the same change on-chain (`src/server/chains/desk.ts`). If the chain can't be reached, the change waits and is made later, so the contract can lag the books by a moment but never holds up a session or a payment.
+What they are not: they do not swap tokens on a market. A trade is settled at the live price the server reports, and the contract has to trust that price. They have not been audited, and their deploy script refuses mainnet unless `ALLOW_MAINNET_FUNDING=true`.
 
-Deploy it once the funding token is set up:
+The database is where the books are kept. After each trade, deposit and withdrawal the server makes the same change on-chain (`src/server/chains/desk.ts`). If the chain can't be reached, the change waits and is made later, so a contract can lag the books by a moment but never holds up a session or a payment.
+
+Each agent holds the tokens its own money bought. An agent that joins a position late, at a higher price, gets fewer tokens for its money, and the agents who were in first keep their gain.
+
+Deploy them once the funding token is set up:
 
 ```bash
-node --env-file=.env.local scripts/deploy-desk.mjs
+node --env-file=.env.local scripts/deploy-desks.mjs
 ```
 
-It sets `DESK_ADDRESS`, and lets the contract draw USDG from the treasury. The server puts each agent's cash into the contract the first time it runs with it.
+It sets `DESK_QUANT`, `DESK_DEGEN`, `DESK_GUARDIAN`, `DESK_ORACLE`, `DESK_SHARES` and `DESK_FROM_BLOCK`, and lets each contract draw USDG from the treasury. The server puts each agent's cash, and the positions it already holds, into its contract the first time it runs with them.
+
+The agents used to share one contract, `CouncilDesk.sol`. It keeps its record of the trades made through it. `scripts/retire-desk.mjs` closes it and returns its USDG to the treasury.
 
 ## How a session runs
 
@@ -212,7 +220,7 @@ Turn off screen blanking in `raspi-config` so the display stays on. A Pi 4 or 5 
 
 `render.yaml` describes the service: a Node web service that builds with `npm ci && npm run build`, starts with `npm run start`, and is checked at `/api/health`.
 
-Secrets are set on Render, in the service's Environment page, and are never committed: `AI_GATEWAY_API_KEY`, `DATABASE_URL`, `CLAIM_SECRET`, `TREASURY_PRIVATE_KEY`, `USDG_ADDRESS`, `DESK_ADDRESS` and `DESK_FROM_BLOCK`.
+Secrets are set on Render, in the service's Environment page, and are never committed: `AI_GATEWAY_API_KEY`, `DATABASE_URL`, `CLAIM_SECRET`, `TREASURY_PRIVATE_KEY`, `USDG_ADDRESS`, and the six `DESK_` settings that `scripts/deploy-desks.mjs` writes.
 
 Three things to know:
 

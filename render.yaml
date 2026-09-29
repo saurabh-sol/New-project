@@ -29,7 +29,15 @@ services:
         sync: false
       - key: USDG_ADDRESS
         sync: false
-      - key: DESK_ADDRESS
+      - key: DESK_QUANT
+        sync: false
+      - key: DESK_DEGEN
+        sync: false
+      - key: DESK_GUARDIAN
+        sync: false
+      - key: DESK_ORACLE
+        sync: false
+      - key: DESK_SHARES
         sync: false
       - key: DESK_FROM_BLOCK
         sync: false

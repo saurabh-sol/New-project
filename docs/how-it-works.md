@@ -35,7 +35,7 @@ This document explains how the parts fit together. For setup steps and settings,
 | --- | --- |
 | Prices, candles, RSI, trend, volume | Real. Read from public market data |
 | What the agents say and decide | Real model output, when an AI Gateway key is set |
-| Trades and their results | Settled at real prices, with the treasury as the other side. **Nothing is bought or sold on a market.** With the desk contract, every trade is a transaction on Robinhood Chain and moves real USDG |
+| Trades and their results | Settled at real prices, with the treasury as the other side. **Nothing is bought or sold on a market.** With the desk contracts, each agent's part of every trade is a transaction on the agent's own contract on Robinhood Chain and moves real USDG |
 | Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
 
 Two consequences follow from this:
@@ -147,27 +147,33 @@ Stock Tokens trade around the clock from Sunday evening to Friday evening, New Y
 
 The candle a position was opened in is skipped, since its range includes prices from before the entry. Each check also looks again at the last minute and a half before the previous check, so a candle that was still forming is not missed.
 
-### The desk contract
+### The desk contracts
 
-`contracts/CouncilDesk.sol` puts the desk on Robinhood Chain.
+Every agent has a contract of its own on Robinhood Chain, `contracts/AgentDesk.sol`, so that what an agent did can be read at one address.
 
 | What it does | How |
 | --- | --- |
-| Holds the agents' USDG | Each of the four agents has its own cash balance in the contract |
-| Records every trade | A purchase or sale is a transaction, which the order history links to |
+| Gives each agent an address of its own | `AgentDesk` is deployed four times, once for each agent. What an agent did can be read at its address, on the block explorer |
+| Holds the agent's USDG | The agent's cash, and what its open positions cost, are in its own contract |
+| Records the agent's trades | An agent's part of a purchase or sale is a transaction on its own contract, which the order history links to. A trade three agents made together is three transactions |
+| Shows what the agent holds | For each position the contract holds a receipt, such as `cNVDA`, issued by `CouncilShares`. It appears among the contract's tokens on the explorer |
 | Settles gains and losses in USDG | When a position closes at a gain, the treasury pays the gain in. At a loss, the contract pays the treasury |
-| Stays fully backed | It always holds exactly the agents' cash plus what their open positions cost |
-| Refuses everyone but the desk | Only the operator, which is the treasury, can fund agents and record trades |
+| Stays fully backed | It always holds exactly the agent's cash plus what its open positions cost. `solvent()` says so |
+| Refuses everyone but the desk | Only the operator, which is the treasury, can fund an agent and record its trades |
+
+A receipt is a record, and no more than that. It is not the token it is named after, it can't be exchanged for that token, and it can't be moved from the contract it was issued to.
 
 The order of things is always the same: the database first, the chain second.
 
 1. A trade, deposit or withdrawal changes the books in the database.
-2. The server then makes the same change on-chain: it funds or releases the agent's cash, or records the trade.
-3. The trade's transaction hash is saved with the trade, and the order history links to it.
+2. The server then makes the same change on-chain, on the contract of each agent it concerns: it funds or releases the agent's cash, or records the agent's part of the trade.
+3. Each transaction's hash is saved with the trade, and the order history links to them.
 
-If the chain can't be reached, step 2 waits and is tried again. A trade is recorded once, whoever tries: the contract keeps each trade's id and refuses a second record of it.
+If the chain can't be reached, step 2 waits and is tried again. A trade is recorded once, whoever tries: each contract keeps the id of every trade on it and refuses a second record. A trade that broke off after two of its three agents is taken up at the third.
 
-The contract does not swap tokens on a market, and it trusts the operator to report true prices. It has not been audited and is meant for the testnet.
+Each agent holds the tokens its own money bought. An agent that joins a position late, at a higher price, gets fewer tokens for its money, and the agents who were in first keep their gain.
+
+The contracts do not swap tokens on a market, and they trust the operator to report true prices. They have not been audited and are meant for the testnet.
 
 ## 7. Funding an agent
 
@@ -378,18 +384,21 @@ src/
     fund/              deposits, withdrawals, bonuses, faucet
     requests/          the trade request queue
     rewards/           reward claims and payouts
-    chains/            everything that touches Robinhood Chain, the desk contract included
+    chains/            everything that touches Robinhood Chain, the desk contracts included
     market/            Stock Token prices, quotes, and data for requested tokens
     db.ts              database connection and tables
     dns-fallback.ts    name lookups that don't give up too early
   store/               the browser's state (floor and prices)
 contracts/
-  CouncilDesk.sol      the agents' desk: holds their USDG, records their trades
+  AgentDesk.sol        one agent's desk: holds its USDG, records its trades
+  CouncilShares.sol    issues the receipts for the agents' positions
+  CouncilDesk.sol      the desk the agents used to share, now closed
   TestUSDG.sol         the test USDG used on the testnet
-  test/                the desk contract's tests, run with Foundry
+  test/                the contracts' tests, run with Foundry
 scripts/
   setup-testnet.mjs    deploys the test USDG
-  deploy-desk.mjs      deploys the desk contract
+  deploy-desks.mjs     deploys a desk contract for each agent
+  retire-desk.mjs      closes the contract the agents used to share
 docs/
   how-it-works.md      this document
 ```
@@ -424,10 +433,10 @@ node --env-file=.env.local scripts/setup-testnet.mjs
 
 It deploys a test USDG the treasury can mint and saves its address as `USDG_ADDRESS`. On mainnet the app uses the real USDG and needs no setup script.
 
-To put the desk on-chain, deploy its contract:
+To put the desk on-chain, deploy the agents' contracts:
 
 ```bash
-node --env-file=.env.local scripts/deploy-desk.mjs
+node --env-file=.env.local scripts/deploy-desks.mjs
 ```
 
 **Cost.** A session is about 12 model calls and costs roughly $0.10. At the default 5-minute interval that is about $1 to $2 per hour while a page is open. `COUNCIL_MAX_ROUNDS_PER_DAY` (100 by default) caps the daily spend; after that the agents fall back to scripted rules until the next day.
@@ -437,7 +446,7 @@ Secrets belong in `.env.local` only. That file is not committed.
 ## 18. Known limits
 
 - **No order goes to a market.** Trades are settled against the treasury at live prices. Swapping on a market, for example through Uniswap on Robinhood Chain, is not built.
-- **The desk contract is not audited**, and it trusts the operator's prices. A version for real money would read prices from the chain's Chainlink feeds.
+- **The desk contracts are not audited**, and they trust the operator's prices. A version for real money would read prices from the chain's Chainlink feeds.
 - **Funding is for the testnet.** It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`. Holding users' funds and paying bonuses has legal, licensing and tax consequences in most countries.
 - **Market data comes from free public services.** If one is unreachable, a token drops off the board for that session, a request waits, or a chart does not load.
 - **Market holidays are not accounted for.** On a holiday the desk treats Stock Tokens as open, and sees prices that do not move.

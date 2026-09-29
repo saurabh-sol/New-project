@@ -2,7 +2,9 @@
 import { createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, isAddress, keccak256, parseAbi, parseEther, parseEventLogs, type Chain as ViemChain, type Hex } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { robinhood as mainnet, robinhoodTestnet } from "viem/chains";
+import { AGENT_ORDER } from "@/lib/agents";
 import type { ChainStatus, Network } from "@/lib/chains";
+import type { AgentId } from "@/lib/types";
 import { hasDb } from "../db";
 import { problemCache, queue } from "./shared";
 import type { Chain, Fate, SignedPayment } from "./types";
@@ -42,6 +44,12 @@ export const networkOf = (env: NodeJS.ProcessEnv = process.env): Network => (env
 
 const asAddress = (raw: string | undefined): Hex | null => (raw && isAddress(raw, { strict: false }) ? getAddress(raw) : null);
 
+/** Each agent's desk contract: DESK_QUANT, DESK_DEGEN, DESK_GUARDIAN and DESK_ORACLE. Null unless all four are set. */
+function agentDesks(env: NodeJS.ProcessEnv): Record<AgentId, Hex> | null {
+  const found = AGENT_ORDER.map((a) => [a, asAddress(env[`DESK_${a.toUpperCase()}`])] as const);
+  return found.every(([, address]) => address) ? (Object.fromEntries(found) as Record<AgentId, Hex>) : null;
+}
+
 /** How the server reaches Robinhood Chain: the network, the treasury's key, and the contracts it uses. */
 export function connection() {
   const env = process.env;
@@ -73,8 +81,8 @@ export function connection() {
     keyError,
     /** The funding token. Null on the testnet until the setup script has deployed one. */
     token: asAddress(env.USDG_ADDRESS) ?? (testnet ? null : USDG),
-    /** The agents' desk contract, if one is deployed. */
-    desk: asAddress(env.DESK_ADDRESS),
+    /** The agents' desk contracts, one each, if they are deployed. */
+    desks: agentDesks(env),
     explorer: EXPLORER[network],
     /** Names the treasury's queue. Its payments leave one at a time, in order. */
     queue: `treasury:robinhood:${network}`,

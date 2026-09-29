@@ -40,18 +40,27 @@ export interface ChainStatus {
   explorerTx: string;
 }
 
-/** The agents' desk contract, as the pages show it. */
-export interface DeskInfo {
+/** One agent's desk contract. */
+export interface AgentDeskInfo {
   address: string;
-  network: string;
   explorerAddress: string;
-  /** Link to a transaction; "{id}" is replaced by the transaction hash. */
-  explorerTx: string;
   /** USDG the contract holds. Null if the chain couldn't be read. */
   holds: number | null;
-  /** Whether it holds at least what it owes the agents. */
+  /** Whether it holds at least what it owes the agent. */
   solvent: boolean | null;
-  /** When the contract took over. Trades from before then are not on-chain. */
+}
+
+/** The agents' desk contracts, as the pages show them. Each agent has one of its own. */
+export interface DeskInfo {
+  network: string;
+  /** Link to a transaction; "{id}" is replaced by the transaction hash. */
+  explorerTx: string;
+  agents: Record<"quant" | "degen" | "guardian" | "oracle", AgentDeskInfo>;
+  /** USDG the four contracts hold between them. Null if the chain couldn't be read. */
+  holds: number | null;
+  /** Whether every contract holds at least what it owes its agent. */
+  solvent: boolean | null;
+  /** When the contracts took over. Trades from before then are not on them. */
   since: number;
 }
 
