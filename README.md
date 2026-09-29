@@ -190,6 +190,18 @@ chromium-browser --kiosk --noerrdialogs --disable-infobars --app=http://<server-
 
 Turn off screen blanking in `raspi-config` so the display stays on. A Pi 4 or 5 with a 1080p screen is the target.
 
+## Hosting on Render
+
+`render.yaml` describes the service: a Node web service that builds with `npm ci && npm run build`, starts with `npm run start`, and is checked at `/api/health`.
+
+Secrets are set on Render, in the service's Environment page, and are never committed: `AI_GATEWAY_API_KEY`, `DATABASE_URL`, `CLAIM_SECRET`, `TREASURY_PRIVATE_KEY`, `USDG_ADDRESS`, `DESK_ADDRESS` and `DESK_FROM_BLOCK`.
+
+Three things to know:
+
+- **Values that start with `NEXT_PUBLIC_` are fixed when the site is built.** Change one, and the service must be deployed again.
+- **Run one server per treasury.** Two servers paying from the same wallet at once can take each other's place in its queue of transactions. Stop a local server before using the hosted one.
+- **On the free plan the service sleeps** after a quarter of an hour without visitors, and the first visit after that takes about a minute.
+
 ## If the network's name lookups are unreliable
 
 On some networks the system's lookup of a host name fails now and then, although a plain DNS query finds the host at once. The server then asks the network's DNS server directly, and public ones after that (`src/server/dns-fallback.ts`). The scripts in `scripts/` do the same.
