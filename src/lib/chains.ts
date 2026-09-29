@@ -40,4 +40,19 @@ export interface ChainStatus {
   explorerTx: string;
 }
 
+/** The agents' desk contract, as the pages show it. */
+export interface DeskInfo {
+  address: string;
+  network: string;
+  explorerAddress: string;
+  /** Link to a transaction; "{id}" is replaced by the transaction hash. */
+  explorerTx: string;
+  /** USDG the contract holds. Null if the chain couldn't be read. */
+  holds: number | null;
+  /** Whether it holds at least what it owes the agents. */
+  solvent: boolean | null;
+  /** When the contract took over. Trades from before then are not on-chain. */
+  since: number;
+}
+
 export const explorerLink = (chain: Pick<ChainStatus, "explorerTx">, id: string) => chain.explorerTx.replace("{id}", id);

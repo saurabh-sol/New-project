@@ -35,13 +35,13 @@ This document explains how the parts fit together. For setup steps and settings,
 | --- | --- |
 | Prices, candles, RSI, trend, volume | Real. Read from public market data |
 | What the agents say and decide | Real model output, when an AI Gateway key is set |
-| Trades and their results | **Paper trades** at real prices. Nothing is bought or sold on a market |
+| Trades and their results | Settled at real prices, with the treasury as the other side. **Nothing is bought or sold on a market.** With the desk contract, every trade is a transaction on Robinhood Chain and moves real USDG |
 | Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
 
 Two consequences follow from this:
 
 - A line tagged `scripted` in the conversation was written by a rule-based stand-in, because that model could not be reached, no key is set, or the day's AI budget is used up.
-- Because trades are on paper while funding uses real tokens, **the treasury is the counterparty to the agents' results**. If an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a testnet demo. It is not safe with real money until the agents trade for real.
+- Because no order goes to a market while funding uses real tokens, **the treasury is the counterparty to the agents' results**. If an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a testnet demo. It is not safe with real money until the agents trade for real.
 
 ## 2. The four agents
 
@@ -130,6 +130,28 @@ Agents sit at their desks and watch their positions. Whenever the desk's state i
 Stock Tokens trade around the clock from Sunday evening to Friday evening, New York time, and not at the weekend. ETH always trades. Market holidays are not accounted for.
 
 The candle a position was opened in is skipped, since its range includes prices from before the entry. Each check also looks again at the last minute and a half before the previous check, so a candle that was still forming is not missed.
+
+### The desk contract
+
+`contracts/CouncilDesk.sol` puts the desk on Robinhood Chain.
+
+| What it does | How |
+| --- | --- |
+| Holds the agents' USDG | Each of the four agents has its own cash balance in the contract |
+| Records every trade | A purchase or sale is a transaction, which the order history links to |
+| Settles gains and losses in USDG | When a position closes at a gain, the treasury pays the gain in. At a loss, the contract pays the treasury |
+| Stays fully backed | It always holds exactly the agents' cash plus what their open positions cost |
+| Refuses everyone but the desk | Only the operator, which is the treasury, can fund agents and record trades |
+
+The order of things is always the same: the database first, the chain second.
+
+1. A trade, deposit or withdrawal changes the books in the database.
+2. The server then makes the same change on-chain: it funds or releases the agent's cash, or records the trade.
+3. The trade's transaction hash is saved with the trade, and the order history links to it.
+
+If the chain can't be reached, step 2 waits and is tried again. A trade is recorded once, whoever tries: the contract keeps each trade's id and refuses a second record of it.
+
+The contract does not swap tokens on a market, and it trusts the operator to report true prices. It has not been audited and is meant for the testnet.
 
 ## 7. Funding an agent
 
@@ -335,15 +357,18 @@ src/
     fund/              deposits, withdrawals, bonuses, faucet
     requests/          the trade request queue
     rewards/           reward claims and payouts
-    chains/            everything that touches Robinhood Chain
+    chains/            everything that touches Robinhood Chain, the desk contract included
     market/            Stock Token prices, quotes, and data for requested tokens
     db.ts              database connection and tables
     dns-fallback.ts    name lookups that don't give up too early
   store/               the browser's state (floor and prices)
 contracts/
+  CouncilDesk.sol      the agents' desk: holds their USDG, records their trades
   TestUSDG.sol         the test USDG used on the testnet
+  test/                the desk contract's tests, run with Foundry
 scripts/
   setup-testnet.mjs    deploys the test USDG
+  deploy-desk.mjs      deploys the desk contract
 docs/
   how-it-works.md      this document
 ```
@@ -378,13 +403,20 @@ node --env-file=.env.local scripts/setup-testnet.mjs
 
 It deploys a test USDG the treasury can mint and saves its address as `USDG_ADDRESS`. On mainnet the app uses the real USDG and needs no setup script.
 
+To put the desk on-chain, deploy its contract:
+
+```bash
+node --env-file=.env.local scripts/deploy-desk.mjs
+```
+
 **Cost.** A session is about 12 model calls and costs roughly $0.10. At the default 5-minute interval that is about $1 to $2 per hour while a page is open. `COUNCIL_MAX_ROUNDS_PER_DAY` (100 by default) caps the daily spend; after that the agents fall back to scripted rules until the next day.
 
 Secrets belong in `.env.local` only. That file is not committed.
 
 ## 18. Known limits
 
-- **Trades are on paper.** Real execution, for example through Jupiter, is not built.
+- **No order goes to a market.** Trades are settled against the treasury at live prices. Swapping on a market, for example through Uniswap on Robinhood Chain, is not built.
+- **The desk contract is not audited**, and it trusts the operator's prices. A version for real money would read prices from the chain's Chainlink feeds.
 - **Funding is for the testnet.** It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`. Holding users' funds and paying bonuses has legal, licensing and tax consequences in most countries.
 - **Market data comes from free public services.** If one is unreachable, a token drops off the board for that session, a request waits, or a chart does not load.
 - **Market holidays are not accounted for.** On a holiday the desk treats Stock Tokens as open, and sees prices that do not move.

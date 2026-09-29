@@ -25,6 +25,8 @@ export interface CouncilState {
   lenses: Record<AgentId, string[]>;
   lastRoundAt: number;
   lastRiskCheck: number;
+  /** The desk contract that records trades, and when it took over. Trades from before then are not on-chain. */
+  desk?: { address: string; since: number };
   /** UTC date of `roundsToday`, e.g. "2026-09-28". */
   day: string;
   roundsToday: number;

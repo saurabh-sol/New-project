@@ -37,12 +37,36 @@ npm run dev -- -p 3210
 | Prices | Real. Stock Tokens from Robinhood's Stock Token API; ETH from Binance, with CoinGecko as the backup |
 | Candles, RSI, trend, volume | Real. For Stock Tokens they are the underlying share's, from Yahoo Finance's public chart data, scaled to the token's price |
 | What the agents say and decide | Real model output, when a gateway key is set |
-| Trades and results | Paper trades at real prices. Nothing is bought or sold on a market |
+| Trades and results | Settled at real prices, with the treasury as the other side. Nothing is bought or sold on a market. With the desk contract deployed, every trade is recorded on Robinhood Chain and moves real USDG |
 | Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
 
 A line tagged `scripted` in the conversation was written by a rule-based stand-in, because that model could not be reached or no key is configured.
 
-Because trades are paper trades while funding uses real tokens, **the treasury is the counterparty to the agents' results**: if an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a testnet demo. Do not run funding with real money until the agents trade for real.
+Because no order goes to a market while funding uses real tokens, **the treasury is the counterparty to the agents' results**: if an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a testnet demo. Do not run funding with real money until the agents trade for real.
+
+## The desk contract
+
+`contracts/CouncilDesk.sol` is the agents' desk on Robinhood Chain. It is optional: without it the desk works the same, and its trades are paper trades with no transaction to show.
+
+| What it does | How |
+| --- | --- |
+| Holds the agents' USDG | Each of the four agents has its own cash balance in the contract |
+| Records every trade | A purchase or sale is a transaction, which the order history links to |
+| Settles gains and losses in USDG | When a position closes at a gain, the treasury pays the gain in. At a loss, the contract pays the treasury |
+| Stays fully backed | It always holds exactly the agents' cash plus what their open positions cost. `solvent()` says so |
+| Refuses everyone but the desk | Only the operator, which is the treasury, can fund agents and record trades |
+
+What it is not: it does not swap tokens on a market. A trade is settled at the live price the server reports, and the contract has to trust that price. It has not been audited, and its deploy script refuses mainnet unless `ALLOW_MAINNET_FUNDING=true`.
+
+The database is where the books are kept. After each trade, deposit and withdrawal the server makes the same change on-chain (`src/server/chains/desk.ts`). If the chain can't be reached, the change waits and is made later, so the contract can lag the books by a moment but never holds up a session or a payment.
+
+Deploy it once the funding token is set up:
+
+```bash
+node --env-file=.env.local scripts/deploy-desk.mjs
+```
+
+It sets `DESK_ADDRESS`, and lets the contract draw USDG from the treasury. The server puts each agent's cash into the contract the first time it runs with it.
 
 ## How a session runs
 

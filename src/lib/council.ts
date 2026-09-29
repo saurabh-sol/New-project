@@ -69,6 +69,10 @@ export interface Fill {
   leader: AgentId;
   /** PnL booked by this fill. Null for buys. */
   realized: number | null;
+  /** The transaction that recorded the trade on Robinhood Chain, once there is one. */
+  tx?: string;
+  /** Set when the trade could not be put on-chain, and no more tries will be made. */
+  unrecorded?: boolean;
   /** USDG each agent put in (buy) or got back (sell). */
   stake: Stakes;
 }

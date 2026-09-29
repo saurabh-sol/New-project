@@ -16,6 +16,7 @@ import { llmBrain } from "./llm-brain";
 import { linesAbout, recentLines, saveRound } from "./memory";
 import { scriptedBrain } from "./scripted-brain";
 import { fundingLevel, pickLens, type Effort, type Skill } from "./skills";
+import { settleOnChain } from "../chains/desk";
 import { liveRequests, type ActiveRequest, type RequestSource } from "../requests/service";
 import { assetQuote } from "../market/assets";
 import { assetStats, fetchBoard, fetchPrice, type Board } from "./stats";
@@ -339,6 +340,7 @@ export async function runRound(
     run.push({ stage: "error", message: "The council could not complete this round. It will try again at the next session." });
   } finally {
     run.finish();
+    void settleOnChain(true);
     await saveRound(run.id, run.stages, run.failed).catch((e) => console.error("[council] could not save the round:", e));
   }
 }

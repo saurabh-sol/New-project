@@ -1,4 +1,5 @@
 import type { CouncilMode, CouncilSnapshot, RoundResponse } from "@/lib/council-types";
+import { deskInfo, settleOnChain } from "../chains/desk";
 import { councilConfig, type CouncilConfig } from "./config";
 import { applyRisk } from "./risk";
 import { loadRound } from "./memory";
@@ -19,7 +20,10 @@ export async function snapshot(): Promise<CouncilSnapshot> {
   const cfg = councilConfig();
   const state = await updateState((s) => applyRisk(s).catch(() => s));
   const { mode, note } = modeOf(cfg, state);
+  // A stop or target may just have closed a position. The chain catches up in its own time.
+  void settleOnChain();
   return {
+    desk: await deskInfo().catch(() => null),
     mode,
     modeNote: note,
     models: cfg.models,

@@ -10,8 +10,8 @@ import type { Chain, Fate, SignedPayment } from "./types";
 /** USDG on Robinhood Chain. The testnet has no official one, so USDG_ADDRESS must name the test token there. */
 const USDG: Hex = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
 const EXPLORER: Record<Network, string> = {
-  mainnet: "https://robinhoodchain.blockscout.com/tx/{id}",
-  testnet: "https://explorer.testnet.chain.robinhood.com/tx/{id}",
+  mainnet: "https://robinhoodchain.blockscout.com",
+  testnet: "https://explorer.testnet.chain.robinhood.com",
 };
 
 // Fees on Robinhood Chain are a small fraction of a cent, so these amounts go a long way.
@@ -40,18 +40,16 @@ const shared = globalThis as typeof globalThis & { __tokenDecimals?: Map<string,
 
 export const networkOf = (env: NodeJS.ProcessEnv = process.env): Network => (env.ROBINHOOD_NETWORK === "mainnet" ? "mainnet" : "testnet");
 
-export function robinhood(): Chain {
+const asAddress = (raw: string | undefined): Hex | null => (raw && isAddress(raw, { strict: false }) ? getAddress(raw) : null);
+
+/** How the server reaches Robinhood Chain: the network, the treasury's key, and the contracts it uses. */
+export function connection() {
   const env = process.env;
   const network = networkOf(env);
   const testnet = network === "testnet";
   const chain: ViemChain = testnet ? robinhoodTestnet : mainnet;
-  const name = testnet ? "Robinhood Chain Testnet" : "Robinhood Chain";
   // The public endpoints drop a request now and then, so each is tried more than once.
   const transport = http(env.ROBINHOOD_RPC_URL || undefined, { retryCount: 4, retryDelay: 400, timeout: 15_000 });
-  const pub = createPublicClient({ chain, transport });
-
-  const named = env.USDG_ADDRESS && isAddress(env.USDG_ADDRESS, { strict: false }) ? getAddress(env.USDG_ADDRESS) : null;
-  const token: Hex | null = named ?? (testnet ? null : USDG);
 
   let account: PrivateKeyAccount | null = null;
   let keyError: string | null = null;
@@ -63,6 +61,29 @@ export function robinhood(): Chain {
       keyError = "TREASURY_PRIVATE_KEY is set but is not a valid private key.";
     }
   }
+
+  return {
+    network,
+    testnet,
+    chain,
+    name: testnet ? "Robinhood Chain Testnet" : "Robinhood Chain",
+    transport,
+    pub: createPublicClient({ chain, transport }),
+    account,
+    keyError,
+    /** The funding token. Null on the testnet until the setup script has deployed one. */
+    token: asAddress(env.USDG_ADDRESS) ?? (testnet ? null : USDG),
+    /** The agents' desk contract, if one is deployed. */
+    desk: asAddress(env.DESK_ADDRESS),
+    explorer: EXPLORER[network],
+    /** Names the treasury's queue. Its payments leave one at a time, in order. */
+    queue: `treasury:robinhood:${network}`,
+  };
+}
+
+export function robinhood(): Chain {
+  const env = process.env;
+  const { network, testnet, chain, name, transport, pub, account, keyError, token, explorer, queue: treasuryQueue } = connection();
 
   const treasuryProblem =
     keyError ??
@@ -178,7 +199,7 @@ export function robinhood(): Chain {
         payoutReason,
         faucet,
         faucetAmount: Number(env.FAUCET_AMOUNT) > 0 ? Number(env.FAUCET_AMOUNT) : 100,
-        explorerTx: EXPLORER[network],
+        explorerTx: `${explorer}/tx/{id}`,
       };
     },
 
@@ -202,7 +223,7 @@ export function robinhood(): Chain {
 
     balance: (address) => tokenBalance(address as Hex).catch(() => 0),
     treasuryBalance: () => tokenBalance(treasury().address).catch(() => 0),
-    withTreasury: (work) => queue(`treasury:robinhood:${network}`, work),
+    withTreasury: (work) => queue(treasuryQueue, work),
 
     signPayment: async (to, usd) => sign(encodeFunctionData({ abi, functionName: "transfer", args: [to as Hex, await units(usd)] })),
     signFaucet: async (to, usd) => sign(encodeFunctionData({ abi, functionName: "mint", args: [to as Hex, await units(usd)] }), () => giftGas(to as Hex)),

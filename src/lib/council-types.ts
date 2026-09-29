@@ -1,5 +1,6 @@
 /** What the server sends the browser about a council session. */
 import type { DeskAsset, RequestBrief } from "./assets";
+import type { DeskInfo } from "./chains";
 import type { Emotion, Fill, Portfolio } from "./council";
 import type { AssetKey, Session } from "./market";
 import type { AgentId } from "./types";
@@ -107,6 +108,8 @@ export interface CouncilSnapshot {
   models: Record<AgentId, ModelInfo>;
   round: number;
   portfolio: Portfolio;
+  /** The contract that holds the agents' USDG and records their trades. Null if none is deployed. */
+  desk: DeskInfo | null;
   /** Tokens funders asked for, with the last price seen for each. */
   assets: Record<AssetKey, DeskAsset>;
   fills: Fill[];

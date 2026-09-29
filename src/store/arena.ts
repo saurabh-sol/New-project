@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { AGENT_ORDER } from "@/lib/agents";
 import type { DeskAsset } from "@/lib/assets";
+import type { DeskInfo } from "@/lib/chains";
 import { agentPnl, newPortfolio, type Emotion, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, ModelInfo } from "@/lib/council-types";
 import { pointOf, sameSpot } from "@/lib/layout";
@@ -40,6 +41,8 @@ interface ArenaStore {
   portfolio: Portfolio;
   /** Tokens funders asked the desk to trade. */
   assets: Record<AssetKey, DeskAsset>;
+  /** The contract that holds the agents' USDG and records their trades, if there is one. */
+  desk: DeskInfo | null;
   fills: Fill[];
   /** Server clock minus this browser's clock, in ms. */
   clockSkew: number;
@@ -86,6 +89,7 @@ export const useArena = create<ArenaStore>((set) => ({
   consensus: 0,
   portfolio: newPortfolio(),
   assets: {},
+  desk: null,
   fills: [],
   clockSkew: 0,
   nextRoundAt: null,
@@ -116,6 +120,7 @@ export const useArena = create<ArenaStore>((set) => ({
             models: snap.models,
             portfolio: snap.portfolio,
             assets: { ...s.assets, ...snap.assets },
+            desk: snap.desk ?? null,
             fills: [...snap.fills].sort(byTime),
             clockSkew: snap.serverTime - Date.now(),
             nextRoundAt: snap.nextRoundAt,

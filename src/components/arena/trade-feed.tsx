@@ -2,24 +2,44 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { AGENTS } from "@/lib/agents";
+import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
-import { cn, fmtPrice, fmtSigned } from "@/lib/utils";
+import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 
 const TRIGGER: Record<Fill["reason"], string> = { COUNCIL: "Council vote", STOP: "Stop-loss", TARGET: "Profit target" };
 
-/** Every order the desk has placed. These are paper trades, so there is no on-chain transaction to link. */
+/**
+ * Every trade the desk has made. With a desk contract, each is recorded on Robinhood Chain
+ * and links to its transaction. Without one they are paper trades and nothing more.
+ */
 export function TradeFeed() {
   const fills = useArena((s) => s.fills);
+  const desk = useArena((s) => s.desk);
+  const columns = desk ? 9 : 8;
 
   return (
     <section className="panel">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">
         <h2 className="panel-title">ORDER HISTORY</h2>
         <span className="rounded bg-white/10 px-2 py-0.5 font-mono text-[10px] tracking-wider text-white/80 ring-1 ring-white/30">
-          PAPER TRADING · REAL PRICES · NOT ON-CHAIN
+          {desk ? "RECORDED ON-CHAIN · SETTLED AT LIVE PRICES · NO MARKET ORDER" : "PAPER TRADING · REAL PRICES · NOT ON-CHAIN"}
         </span>
       </div>
+      {desk && (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 px-4 py-2.5 text-xs text-white/50">
+          <span>
+            Desk contract{" "}
+            <a href={desk.explorerAddress} target="_blank" rel="noreferrer" className="font-mono text-white/80 underline underline-offset-2 hover:text-white">
+              {shortAddress(desk.address)} ↗
+            </a>{" "}
+            on {desk.network}
+          </span>
+          {desk.holds !== null && <span className="font-mono text-white/70">holds ${desk.holds.toFixed(2)} USDG</span>}
+          {desk.solvent === false && <span className="text-red-300">holds less than it owes the agents</span>}
+          <span className="text-white/35">The treasury takes the other side of every trade.</span>
+        </p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-xs">
           <thead className="font-mono text-[10px] uppercase tracking-wider text-white/35">
@@ -32,13 +52,14 @@ export function TradeFeed() {
               <th className="px-4 py-2 text-right font-normal">Price</th>
               <th className="px-4 py-2 font-normal">Trigger</th>
               <th className="px-4 py-2 text-right font-normal">Realized PnL</th>
+              {desk && <th className="px-4 py-2 text-right font-normal">Transaction</th>}
             </tr>
           </thead>
           <tbody>
             <AnimatePresence initial={false}>
               {fills.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-white/30">
+                  <td colSpan={columns} className="px-4 py-6 text-center text-white/30">
                     No orders yet. The council only trades when three of four agents agree.
                   </td>
                 </tr>
@@ -74,6 +95,17 @@ export function TradeFeed() {
                     >
                       {f.realized === null ? "open" : fmtSigned(f.realized)}
                     </td>
+                    {desk && (
+                      <td className="px-4 py-2.5 text-right font-mono">
+                        {f.tx ? (
+                          <a href={explorerLink(desk, f.tx)} target="_blank" rel="noreferrer" className="text-white/80 underline underline-offset-2 hover:text-white">
+                            {shortHash(f.tx)} ↗
+                          </a>
+                        ) : (
+                          <span className="text-white/30">{f.unrecorded || f.ts < desk.since ? "not recorded" : "recording…"}</span>
+                        )}
+                      </td>
+                    )}
                   </motion.tr>
                 );
               })}

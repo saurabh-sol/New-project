@@ -16,6 +16,7 @@ import type { AgentFunding, FundBonus, FundEvent, FundPosition, FundResult, Fund
 import type { Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { chain as network, chainFor, type Chain } from "../chains";
+import { settleOnChain } from "../chains/desk";
 import { FUNDING_LEVELS, fundingLevel } from "../council/skills";
 import { deskPrices } from "../council/stats";
 import { inTurn, readVersioned, trimmed, type CouncilState } from "../council/store";
@@ -229,6 +230,8 @@ export async function confirmDeposit(
   const [event] = await sql`select shares, nav, intent from fund_events where signature = ${signature}`;
   if (!event) return fail("This deposit request was already paid by another transfer.");
   if (event.intent !== intentId) return fail("That transfer was already used for an earlier deposit.");
+  // The agent's new cash is put behind it on-chain too, without holding up the answer.
+  void settleOnChain(true);
   const bonus = await grantBonus(chain, fundConfig(), address, agent, usd);
   // The deposit stands whether or not its request could be queued.
   const request = await openRequest(intent).catch((e) => (console.error("[fund] could not queue the trade request:", e), null));
@@ -361,6 +364,7 @@ export async function withdraw(
     try {
       await signed.send();
       await sql`update fund_events set status = 'done' where signature = ${signed.id}`;
+      void settleOnChain(true);
       return { ok: true, signature: signed.id, gross, fee, received, pending: false };
     } catch (e) {
       console.error("[fund] withdrawal did not confirm:", e);
