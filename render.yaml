@@ -1,0 +1,35 @@
+# The Council on Render. Secrets are set in the Render dashboard, never here.
+services:
+  - type: web
+    name: the-council
+    runtime: node
+    region: ohio
+    plan: free
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: ROBINHOOD_NETWORK
+        value: testnet
+      - key: NEXT_PUBLIC_ROBINHOOD_NETWORK
+        value: testnet
+      - key: FAUCET_ENABLED
+        value: "true"
+      - key: AI_GATEWAY_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: CLAIM_SECRET
+        sync: false
+      - key: TREASURY_PRIVATE_KEY
+        sync: false
+      - key: USDG_ADDRESS
+        sync: false
+      - key: DESK_ADDRESS
+        sync: false
+      - key: DESK_FROM_BLOCK
+        sync: false
