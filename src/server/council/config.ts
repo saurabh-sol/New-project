@@ -3,16 +3,17 @@ import type { AgentId } from "@/lib/types";
 
 const DEFAULT_MODELS: Record<AgentId, string> = {
   quant: "openai/gpt-6-astra",
-  // Claude Opus 4 itself had 0% uptime on the gateway when this was written; 4.8 is the newest working Opus 4.
-  guardian: "anthropic/claude-opus-4.8",
-  degen: "spacexai/grok-4.7",
+  guardian: "anthropic/claude-opus-4.5",
+  degen: "google/gemini-2.5-pro",
   oracle: "typesafe-ai/jev",
 };
 
 const NAMES: Record<string, string> = {
   "openai/gpt-6-astra": "GPT-6 Astra",
   "anthropic/claude-opus-4": "Claude Opus 4",
+  "anthropic/claude-opus-4.5": "Claude Opus 4.5",
   "anthropic/claude-opus-4.8": "Claude Opus 4.8",
+  "google/gemini-2.5-pro": "Gemini 2.5 Pro",
   "spacexai/grok-4.7": "Grok 4.7",
   "typesafe-ai/jev": "Jev",
 };

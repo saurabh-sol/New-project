@@ -14,7 +14,7 @@ const short = (name: string) => name.replace("The ", "");
 /**
  * Every trade the desk has made. With desk contracts, each agent's part of a trade is recorded
  * on the agent's own contract on Robinhood Chain, and links to its transaction. Without them
- * they are paper trades and nothing more.
+ * they are kept in the desk's books and nowhere else.
  */
 export function TradeFeed() {
   const fills = useArena((s) => s.fills);
@@ -26,7 +26,7 @@ export function TradeFeed() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-3">
         <h2 className="panel-title">ORDER HISTORY</h2>
         <span className="rounded bg-white/10 px-2 py-0.5 font-mono text-[10px] tracking-wider text-white/80 ring-1 ring-white/30">
-          {desk ? "RECORDED ON-CHAIN · SETTLED AT LIVE PRICES · NO MARKET ORDER" : "PAPER TRADING · REAL PRICES · NOT ON-CHAIN"}
+          {desk ? "RECORDED ON-CHAIN · SETTLED AT LIVE PRICES · NO MARKET ORDER" : "SETTLED AT LIVE PRICES · NOT ON-CHAIN · NO MARKET ORDER"}
         </span>
       </div>
       {desk && (

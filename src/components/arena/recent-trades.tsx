@@ -28,7 +28,7 @@ export function RecentTrades({ className }: { className?: string }) {
     <section className={cn("panel flex min-w-0 flex-col", className)}>
       <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-2.5">
         <h2 className="panel-title">Recent trades</h2>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">{desk ? "on-chain" : "paper"}</span>
+        <span className="font-mono text-[10px] uppercase tracking-widest text-white/40">{desk ? "on-chain" : "off-chain"}</span>
       </div>
       <ul className="max-h-80 min-h-0 flex-1 divide-y divide-white/5 overflow-y-auto [scrollbar-width:thin] xl:max-h-none">
         {latest.length === 0 && <li className="px-4 py-6 text-center text-xs text-white/30">No trades yet.</li>}

@@ -101,7 +101,7 @@ function TicketFlight({ ticket }: { ticket: Ticket }) {
         <div className="mt-0.5 font-mono text-lg font-bold" style={{ color: t.side === "BUY" ? "#4ade80" : "#f87171" }}>
           {t.side} {t.token}
         </div>
-        <div className="font-mono text-xs text-white/70">${t.usd.toFixed(2)} · paper</div>
+        <div className="font-mono text-xs text-white/70">${t.usd.toFixed(2)} · filled</div>
       </div>
     </motion.div>
   );

@@ -75,7 +75,7 @@ export function Kiosk() {
             mode === "live" ? "border-white/30 bg-white/10 text-white/80" : "border-white/30 bg-white/10 text-white/80",
           )}
         >
-          {mode === "live" ? "LIVE AI MODELS" : "SCRIPTED AGENTS"} · PAPER TRADING
+          {mode === "live" ? "LIVE AI MODELS" : "SCRIPTED AGENTS"} · LIVE PRICES
         </span>
       </header>
 

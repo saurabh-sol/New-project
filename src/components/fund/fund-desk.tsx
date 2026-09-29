@@ -196,8 +196,8 @@ export function FundDesk() {
       {status && !chain?.enabled && <Banner tone="warn">{chain?.reason}</Banner>}
       {chain?.enabled && chain.testnet && (
         <Banner tone="info">
-          <strong className="font-semibold">{chain.network}.</strong> Everything here uses test tokens with no real value, and the agents&apos; trades are
-          paper trades.
+          <strong className="font-semibold">{chain.network}.</strong> Everything here uses test tokens with no real value. The agents&apos; trades are
+          settled at live prices against the desk&apos;s treasury, and no order goes to a market.
         </Banner>
       )}
 
@@ -439,7 +439,7 @@ function RequestRules({ agent, usd, commitFrom, token }: { agent: AgentId; usd: 
         ))}
       </ul>
       <p className="mt-3 text-xs leading-relaxed text-white/40">
-        One request per session, in the order they arrive. A Stock Token is heard once its market is open. The trade is a paper trade with a stop-loss, made with the agent&apos;s capital, so its result is
+        One request per session, in the order they arrive. A Stock Token is heard once its market is open. The trade is settled at the live price, with a stop-loss, and is made with the agent&apos;s capital, so its result is
         shared by everyone who funds that agent. Asking for a token does not make it a good trade.
       </p>
     </>

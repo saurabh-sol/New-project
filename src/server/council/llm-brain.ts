@@ -1,4 +1,4 @@
-/** Agents backed by a language model (GPT, Claude, Grok), called through Vercel AI Gateway. */
+/** Agents backed by a language model (GPT, Claude, Gemini), called through Vercel AI Gateway. */
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS, withPresentNames } from "@/lib/agents";
@@ -35,7 +35,7 @@ How the desk works:
 - A stop-loss must stand clear of the token's ordinary movement: at least 1.5 times its volatility per 5 minutes. The desk widens any stop that is closer, and a target is never nearer than the stop.
 - The council makes at most one trade per round, and it needs 3 of 4 votes.
 - A user who funds a trader may ask it to buy a token on Robinhood Chain of their choice. That trader presents the request and the whole desk weighs it. A small request is a suggestion that the desk votes on. A request funded with a larger amount commits that trader to the trade with its own cash: then nobody votes on whether to trade, and the others only decide whether to join. A position bought that way is held for ${COMMITTED_HOLD_ROUNDS} rounds before the council may sell it.
-- This is paper trading on live prices.
+- Trades are filled at live prices against the desk's treasury. No order goes to a market, so the desk's own buying and selling does not move a price. Do not call the trades paper trades.
 
 Rules for what you say:
 - Use only the figures in the data you are given. Never invent news, social media sentiment, on-chain flows or any number.

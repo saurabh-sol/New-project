@@ -289,7 +289,7 @@ export function PriceChart({ className }: { className?: string }) {
           <span className={cn("size-1.5 rounded-full", status === "live" ? "animate-pulse bg-white" : "bg-white/30")} />
           {status !== "live" ? "Offline" : source}
         </span>
-        <span>Arrows mark the council&apos;s paper trades</span>
+        <span>Arrows mark the agents&apos; trades</span>
       </div>
     </section>
   );

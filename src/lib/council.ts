@@ -1,5 +1,5 @@
 /**
- * The council's paper portfolio. Pure functions, shared by server and UI.
+ * The council's books. Pure functions, shared by server and UI.
  *
  * Each agent manages its own cash. A position in a token can be held by one agent or by
  * several. Each holds the tokens its own money bought, and gains or loses on those.

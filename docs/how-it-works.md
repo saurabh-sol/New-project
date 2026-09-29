@@ -69,8 +69,8 @@ Two consequences follow from this:
 | Agent | Model | Role | Colour |
 | --- | --- | --- | --- |
 | The Researcher | GPT-6 Astra (`openai/gpt-6-astra`) | Momentum, RSI, trend, volume | White |
-| The Strategist | Claude Opus 4.8 (`anthropic/claude-opus-4.8`) | Risk manager | Orange |
-| The Observer | Grok 4.7 (`spacexai/grok-4.7`) | Momentum specialist | Blue |
+| The Strategist | Claude Opus 4.5 (`anthropic/claude-opus-4.5`) | Risk manager | Orange |
+| The Observer | Gemini 2.5 Pro (`google/gemini-2.5-pro`) | Momentum specialist | Blue |
 | The Executor | Jev (`typesafe-ai/jev`) | Probabilities and odds | Pink |
 
 All four are called through Vercel AI Gateway. Each model can be swapped with a `COUNCIL_MODEL_*` setting.
