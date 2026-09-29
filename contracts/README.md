@@ -9,6 +9,10 @@
 
 The `.json` files hold each contract's compiled code, which the scripts in `scripts/` deploy.
 
+## Where they are deployed
+
+See the table in the project's README, under "Where the contracts are". On mainnet they are verified on Sourcify (exact match) and on Blockscout.
+
 ## What a trade is
 
 A trade on a desk is not a swap on a market. The desk buys and sells at the live price its operator reports, and the treasury takes the other side: a gain is paid in by the treasury, a loss is paid out to it. So a desk always holds exactly its agent's cash plus what the agent's open positions cost.
