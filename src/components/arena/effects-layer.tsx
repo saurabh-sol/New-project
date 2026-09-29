@@ -77,7 +77,7 @@ function TicketFlight({ ticket }: { ticket: Ticket }) {
   const t = ticket.fill;
   const desk = DESKS[t.leader];
   const color = AGENTS[t.leader].color;
-  const label = t.reason === "STOP" ? "STOP-LOSS HIT" : t.reason === "TARGET" ? "TARGET HIT" : "ORDER FILLED";
+  const label = t.reason === "STOP" ? "STOP-LOSS HIT" : t.reason === "TARGET" ? "TARGET HIT" : t.reason === "FALLING" ? "SOLD INTO A FALL" : "ORDER FILLED";
   const from = { x: desk.x, y: desk.y - 14 };
 
   return (

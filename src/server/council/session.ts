@@ -30,6 +30,7 @@ export async function snapshot(): Promise<CouncilSnapshot> {
     round: state.round,
     portfolio: state.portfolio,
     assets: state.assets,
+    board: state.board ?? [],
     fills: state.fills,
     nextRoundAt: state.round === 0 ? Date.now() : state.lastRoundAt + cfg.intervalMs,
     intervalMs: cfg.intervalMs,

@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "motion/react";
-import { priceDecimals, TOKENS } from "@/lib/market";
+import { priceDecimals } from "@/lib/market";
+import { useWatched } from "@/store/selectors";
 import { cn } from "@/lib/utils";
 import { useMarket } from "@/store/market";
 
@@ -123,6 +124,8 @@ function Room() {
 function MarketBoard() {
   const quotes = useMarket((s) => s.quotes);
   const status = useMarket((s) => s.status);
+  // The wall screen has room for six.
+  const shown = useWatched().slice(0, 6);
 
   return (
     <div className="absolute left-[35.2%] top-[2.6%] flex h-[15%] w-[29.6%] flex-col overflow-hidden px-[1.2%] py-[0.6%] font-mono">
@@ -134,11 +137,11 @@ function MarketBoard() {
         </span>
       </div>
       <div className="grid flex-1 grid-cols-3 content-center gap-x-[4%] gap-y-[6%] text-[clamp(5px,1cqw,11px)] leading-none">
-        {TOKENS.map((t) => {
+        {shown.map((t) => {
           const q = quotes[t];
           return (
             <div key={t} className="flex flex-col gap-[0.25em]">
-              <span className="font-semibold text-white">{t}</span>
+              <span className="truncate font-semibold text-white">{t}</span>
               <span className="text-white/55">{q ? `$${q.price.toFixed(priceDecimals(q.price))}` : "…"}</span>
               {q && (
                 <span className={q.change24h >= 0 ? "text-green-400" : "text-red-400"}>

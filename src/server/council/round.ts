@@ -4,7 +4,7 @@
  */
 import { AGENT_ORDER } from "@/lib/agents";
 import type { DeskAsset } from "@/lib/assets";
-import { buy, canSell, COMMITTED_HOLD_ROUNDS, fitStakes, holdsAlone, invested, MIN_ORDER_USD, OWN_BOOK_SHARE, positionOf, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
+import { buy, canSell, canSellOwn, COMMITTED_HOLD_ROUNDS, fitStakes, invested, MIN_ORDER_USD, OWN_BOOK_SHARE, positionOf, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, Exchange, Line, OwnTrade, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
 import type { AssetKey, Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
@@ -89,9 +89,10 @@ function thinker(cfg: CouncilConfig, mode: CouncilMode) {
 }
 
 /** The strongest non-HOLD pitch becomes the proposal the council debates. */
-function chooseProposal(pitches: Pitch[], sellPct: Record<AgentId, number>): Proposal | null {
+function chooseProposal(pitches: Pitch[], sellPct: Record<AgentId, number>, sellable: AssetKey[]): Proposal | null {
   const lead = pitches
-    .filter((p) => p.action !== "HOLD")
+    // A sale the council may not make yet is the agent's own business, and is not put to a vote.
+    .filter((p) => p.action === "BUY" || (p.action === "SELL" && sellable.includes(p.token)))
     .sort((a, b) => b.conviction - a.conviction || b.stakeUsd - a.stakeUsd)[0];
   if (!lead || lead.action === "HOLD") return null;
   return { leader: lead.agent, action: lead.action, token: lead.token, stopPct: lead.stopPct, targetPct: lead.targetPct, sellPct: sellPct[lead.agent] };
@@ -110,7 +111,8 @@ function chooseChallengers(pitches: Pitch[], proposal: Proposal): AgentId[] {
 
 /** Where a round gets its market data. Replaceable so a round can be tested against a chosen market. */
 export interface MarketSource {
-  board(): Promise<Board>;
+  /** `desk` is the state the session opened with: what the desk holds and knows. */
+  board(desk?: CouncilState): Promise<Board>;
   price(token: AssetKey, assets: Record<AssetKey, DeskAsset>): Promise<number>;
 }
 
@@ -135,9 +137,11 @@ export async function runRound(
   let settled = false;
   try {
     const startedAt = opening.lastRoundAt;
-    const { stats: listed, market1h } = await market.board();
+    const board = await market.board(opening);
+    const { stats: listed, market1h } = board;
     if (listed.length === 0) throw new Error("No market data available");
     const before = opening.portfolio;
+    const sellOnly = board.sellOnly ?? [];
 
     // A funder's request, if one is waiting. A failure here must not cost the desk its session.
     const asked = await requests.take(run.id, before.cash, opening.assets, market1h).catch((e) => {
@@ -147,6 +151,12 @@ export async function runRound(
     heardRequest = asked;
     const request = asked?.brief ?? null;
     let assets = opening.assets;
+    if (board.assets) {
+      // The desk remembers the tokens on its board: where they live on-chain, and the pools that price them.
+      const onBoard = board.assets;
+      assets = { ...assets, ...onBoard };
+      await updateState((s) => ({ ...s, assets: { ...s.assets, ...onBoard }, board: Object.keys(onBoard) }));
+    }
     if (asked && request) {
       assets = { ...assets, [request.asset.key]: { ...request.asset, quote: asked.quote, quotedAt: Date.now() } };
       const known = assets;
@@ -154,7 +164,7 @@ export async function runRound(
     }
 
     // Requested tokens the desk already holds are on the board too, so the agents can judge and sell them.
-    const heldAssets = before.positions.map((p) => p.token).filter((t) => assets[t] && t !== request?.asset.key);
+    const heldAssets = before.positions.map((p) => p.token).filter((t) => assets[t] && t !== request?.asset.key && !listed.some((s) => s.token === t));
     const heldStats = await Promise.all(
       heldAssets.map(async (t) => {
         const quote = await assetQuote(assets[t]).catch(() => null);
@@ -200,7 +210,9 @@ export async function runRound(
       request,
       // Every agent keeps a position open. One that holds nothing opens one this round, unless a funder's request has the floor.
       taken: [],
-      mustTrade: perAgent((a) => !request && !invested(before, a) && Math.floor(before.cash[a] * OWN_BOOK_SHARE) >= MIN_ORDER_USD && stats.some((s) => !closed.includes(s.token))),
+      mustTrade: perAgent((a) => !request && !invested(before, a) && Math.floor(before.cash[a] * OWN_BOOK_SHARE) >= MIN_ORDER_USD && stats.some((s) => !closed.includes(s.token) && !sellOnly.includes(s.token))),
+      sellOnly,
+      mine: perAgent((a) => before.positions.filter((p) => canSellOwn(before, p.token, a, run.id) && !closed.includes(p.token)).map((p) => p.token)),
     };
     await updateState((s) => ({ ...s, lenses: perAgent((a) => [...(s.lenses[a] ?? []), lens[a].id].slice(-LENS_MEMORY)) }));
     run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt, request });
@@ -238,14 +250,14 @@ export async function runRound(
     }
     let proposal: Proposal | null = asking
       ? { leader: asking.agent, action: "BUY", token: asking.token, stopPct: asking.stopPct, targetPct: asking.targetPct, sellPct: 100 }
-      : chooseProposal(pitches, sellPct);
+      : chooseProposal(pitches, sellPct, ctx.sellable);
     const bound = !!asking && request?.mode === "commit";
     run.push({ stage: "pitches", pitches, proposal });
 
     /**
      * An agent's trade for its own book: an idea the council did not take up, traded by the
-     * agent who had it, alone and with its own cash. A sale is its own to make only if it
-     * holds the position by itself.
+     * agent who had it, alone and with its own cash. A sale is of the agent's own tokens, and
+     * leaves the other holders' where they are.
      */
     async function tradeOwn(p: Pitch, terms: { stopPct: number; targetPct: number }): Promise<OwnTrade | null> {
       const price = await market.price(p.token, assets).catch(() => prices[p.token]);
@@ -269,8 +281,8 @@ export async function runRound(
           made = done.fill;
           return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill], lastRiskCheck: s.portfolio.positions.length ? s.lastRiskCheck : ts };
         }
-        if (!held || !holdsAlone(held, p.agent) || !canSell(book, p.token, run.id)) return s;
-        const done = sell(book, { token: p.token, price, fraction: sellPct[p.agent] / 100, reason: "OWN", round: run.id, leader: p.agent, ts, id });
+        if (!held || !canSellOwn(book, p.token, p.agent, run.id)) return s;
+        const done = sell(book, { token: p.token, price, fraction: sellPct[p.agent] / 100, reason: "OWN", round: run.id, leader: p.agent, ts, id, only: p.agent });
         if (!done) return s;
         made = done.fill;
         return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill] };
@@ -375,9 +387,8 @@ export async function runRound(
       return { agent, approve: p.support, reason: p.reason };
     });
 
-    // Without the council's backing the leader still trades its idea, alone: a purchase with its own cash, a sale if the position is its own.
-    const leaderHeld = positionOf(before, final.token);
-    const alone = !approved && !asking && (buying ? (pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0) >= MIN_ORDER_USD : !!leaderHeld && holdsAlone(leaderHeld, leader));
+    // Without the council's backing the leader still trades its idea, alone: a purchase with its own cash, a sale of its own tokens.
+    const alone = !approved && !asking && (buying ? (pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0) >= MIN_ORDER_USD : canSellOwn(before, final.token, leader, run.id));
     const ownUsd = buying ? Math.min(pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0, Math.floor(before.cash[leader] * OWN_BOOK_SHARE)) : 0;
     const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd: alone ? ownUsd : totalUsd, committed: bound, alone }));
     const closing: Line = { agent: leader, emotion: c.emotion, say: c.say, source: c.source };

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { fetchQuotes, type AssetKey, type Prices, type Quote } from "@/lib/market";
 
 interface MarketStore {
-  /** Listed tokens come from the public price feed; tokens a funder asked for come from the server. */
+  /** Live quotes of the tokens on the desk's board and of those it holds. */
   quotes: Record<AssetKey, Quote | undefined>;
   /** "live" once real quotes arrived, "down" if the feed can't be reached. */
   status: "loading" | "live" | "down";
@@ -36,13 +36,14 @@ export const livePrices = (): Prices => {
 /** Latest real quote for a token, if the feed has delivered one. */
 export const liveQuote = (token: AssetKey): Quote | undefined => useMarket.getState().quotes[token];
 
-const POLL_MS = 10_000;
+// The tokens the desk trades move in seconds, so their prices are asked for often.
+const POLL_MS = 5_000;
 
 let watchers = 0;
 let stopPolling: (() => void) | null = null;
 
 /**
- * Polls 24h quotes for every token while anything on the page needs them.
+ * Polls the quotes of every token the desk watches, while anything on the page needs them.
  * Safe to call from several components: polling starts with the first and stops with the last.
  */
 export function startQuotes(): () => void {

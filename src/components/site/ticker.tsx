@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
-import { priceDecimals, TOKENS } from "@/lib/market";
+import { priceDecimals } from "@/lib/market";
 import { startQuotes, useMarket } from "@/store/market";
+import { useWatched } from "@/store/selectors";
 
 /** Live prices running under the header. */
 export function Ticker() {
   const quotes = useMarket((s) => s.quotes);
   useEffect(() => startQuotes(), []);
-  const rows = TOKENS.flatMap((t) => (quotes[t] ? [{ token: t, ...quotes[t] }] : []));
+  const watched = useWatched();
+  const rows = watched.flatMap((t) => (quotes[t] ? [{ token: t, ...quotes[t] }] : []));
   if (rows.length === 0) return <div className="h-8 border-b border-white/5" />;
 
   // Repeated so the strip is always wider than the screen and can loop without a gap.

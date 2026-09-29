@@ -21,7 +21,7 @@ export const SKILLS: Record<AgentId, Skill[]> = {
     { id: "trend", name: "Trend alignment", brief: "Does the trend reading agree with the 1h and 4h moves, or is price moving against its trend?" },
     { id: "meanrev", name: "Overbought and oversold", brief: "Look at RSI extremes together with where price sits in its 24h range." },
     { id: "volume", name: "Volume confirmation", brief: "Is the latest move backed by above-average volume, or is it drifting on thin volume?" },
-    { id: "relative", name: "Relative strength", brief: "Which Stock Token is beating or lagging the stock market over the last hour, and is that gap widening?" },
+    { id: "relative", name: "Relative strength", brief: "Which token is beating or lagging the rest of the board over the last hour, and is that gap widening?" },
   ],
   guardian: [
     { id: "sizing", name: "Position sizing", brief: "How much of the pool is already at risk, and how large can a new position sensibly be?" },

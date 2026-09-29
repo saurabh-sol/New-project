@@ -43,6 +43,8 @@ interface ArenaStore {
   assets: Record<AssetKey, DeskAsset>;
   /** The contract that holds the agents' USDG and records their trades, if there is one. */
   desk: DeskInfo | null;
+  /** The tokens the agents chose from in the latest session: the ones trending then. */
+  board: AssetKey[];
   fills: Fill[];
   /** Server clock minus this browser's clock, in ms. */
   clockSkew: number;
@@ -100,6 +102,7 @@ export const useArena = create<ArenaStore>((set) => ({
   portfolio: newPortfolio(),
   assets: {},
   desk: null,
+  board: [],
   fills: [],
   clockSkew: 0,
   nextRoundAt: null,
@@ -132,6 +135,7 @@ export const useArena = create<ArenaStore>((set) => ({
             portfolio: snap.portfolio,
             assets: { ...s.assets, ...snap.assets },
             desk: snap.desk ?? null,
+            board: snap.board ?? s.board,
             fills: [...snap.fills].sort(byTime),
             clockSkew: snap.serverTime - Date.now(),
             nextRoundAt: snap.nextRoundAt,

@@ -2,7 +2,11 @@
 
 The Council is a web app in which four AI agents, each on a different model, share a trading desk on Robinhood Chain. They read the same live market data, argue about what to trade, put their own cash behind their views, and hold positions with stop-losses and targets. People can watch the desk, fund an agent with USDG, ask an agent to trade a token, and claim a small reward.
 
-The desk lists six tokens: ETH, and the Robinhood Stock Tokens TSLA, NVDA, AAPL, AMZN and PLTR. A Stock Token is a token on Robinhood Chain that follows the price of a share.
+The agents trade the tokens that are trending on Robinhood Chain. For every session the desk takes the chain's trending trading pools, as GeckoTerminal ranks them, and keeps the first eight whose pool holds at least $30,000, traded $100,000 in the last day and is six hours old. That list is the board the agents choose from.
+
+ETH, Stock Tokens and money such as USDG are left off the board. The agents do not buy them. Those the desk still holds from before are listed so that they can be sold. A Stock Token is a token on Robinhood Chain that follows the price of a share; a funder can still ask for one.
+
+The tokens on the board are young. They move several percent in minutes, and one can lose most of its value in an hour.
 
 This document explains how the parts fit together. For setup steps and settings, see the [README](../README.md).
 
@@ -106,7 +110,7 @@ Each agent has $100 of the treasury's capital and is judged on its own result. T
 | Without backing, alone | If the vote fails there is no desk trade, and the leader takes the trade for its own book. A funder's suggestion is the exception: it is bought only if the council backs it |
 | Nobody sits in cash | An agent that holds nothing must open a position that session, of at least $20 |
 | The books are spread | Agents opening a first position choose one after another. Each is told what the others took, and picks something else |
-| Selling | A position one agent holds alone is its own to sell. A position several hold is sold by vote |
+| Selling | The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it |
 | Size | One trade takes at most 60% of an agent's cash |
 
 An agent told to open a position is also told not to invent a reason for it. When the edge is thin, it says so and sizes small.
@@ -125,19 +129,45 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 | Hold on a purchase made for a funder's commitment | 12 sessions |
 | Largest share of the pool in one token | 40% |
 | Smallest order | $10 |
-| Stop-loss range | 2% to 10% |
-| Target range | 3% to 20% |
+| Stop-loss range | 3% to 25% |
+| Target range | 5% to 60% |
 | Stop must clear the token's usual movement | at least 1.5 × its 5-minute movement |
 | Target | never nearer than the stop |
 | Trades per session | at most one by the council, and one by each agent for its own book |
 | An agent's own trade | at most 60% of its cash |
-| Stock Tokens while their market is closed | neither bought nor sold |
+| ETH and Stock Tokens | not bought. Those still held can be sold, a Stock Token only while its market is open |
 
 The accounting is in `src/lib/council.ts`. It is pure arithmetic shared by the server and the browser, so both always agree on what a position is worth.
 
-## 6. Between sessions: stops and targets
+## 6. Between sessions: stops, targets, and selling into a fall
 
-Agents sit at their desks and watch their positions. Whenever the desk's state is read, the server checks each open position against real one-minute candles (`src/server/council/risk.ts`):
+Agents sit at their desks and watch their positions. Whenever the desk's state is read, and that is every few seconds while a page is open, the server checks each position against its live price (`src/server/council/risk.ts`):
+
+| What happened | What the desk does |
+| --- | --- |
+| The price is at or below the stop-loss | Sells the whole position, at the live price |
+| The price is at or above the target | Sells the whole position, at the live price |
+| The price is falling fast, and sellers lead | Each holder whose nerve it breaks sells its own tokens, at the live price. The others hold |
+
+How far a token must fall before an agent lets go is set to the agent's temperament:
+
+| Agent | Within five minutes | Within the hour, and still falling |
+| --- | --- | --- |
+| The Guardian | 4% | 9% |
+| The Quant | 5% | 11% |
+| The Oracle | 5.5% | 12% |
+| The Degen | 7% | 15% |
+
+- A fall counts when more was sold than bought over those five minutes. Where too few trades were made to tell, it has to be half as deep again.
+- A token that swings needs a larger fall: never less than half the distance to the position's stop.
+- A position bought in the last three minutes is left alone. So is one bought on a commitment to a funder, which its stop guards.
+- The sale is recorded on the agent's contract with the reason `FALLING`, and the conversation says why it was made.
+
+This is a rule, not a model's judgement, because it has to act within seconds. In a session the models make the same call for themselves: they are shown each token's change over five minutes and how many bought and sold, and are told to sell what is falling fast rather than wait for the stop.
+
+Nothing is checked while no page is open. A stop that was passed in that time is acted on at the next check, at the price the token has then.
+
+ETH and Stock Tokens the desk still holds are checked the old way, against one-minute candles:
 
 - If the low touched the stop, the position is sold at the stop price.
 - If the high touched the target, it is sold at the target price.
@@ -293,6 +323,9 @@ A model cannot be retrained from this app. What the app controls is what each ag
 
 | Data | Source | Key needed |
 | --- | --- | --- |
+| The trending tokens | GeckoTerminal's ranking of Robinhood Chain's pools | No |
+| Tokens on the board: live price, liquidity, volume, buys and sells | DexScreener, for the whole board in one request | No |
+| Tokens on the board: candles | GeckoTerminal | No |
 | Stock Tokens: live price, the list of tokens | Robinhood's Stock Token API | No |
 | Stock Tokens: candles | Yahoo Finance's public chart data | No |
 | ETH: price and candles | Binance public data | No |
@@ -352,9 +385,9 @@ Without a database the desk's state is kept in a local file, and funding is swit
 | `POST /api/fund/deposit` | Two steps: prepare, then confirm |
 | `POST /api/fund/withdraw` | Two steps: challenge, then submit |
 | `POST /api/fund/faucet` | Free test tokens, testnets only |
-| `GET /api/market/quotes` | Live quotes for the listed tokens |
+| `GET /api/market/quotes` | Live quotes for the tokens on the board and the tokens the desk holds |
 | `GET /api/market/asset` | Look up a Stock Token by symbol, or any token by address |
-| `GET /api/market/candles` | Candles for a Stock Token or a requested token |
+| `GET /api/market/candles` | Candles for a token on the board, a token the desk holds, or a requested token |
 | `GET /api/rewards/status` | Whether rewards can be paid, and one wallet's claim |
 | `POST /api/rewards/challenge` | The message to sign |
 | `POST /api/rewards/claim` | Verify and pay |
@@ -377,7 +410,7 @@ src/
     council-types.ts     the stages the server sends the browser
     director.ts          how a session is staged in the browser
     funding.ts           the arithmetic of bonuses and fees
-    market.ts            listed tokens and their price feeds
+    market.ts            price feeds, and the tokens the desk used to list
     assets.ts            requested tokens
   server/
     council/           session engine, agents' brains, risk, memory, state
@@ -385,7 +418,7 @@ src/
     requests/          the trade request queue
     rewards/           reward claims and payouts
     chains/            everything that touches Robinhood Chain, the desk contracts included
-    market/            Stock Token prices, quotes, and data for requested tokens
+    market/            the trending board, quotes, and data for requested tokens
     db.ts              database connection and tables
     dns-fallback.ts    name lookups that don't give up too early
   store/               the browser's state (floor and prices)

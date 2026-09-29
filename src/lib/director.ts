@@ -21,9 +21,17 @@ class Stopped extends Error {}
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-/** Passes the server's prices for requested tokens to everything on the page that shows a price. */
+/**
+ * Passes on the prices the server last saw, for tokens the page has no price for yet.
+ * A price from the live feed is newer, and is left alone.
+ */
 function learn(assets: Record<string, DeskAsset>) {
-  const quotes = Object.fromEntries(Object.values(assets).map((a) => [a.key, { price: a.quote.price, change24h: a.quote.change24h }]));
+  const known = useMarket.getState().quotes;
+  const quotes = Object.fromEntries(
+    Object.values(assets)
+      .filter((a) => !known[a.key])
+      .map((a) => [a.key, { price: a.quote.price, change24h: a.quote.change24h }]),
+  );
   if (Object.keys(quotes).length) useMarket.getState().setAssetQuotes(quotes);
 }
 /** Time a speech bubble needs to type out, plus a beat to read it. */
@@ -289,6 +297,18 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
     for (const a of holders) setState(a, "idle");
   }
 
+  /** An agent sold its tokens between sessions, because their price was falling fast. */
+  async function soldIntoFall(fill: Fill, snapshot: CouncilSnapshot) {
+    const won = (fill.realized ?? 0) >= 0;
+    emit({ type: "focus", token: fill.token });
+    emit({ type: "fill", fill, portfolio: snapshot.portfolio });
+    system(fill.note ?? `${AGENTS[fill.leader].name} sold its ${fill.token} at $${fmtPrice(fill.price)} as the price fell. Realized ${fmtSigned(fill.realized ?? 0)}.`, fill.leader);
+    feel(fill.leader, won ? "confident" : "worried");
+    setState(fill.leader, "executing");
+    await sleep(2600);
+    setState(fill.leader, "idle");
+  }
+
   /** The stretch between sessions: agents at their desks, watching their positions. */
   async function monitor(until: number, skew: number) {
     emit({ type: "phase", phase: "monitor" });
@@ -304,6 +324,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
           if (knownFills.has(fill.id)) continue;
           knownFills.add(fill.id);
           if (fill.reason === "STOP" || fill.reason === "TARGET") await riskExit(fill, snapshot);
+          else if (fill.reason === "FALLING") await soldIntoFall(fill, snapshot);
         }
         moodFromPnl(snapshot);
       }

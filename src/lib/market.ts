@@ -1,9 +1,10 @@
 /**
- * What the desk trades, and the market data the browser can read for itself.
+ * Market data the browser can read for itself, and the tokens the desk used to list.
  *
- * The desk lists ETH and a handful of Robinhood Stock Tokens. ETH is priced on Binance's
- * public feed. Stock Tokens are priced by the server from Robinhood's Stock Token API,
- * which a browser can't call directly.
+ * The agents trade the tokens trending on Robinhood Chain, which the server names for each
+ * session. ETH and the Stock Tokens below are what the desk listed before. It no longer buys
+ * them, and they are priced here for as long as it still holds one: ETH on Binance's public
+ * feed, Stock Tokens by the server from Robinhood's Stock Token API.
  */
 
 export const TOKENS = ["ETH", "TSLA", "NVDA", "AAPL", "AMZN", "PLTR"] as const;
@@ -59,6 +60,9 @@ export interface Quote {
   low24h?: number;
   /** Set for Stock Tokens. Crypto is always open. */
   session?: Session;
+  /** For a token priced by its pool: its change over the last five minutes and the last hour, in percent. */
+  change5m?: number;
+  change1h?: number;
 }
 
 export const isToken = (t: string): t is Token => (TOKENS as readonly string[]).includes(t);
@@ -193,7 +197,7 @@ export function subscribeCandles(token: string, interval: Interval, onCandle: (c
 
 // --- everything, through this app's own server ---
 
-/** Quotes for every listed token and every token a funder asked for. */
+/** Quotes for the tokens on the desk's board and the tokens it holds. */
 export async function fetchQuotes(signal?: AbortSignal): Promise<Record<AssetKey, Quote>> {
   const res = await fetch("/api/market/quotes", { signal, cache: "no-store" });
   if (!res.ok) throw new Error(`Market data request failed (${res.status})`);

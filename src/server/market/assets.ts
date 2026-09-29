@@ -46,7 +46,8 @@ interface Pair {
   priceUsd?: string;
   liquidity?: { usd?: number };
   volume?: { h24?: number };
-  priceChange?: { h24?: number };
+  priceChange?: { m5?: number; h1?: number; h24?: number };
+  txns?: { m5?: { buys?: number; sells?: number } };
   pairCreatedAt?: number;
 }
 
@@ -55,13 +56,17 @@ const poolQuote = (p: Pair): AssetQuote => ({
   change24h: p.priceChange?.h24 ?? 0,
   liquidityUsd: p.liquidity?.usd ?? 0,
   volume24hUsd: p.volume?.h24 ?? 0,
+  change5m: p.priceChange?.m5,
+  change1h: p.priceChange?.h1,
+  buys5m: p.txns?.m5?.buys,
+  sells5m: p.txns?.m5?.sells,
 });
 
 export const looksLikeAddress = (q: string) => /^0x[0-9a-fA-F]{40}$/.test(q);
 const looksLikeSymbol = (q: string) => /^\$?[A-Za-z][A-Za-z.]{0,6}$/.test(q);
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-const cleanSymbol = (symbol: string) => symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 10) || "TOKEN";
+export const cleanSymbol = (symbol: string) => symbol.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 10) || "TOKEN";
 
 /** The symbol with the start of the address, for a token whose symbol belongs to another. */
 export const longKey = (asset: Pick<Asset, "symbol" | "address">) => `${cleanSymbol(asset.symbol)}.${asset.address.slice(2, 6).toUpperCase()}`;
@@ -78,12 +83,9 @@ export function tooThin(symbol: string, quote: AssetQuote, ageHours = Infinity):
   return null;
 }
 
-const ALREADY_LISTED = (symbol: string) => `${symbol} is already on the desk's list. The agents trade it whenever they see reason to.`;
-
 async function lookupStock(query: string): Promise<AssetPreview | null> {
   const stock = await findStock(query);
   if (!stock) return null;
-  if (isToken(stock.symbol)) return { ok: false, error: ALREADY_LISTED(stock.symbol) };
   if (!stock.active) return { ok: false, error: `${stock.symbol} is not trading as a Stock Token right now.` };
   const quote = (await stockQuotes([stock.symbol]))[stock.symbol];
   if (!quote) return { ok: false, error: `There is no live price for ${stock.symbol} right now. Try again in a moment.` };
@@ -225,6 +227,37 @@ export function assetQuote(asset: Asset): Promise<AssetQuote> {
     if (!pair || !(Number(pair.priceUsd) > 0)) throw new Error(`No live price for ${asset.symbol}`);
     return poolQuote(pair);
   });
+}
+
+/** DexScreener prices this many pools in one request. */
+const BATCH = 30;
+
+/**
+ * Quotes for many tokens at once, by key. Pool tokens are priced together in one request, so
+ * a board of them can be priced every few seconds. A token that can't be quoted is left out.
+ */
+export async function assetQuotes(assets: Asset[]): Promise<Record<string, AssetQuote>> {
+  const out: Record<string, AssetQuote> = {};
+  const together = assets.filter((a) => a.kind === "pool" && a.pool && !a.feed);
+  const alone = assets.filter((a) => !together.includes(a));
+
+  const batches: Asset[][] = [];
+  for (let i = 0; i < together.length; i += BATCH) batches.push(together.slice(i, i + BATCH));
+  await Promise.all([
+    ...batches.map(async (batch) => {
+      const pools = batch.map((a) => a.pool!.toLowerCase()).sort();
+      const pairs = await cached(`quotes:${pools.join(",")}`, 4_000, async () => (await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/pairs/${CHAIN}/${pools.join(",")}`)).pairs ?? []).catch(() => [] as Pair[]);
+      for (const a of batch) {
+        const pair = pairs.find((p) => same(p.pairAddress, a.pool!));
+        if (pair && Number(pair.priceUsd) > 0) out[a.key] = poolQuote(pair);
+      }
+    }),
+    ...alone.map(async (a) => {
+      const quote = await assetQuote(a).catch(() => null);
+      if (quote) out[a.key] = quote;
+    }),
+  ]);
+  return out;
 }
 
 // `freshMs` is how long an answer is reused. The candle service allows few requests a minute.

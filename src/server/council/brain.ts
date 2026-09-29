@@ -41,8 +41,9 @@ export interface Brain {
 
 export const clamp = (n: number, lo: number, hi: number) => (isFinite(n) ? Math.min(Math.max(n, lo), hi) : lo);
 
-export const STOP_RANGE = [2, 10] as const;
-export const TARGET_RANGE = [3, 20] as const;
+// The desk trades young tokens that move several percent in minutes, so its stops and targets are wide.
+export const STOP_RANGE = [3, 25] as const;
+export const TARGET_RANGE = [5, 60] as const;
 
 /** A stop must stand at least this many times the token's usual 5-minute move away, or noise alone sets it off. */
 const STOP_CLEARANCE = 1.5;
@@ -86,7 +87,10 @@ export const mostStake = (ctx: RoundCtx, agent: AgentId) => Math.floor(ctx.portf
 export const starterStake = (ctx: RoundCtx, agent: AgentId) => Math.min(STARTER_USD, mostStake(ctx, agent));
 
 /** Tokens that can be bought this round. */
-export const openTokens = (ctx: RoundCtx) => ctx.stats.map((s) => s.token).filter((t) => !ctx.closed.includes(t));
+export const openTokens = (ctx: RoundCtx) => ctx.stats.map((s) => s.token).filter((t) => !ctx.closed.includes(t) && !ctx.sellOnly.includes(t));
+
+/** Tokens this agent may pitch a sale of: its own, and those the council may sell. */
+export const saleTokens = (ctx: RoundCtx, agent: AgentId) => [...new Set([...ctx.mine[agent], ...ctx.sellable])];
 
 /** Tokens for a starter position: those no colleague has picked this round, or any open one if all are picked. */
 export function starterTokens(ctx: RoundCtx): AssetKey[] {
@@ -135,7 +139,8 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
     if (p.action === "SELL") p.action = "HOLD";
   }
   if (p.action !== "HOLD" && ctx.closed.includes(p.token)) p.action = "HOLD";
-  if (p.action === "SELL" && !ctx.sellable.includes(p.token)) p.action = "HOLD";
+  if (p.action === "BUY" && ctx.sellOnly.includes(p.token) && !presents(agent, ctx) && !weighs(agent, ctx)) p.action = "HOLD";
+  if (p.action === "SELL" && !saleTokens(ctx, agent).includes(p.token)) p.action = "HOLD";
   // An agent with no position opens one. If it named a token that can be bought, that is the one.
   if (ctx.mustTrade[agent] && p.action !== "BUY") {
     const open = starterTokens(ctx);

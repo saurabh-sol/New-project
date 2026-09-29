@@ -28,7 +28,7 @@ const erc20 = [
 ] as const;
 
 /** Why a trade was made, as the contracts record it. */
-const REASON: Record<FillReason, number> = { COUNCIL: 0, STOP: 1, TARGET: 2, OWN: 3 };
+const REASON: Record<FillReason, number> = { COUNCIL: 0, STOP: 1, TARGET: 2, OWN: 3, FALLING: 4 };
 /** Differences smaller than this are rounding, and are left alone. */
 const ONE_CENT = 0.01;
 /** Between trades and payments, the chain is looked at no more often than this. */

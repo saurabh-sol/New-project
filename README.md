@@ -2,7 +2,9 @@
 
 Four AI agents share a trading desk on [Robinhood Chain](https://docs.robinhood.com/chain). They read the same live market data, pitch trades, argue at each other's desks, commit their own cash, vote, and hold positions with stops and targets.
 
-The desk trades ETH and Robinhood Stock Tokens (TSLA, NVDA, AAPL, AMZN, PLTR), and pays in USDG.
+The desk trades the tokens that are trending on Robinhood Chain, and pays in USDG. For every session it takes the chain's trending trading pools, as GeckoTerminal ranks them, and keeps the first eight whose pool holds at least $30,000, traded $100,000 in the last day and is six hours old (`BOARD_SIZE`, `BOARD_MIN_LIQUIDITY_USD`, `BOARD_MIN_VOLUME_USD`, `BOARD_MIN_AGE_HOURS`). ETH, Stock Tokens and money such as USDG are left off the board: the agents do not buy them. Those the desk still holds from before are listed so that they can be sold.
+
+These are young tokens. They move several percent in minutes, and one can lose most of its value in an hour.
 
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
@@ -34,8 +36,8 @@ npm run dev -- -p 3210
 
 | Part | Status |
 | --- | --- |
-| Prices | Real. Stock Tokens from Robinhood's Stock Token API; ETH from Binance, with CoinGecko as the backup |
-| Candles, RSI, trend, volume | Real. For Stock Tokens they are the underlying share's, from Yahoo Finance's public chart data, scaled to the token's price |
+| Prices | Real, and a few seconds old. A token's price is its trading pool's, as DexScreener reports it. The page asks for prices every five seconds |
+| Candles, RSI, trend, volume, buys and sells | Real. Candles are the pool's, from GeckoTerminal. The count of purchases and sales over five minutes is DexScreener's |
 | What the agents say and decide | Real model output, when a gateway key is set |
 | Trades and results | Settled at real prices, with the treasury as the other side. Nothing is bought or sold on a market. With the desk contracts deployed, each agent's part of every trade is recorded on the agent's own contract on Robinhood Chain and moves real USDG |
 | Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
@@ -93,7 +95,8 @@ Each agent has $100 of the treasury's capital and is judged on its own result.
 - **Without the council's backing the leader trades alone.** A vote that fails means there is no desk trade, not that there is no trade. The exception is a funder's suggestion, which is only bought if the council backs it.
 - **Nobody sits in cash.** An agent that holds nothing must open a position that session, of at least $20. It picks its best idea, and says so plainly when the edge is thin.
 - **The books are spread.** Agents opening a first position choose one after another, and each is told what the others took and picks something else.
-- **Selling.** A position one agent holds alone is its own to sell. A position several agents hold is sold by the council's vote.
+- **Selling.** The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it.
+- **Selling into a fall.** The agents are told to sell a token they hold when it is falling fast, and between sessions a rule does it for them. See below.
 - One trade takes at most 60% of an agent's cash.
 
 Between sessions the agents watch their positions. Stops and targets are checked against real one-minute candles.
@@ -104,7 +107,32 @@ Between sessions the agents watch their positions. Stops and targets are checked
 - The desk can only sell a token it holds, and only after holding it for 2 sessions.
 - No token may exceed 40% of the pool. Orders under $10 are not placed.
 - Every position has a stop-loss and a profit target.
-- A Stock Token is neither bought nor sold while its market is closed. Stock Tokens trade around the clock from Sunday evening to Friday evening, New York time. ETH always trades.
+- ETH and Stock Tokens are not bought. A Stock Token the desk still holds is neither bought nor sold while its market is closed.
+
+### Between sessions
+
+Whenever the desk's state is read, and that is every few seconds while a page is open, each position is checked against its live price (`src/server/council/risk.ts`):
+
+| What happened | What the desk does |
+| --- | --- |
+| The price is at or below the stop-loss | Sells the whole position, at the live price |
+| The price is at or above the target | Sells the whole position, at the live price |
+| The price is falling fast, and sellers lead | Each holder whose nerve it breaks sells its own tokens, at the live price. The others hold |
+
+How far a token must fall before an agent lets go is set to the agent's temperament:
+
+| Agent | Within five minutes | Within the hour, and still falling |
+| --- | --- | --- |
+| The Guardian | 4% | 9% |
+| The Quant | 5% | 11% |
+| The Oracle | 5.5% | 12% |
+| The Degen | 7% | 15% |
+
+A fall counts when more was sold than bought over those five minutes. Where too few trades were made to tell, the fall has to be half as deep again. A token that swings needs a larger fall: never less than half the distance to the position's stop. A position bought in the last three minutes is left alone, and so is one bought on a commitment to a funder, which its stop guards.
+
+This is a rule, not a model's judgement: it has to act within seconds. In a session the models make the same call for themselves, from the same figures.
+
+Nothing is checked while no page is open. A stop that was passed in that time is acted on at the next check, at the price the token has then.
 
 ### Keeping the agents from repeating themselves
 
@@ -147,7 +175,7 @@ A user deposits tokens, which the agent gets as extra capital. The user holds sh
 
 ### Trade requests
 
-With a deposit, a funder may name a token on Robinhood Chain and ask the agent they fund to trade it: any of Robinhood's Stock Tokens by symbol (such as MSFT), or any other token by its contract address. How far that binds the agent depends on the size of the deposit:
+With a deposit, a funder may name a token on Robinhood Chain and ask the agent they fund to trade it. A funder's request is the one way a Stock Token is still bought. It can be any of Robinhood's Stock Tokens by symbol (such as MSFT), or any other token by its contract address. How far that binds the agent depends on the size of the deposit:
 
 | Deposit | What happens |
 | --- | --- |

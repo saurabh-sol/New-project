@@ -6,21 +6,25 @@
 import { positionOf, type Emotion } from "@/lib/council";
 import type { Proposal, TokenStats } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { backers, clamp, mostStake, presents, requestStake, starterStake, starterTokens, weighs, type Brain } from "./brain";
+import { backers, clamp, mostStake, openTokens, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
 import { nameOf, signed, type RoundCtx } from "./context";
 import { pick } from "./skills";
 
 const BUY_ABOVE: Record<AgentId, number> = { quant: 0.35, degen: 0.25, guardian: 0.5, oracle: 0.4 };
 const SELL_BELOW: Record<AgentId, number> = { quant: -0.3, degen: -0.4, guardian: -0.15, oracle: -0.3 };
 const SIZE: Record<AgentId, number> = { quant: 0.3, degen: 0.5, guardian: 0.15, oracle: 0.25 };
-const STOP: Record<AgentId, number> = { quant: 4, degen: 6, guardian: 3, oracle: 4 };
+const STOP: Record<AgentId, number> = { quant: 8, degen: 12, guardian: 6, oracle: 8 };
 
 const short = (a: AgentId) => nameOf(a).replace("The ", "");
 const unit = (n: number, scale: number) => clamp(n / scale, -1, 1);
 
 /** How much this agent likes a token right now, from -1 (sell) to 1 (buy). */
 function edge(agent: AgentId, s: TokenStats): number {
-  const momentum = unit(s.change1h, 1.5) * 0.5 + unit(s.rsi14 - 50, 25) * 0.3 + unit((s.volRatio ?? 1) - 1, 1.5) * 0.2;
+  // A move counts for as much as it stands out from the token's usual movement.
+  const usual = Math.max(1.5, s.atrPct * 3);
+  // More sales than purchases in the last minutes weighs against a token, more purchases for it.
+  const flow = s.buys5m !== undefined && s.sells5m !== undefined && s.buys5m + s.sells5m >= 5 ? ((s.buys5m - s.sells5m) / (s.buys5m + s.sells5m)) * 0.2 : 0;
+  const momentum = unit(s.change1h, usual) * 0.5 + unit(s.rsi14 - 50, 25) * 0.3 + unit((s.volRatio ?? 1) - 1, 1.5) * 0.2 + flow;
   switch (agent) {
     case "quant":
       return momentum - (s.rsi14 > 72 ? 0.4 : 0);
@@ -125,7 +129,7 @@ export function scriptedBrain(): Brain {
         };
       }
 
-      const weak = ranked.filter((r) => ctx.sellable.includes(r.s.token)).sort((a, b) => a.e - b.e)[0];
+      const weak = ranked.filter((r) => saleTokens(ctx, agent).includes(r.s.token)).sort((a, b) => a.e - b.e)[0];
       if (weak && weak.e < SELL_BELOW[agent]) {
         return {
           ...base,
@@ -155,9 +159,9 @@ export function scriptedBrain(): Brain {
         };
       }
 
-      const best = ranked[0];
+      const best = ranked.find((r) => openTokens(ctx).includes(r.s.token)) ?? ranked[0];
       const cash = ctx.portfolio.cash[agent];
-      if (best.e > BUY_ABOVE[agent] && cash >= 10) {
+      if (best.e > BUY_ABOVE[agent] && cash >= 10 && openTokens(ctx).includes(best.s.token)) {
         const c = Math.round(clamp(1 + best.e * 5, 1, 5));
         return {
           ...base,
@@ -189,7 +193,7 @@ export function scriptedBrain(): Brain {
       const gives = challenge.agent === "guardian" && proposal.action === "BUY";
       // Giving way to "your stop sits in the noise" means moving the stop away, not closer.
       const widen = /noise|too tight/i.test(challenge.say);
-      const stopPct = !gives ? proposal.stopPct : widen ? Math.min(10, proposal.stopPct + 2) : Math.max(2, proposal.stopPct - 1);
+      const stopPct = !gives ? proposal.stopPct : widen ? Math.min(STOP_RANGE[1], proposal.stopPct + 3) : Math.max(STOP_RANGE[0], proposal.stopPct - 1);
       const tighten = gives;
       const moved = widen ? "widened" : "tightened";
       return {

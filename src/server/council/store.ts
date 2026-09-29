@@ -16,8 +16,10 @@ import { db, hasDb } from "../db";
 export interface CouncilState {
   round: number;
   portfolio: Portfolio;
-  /** Tokens funders asked the desk to trade, by the name the desk uses for each. */
+  /** Tokens the desk knows: those on its board, those it holds, and those funders asked for. By the name the desk uses for each. */
   assets: Record<AssetKey, DeskAsset>;
+  /** The tokens the agents chose from in the latest session: the ones trending then. */
+  board?: AssetKey[];
   fills: Fill[];
   /** One line per finished round, newest last, given to the agents as memory. */
   recent: string[];
@@ -67,7 +69,7 @@ const hydrate = (raw: Partial<CouncilState>): CouncilState => {
 function trimAssets(s: CouncilState): CouncilState["assets"] {
   const all = Object.values(s.assets);
   if (all.length <= MAX_IDLE_ASSETS) return s.assets;
-  const held = new Set(s.portfolio.positions.map((p) => p.token));
+  const held = new Set([...s.portfolio.positions.map((p) => p.token), ...(s.board ?? [])]);
   const idle = all.filter((a) => !held.has(a.key)).sort((a, b) => b.quotedAt - a.quotedAt);
   const keep = [...all.filter((a) => held.has(a.key)), ...idle.slice(0, MAX_IDLE_ASSETS)];
   return Object.fromEntries(keep.map((a) => [a.key, a]));

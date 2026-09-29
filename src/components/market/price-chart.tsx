@@ -35,6 +35,7 @@ import { useTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { useMarket } from "@/store/market";
+import { useWatched } from "@/store/selectors";
 
 const UP = "#22c55e";
 const DOWN = "#ef4444";
@@ -73,10 +74,12 @@ export function PriceChart() {
   const assets = useArena((s) => s.assets);
   const [pinned, setPinned] = useState<AssetKey | null>(null);
   const [interval, setChartInterval] = useState<Interval>("1m");
-  const token: AssetKey = pinned ?? councilToken ?? TOKENS[0];
+  const watched = useWatched();
+  const token: AssetKey = pinned ?? councilToken ?? watched[0] ?? TOKENS[0];
   const crypto = isCrypto(token);
-  // Tokens funders asked for get a tab while the desk holds them or is debating them.
-  const extra = [...new Set([...held.map((p) => p.token), councilToken ?? "", pinned ?? ""])].filter((t) => t && !isToken(t));
+  // Every token on the board has a tab, and so has whatever the desk holds or is debating.
+  const tabs = [...new Set([...watched, ...held.map((p) => p.token), councilToken ?? "", pinned ?? ""])].filter(Boolean);
+  const lastRef = useRef<Candle | null>(null);
   const key = `${token}:${interval}`;
   const quote = useMarket((s) => s.quotes[token]);
 
@@ -134,7 +137,9 @@ export function PriceChart() {
     api.candles.setData([]);
     api.volume.setData([]);
 
+    lastRef.current = null;
     const draw = (rows: Candle[], reframe: boolean) => {
+      lastRef.current = rows[rows.length - 1];
       const decimals = priceDecimals(rows[rows.length - 1].close);
       api.candles.applyOptions({ priceFormat: { type: "price", precision: decimals, minMove: 10 ** -decimals } });
       api.candles.setData(rows.map(candleBar));
@@ -167,7 +172,8 @@ export function PriceChart() {
             if (!alive() || rows.length === 0) return;
             draw(rows, first);
             first = false;
-            useMarket.getState().setPrice(token, rows[rows.length - 1].close);
+            // A Stock Token's latest candle is its price. A pool token has a live quote, which is newer than its candles.
+            if (isToken(token) || assets[token]?.kind === "stock") useMarket.getState().setPrice(token, rows[rows.length - 1].close);
           })
           .catch(() => {
             if (alive() && first) setFailed(`${token}:${interval}`);
@@ -181,7 +187,23 @@ export function PriceChart() {
       ctrl.abort();
       unsubscribe();
     };
+    // `assets` is read when the candles arrive. A change in it is no reason to load them again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, interval]);
+
+  // Between loads of the candles, the live price moves the latest one.
+  const livePrice = quote?.price;
+  useEffect(() => {
+    const api = apiRef.current;
+    const last = lastRef.current;
+    if (!api || !last || !livePrice || crypto || loaded !== `${token}:${interval}`) return;
+    const step = INTERVAL_SECONDS[interval];
+    const slot = Math.floor(Date.now() / 1000 / step) * step;
+    // A new stretch of time opens a new candle, at the price the last one closed at.
+    const next: Candle = slot > last.time ? { time: slot, open: last.close, high: Math.max(last.close, livePrice), low: Math.min(last.close, livePrice), close: livePrice, volume: 0 } : { ...last, close: livePrice, high: Math.max(last.high, livePrice), low: Math.min(last.low, livePrice) };
+    lastRef.current = next;
+    api.candles.update(candleBar(next));
+  }, [livePrice, token, interval, crypto, loaded]);
 
   // Council trades as arrows on the candle where they happened.
   useEffect(() => {
@@ -195,14 +217,14 @@ export function PriceChart() {
         position: f.side === "BUY" ? ("belowBar" as const) : ("aboveBar" as const),
         shape: f.side === "BUY" ? ("arrowUp" as const) : ("arrowDown" as const),
         color: f.side === "BUY" ? UP : DOWN,
-        text: `${f.reason === "STOP" || f.reason === "TARGET" ? f.reason : f.side} $${f.usd.toFixed(0)}`,
+        text: `${f.reason === "STOP" || f.reason === "TARGET" ? f.reason : f.reason === "FALLING" ? "FALL" : f.side} $${f.usd.toFixed(0)}`,
       }))
       .sort((a, b) => (a.time as number) - (b.time as number));
     api.markers.setMarkers(loaded === `${token}:${interval}` ? marks : []);
   }, [fills, token, interval, loaded]);
 
   const decimals = quote ? priceDecimals(quote.price) : 2;
-  const source = crypto ? "Live prices · Binance spot" : isToken(token) || assets[token]?.kind === "stock" ? "Robinhood Stock Token · history from Yahoo Finance" : "Pool prices · GeckoTerminal";
+  const source = crypto ? "Live prices · Binance spot" : isToken(token) || assets[token]?.kind === "stock" ? "Robinhood Stock Token · history from Yahoo Finance" : "Live price · DexScreener · candles from GeckoTerminal";
 
   return (
     <section className="flex min-w-0 flex-col panel">
@@ -216,7 +238,7 @@ export function PriceChart() {
             <>
               <span className="font-mono text-base font-semibold tabular-nums text-white">${quote.price.toFixed(decimals)}</span>
               <span className={cn("font-mono text-xs tabular-nums", quote.change24h >= 0 ? "text-green-400" : "text-red-400")}>
-                {quote.change24h >= 0 ? "▲" : "▼"} {Math.abs(quote.change24h).toFixed(2)}% {crypto ? "24h" : "today"}
+                {quote.change24h >= 0 ? "▲" : "▼"} {Math.abs(quote.change24h).toFixed(2)}% {isToken(token) && !crypto ? "today" : assets[token]?.kind === "stock" ? "today" : "24h"}
               </span>
               {quote.session && <span className="rounded-full border border-white/15 px-2 py-px text-[10px] uppercase tracking-wider text-white/50">{SESSION_LABEL[quote.session]}</span>}
             </>
@@ -228,8 +250,8 @@ export function PriceChart() {
             <span className={cn("mr-1 inline-block size-1.5 rounded-full", pinned === null ? "animate-pulse bg-white" : "bg-white/30")} />
             Follow council
           </Tab>
-          {[...TOKENS, ...extra].map((t) => (
-            <Tab key={t} active={pinned === t} onClick={() => setPinned(t)} title={isToken(t) ? undefined : "Asked for by a funder"}>
+          {tabs.map((t) => (
+            <Tab key={t} active={pinned === t} onClick={() => setPinned(t)} title={assets[t]?.name}>
               {t}
             </Tab>
           ))}

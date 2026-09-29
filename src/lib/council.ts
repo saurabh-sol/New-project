@@ -19,6 +19,8 @@ export const MIN_ORDER_USD = 10;
 export const MAX_POSITION_SHARE = 0.4;
 /** A position must be held this many rounds before the council may sell it. */
 export const MIN_HOLD_ROUNDS = 2;
+/** An agent may sell its own tokens from the round after it bought them. */
+export const MIN_OWN_HOLD_ROUNDS = 1;
 /**
  * A position bought on an agent's commitment to a funder is held this many rounds before the
  * council may sell it. Its stop-loss and target still close it at any time.
@@ -60,7 +62,8 @@ export interface Portfolio {
 }
 
 /** OWN: an agent's trade for its own book, made without a vote. */
-export type FillReason = "COUNCIL" | "OWN" | "STOP" | "TARGET";
+/** FALLING: an agent sold its own tokens because the price was falling fast. */
+export type FillReason = "COUNCIL" | "OWN" | "STOP" | "TARGET" | "FALLING";
 
 export interface Fill {
   id: string;
@@ -86,6 +89,8 @@ export interface Fill {
   units?: Stakes;
   /** A sale: the share of the position that was sold, 1 for all of it. */
   fraction?: number;
+  /** What happened, in a sentence, for a sale an agent made between sessions. */
+  note?: string;
   /** The transaction on each agent's own desk contract, once there is one. `tx` is the first of them. */
   txs?: Partial<Record<AgentId, string>>;
 }
@@ -150,6 +155,12 @@ export const holdsAlone = (pos: Position, agent: AgentId) => {
   const h = holders(pos);
   return h.length === 1 && h[0] === agent;
 };
+
+/** Whether the agent may sell its own tokens of this position in this round, on its own decision. */
+export function canSellOwn(p: Portfolio, token: string, agent: AgentId, round: number): boolean {
+  const pos = positionOf(p, token);
+  return !!pos && pos.stake[agent] > 0.005 && round - pos.openedRound >= MIN_OWN_HOLD_ROUNDS && round >= (pos.lockedUntil ?? 0);
+}
 
 /** Whether the agent has money in any open position. */
 export const invested = (p: Portfolio, agent: AgentId) => p.positions.some((pos) => pos.stake[agent] > 0.005);
@@ -251,29 +262,43 @@ interface SellOrder {
   leader: AgentId;
   ts: number;
   id: string;
+  /** Sells this agent's tokens only, and leaves the other holders' where they are. */
+  only?: AgentId;
 }
 
-/** Sells part or all of a held position and pays each agent its share of the proceeds. */
+/**
+ * Sells part or all of a held position and pays each seller for the tokens it sold.
+ * `fraction` is the share of their tokens that the sellers sell.
+ */
 export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: Fill } | null {
   const held = positionOf(p, o.token);
   if (!held || held.qty <= 0) return null;
   const fraction = Math.min(Math.max(o.fraction, 0), 1);
   if (fraction === 0) return null;
 
-  const qty = held.qty * fraction;
+  const sells = (a: AgentId) => !o.only || a === o.only;
+  const sold = mapStakes((a) => (sells(a) ? unitsOf(held, a) * fraction : 0));
+  const costOf = mapStakes((a) => (sells(a) ? held.stake[a] * fraction : 0));
+  const qty = sum(sold);
+  if (qty <= 0) return null;
   const usd = qty * o.price;
-  const costOut = held.cost * fraction;
-  const sold = mapStakes((a) => unitsOf(held, a) * fraction);
+  const costOut = sum(costOf);
   const payout = mapStakes((a) => sold[a] * o.price);
 
   const rest = p.positions.filter((x) => x.token !== o.token);
-  if (fraction < 1) {
+  const left = held.qty - qty;
+  if (left > held.qty * 1e-9) {
+    const stake = mapStakes((a) => held.stake[a] - costOf[a]);
+    // If the agent who opened the position has left it, the largest holder answers for it.
+    const stays = stake[held.leader] > 0.005 ? held.leader : [...AGENT_ORDER].sort((a, b) => stake[b] - stake[a])[0];
     rest.push({
       ...held,
-      qty: held.qty - qty,
+      qty: left,
       cost: held.cost - costOut,
-      stake: mapStakes((a) => held.stake[a] * (1 - fraction)),
+      entryPrice: (held.cost - costOut) / left,
+      stake,
       units: mapStakes((a) => unitsOf(held, a) - sold[a]),
+      leader: stays,
     });
   }
 

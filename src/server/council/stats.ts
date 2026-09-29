@@ -1,9 +1,10 @@
 import type { Asset, AssetQuote, DeskAsset } from "@/lib/assets";
 import type { TokenStats } from "@/lib/council-types";
-import { fetchCandles, geckoPrices, isCrypto, isToken, TOKENS, type AssetKey, type Candle, type Prices, type Quote, type Token } from "@/lib/market";
-import { assetCandles, assetQuote } from "../market/assets";
+import { fetchCandles, geckoPrices, isCrypto, isToken, type AssetKey, type Candle, type Prices, type Quote, type Token } from "@/lib/market";
+import { assetCandles, assetQuote, assetQuotes } from "../market/assets";
 import { listedQuotes } from "../market/quotes";
 import { stockCandles } from "../market/stocks";
+import { trendingBoard } from "../market/trending";
 
 /** The stock market as a whole, which a Stock Token's move is measured against. */
 const BENCHMARK = "QQQ";
@@ -109,12 +110,49 @@ export interface Board {
   stats: TokenStats[];
   /** The stock market's move over the last hour, which Stock Tokens are measured against. */
   market1h: number;
+  /** The tokens on the board that the desk has to remember: their addresses, and the pools that price them. */
+  assets?: Record<AssetKey, DeskAsset>;
+  /** Tokens the desk still holds from before, and no longer buys. */
+  sellOnly?: AssetKey[];
 }
 
-/** The same real numbers every agent sees: price, momentum, trend, volatility and volume for each listed token. */
-export async function fetchBoard(): Promise<Board> {
-  const [quotes, market1h, ...all] = await Promise.all([listedQuotes(), benchmarkChange(), ...TOKENS.map((t) => series(t).catch(() => null))]);
-  const stats = TOKENS.flatMap((t, i): TokenStats[] => {
+/** What a session needs to know about the desk to make its board. */
+type Desk = { assets: Assets; portfolio: { positions: Array<{ token: AssetKey }> }; board?: AssetKey[] };
+
+/**
+ * The board the agents choose from: the tokens trending on Robinhood Chain right now, with the
+ * same real numbers for every agent. ETH and Stock Tokens are not on it. Those the desk still
+ * holds are listed so that they can be sold, and can't be bought.
+ */
+export async function fetchBoard(desk?: Desk): Promise<Board> {
+  const known = desk?.assets ?? {};
+  const legacy = (desk?.portfolio.positions ?? []).map((p) => p.token).filter(isToken);
+  const [trending, old] = await Promise.all([
+    trendingBoard(known).catch(async (e) => {
+      // The ranking can't be read. The last board is still a list of real tokens with live prices.
+      console.error("[board] could not read the trending tokens:", e instanceof Error ? e.message : e);
+      const last = (desk?.board ?? []).flatMap((k) => (known[k] ? [known[k]] : []));
+      const quotes = await assetQuotes(last).catch(() => ({}) as Record<string, AssetQuote>);
+      return last.flatMap((a) => (quotes[a.key] ? [{ ...a, quote: quotes[a.key], quotedAt: Date.now() }] : []));
+    }),
+    legacy.length ? listedStats(legacy).catch(() => ({ stats: [], market1h: 0 })) : { stats: [], market1h: 0 },
+  ]);
+  const read = await Promise.all(trending.map((a) => assetStats(a, a.quote, 0).catch(() => null)));
+  const assets: Assets = {};
+  const stats: TokenStats[] = [];
+  trending.forEach((a, i) => {
+    const s = read[i];
+    if (!s) return;
+    assets[a.key] = a;
+    stats.push(s);
+  });
+  return { stats: [...stats, ...old.stats], market1h: old.market1h, assets, sellOnly: old.stats.map((s) => s.token) };
+}
+
+/** The figures for ETH and the Stock Tokens the desk used to list, for those it still holds. */
+async function listedStats(tokens: Token[]): Promise<{ stats: TokenStats[]; market1h: number }> {
+  const [quotes, market1h, ...all] = await Promise.all([listedQuotes(), benchmarkChange(), ...tokens.map((t) => series(t).catch(() => null))]);
+  const stats = tokens.flatMap((t, i): TokenStats[] => {
     const s = all[i];
     const quote = quotes[t];
     if (!s || s.candles.length < 30 || !quote) return [];
@@ -124,7 +162,6 @@ export async function fetchBoard(): Promise<Board> {
   return { stats, market1h };
 }
 
-export const fetchStats = async () => (await fetchBoard()).stats;
 
 /** The same figures for a token a funder asked for. Null if it has too little history to read. */
 export async function assetStats(asset: Asset, quote: AssetQuote, market1h: number): Promise<TokenStats | null> {
@@ -140,6 +177,9 @@ export async function assetStats(asset: Asset, quote: AssetQuote, market1h: numb
     session: quote.session,
     name: asset.name,
     pool: asset.kind === "pool" ? { liquidityUsd: quote.liquidityUsd ?? 0, volume24hUsd: quote.volume24hUsd } : undefined,
+    change5m: quote.change5m,
+    buys5m: quote.buys5m,
+    sells5m: quote.sells5m,
   };
 }
 
@@ -160,12 +200,9 @@ export async function fetchPrice(token: AssetKey, assets: Assets = {}): Promise<
 export async function refreshAssets(assets: Assets, held: AssetKey[]): Promise<Assets> {
   const wanted = held.filter((k) => assets[k]);
   if (wanted.length === 0) return assets;
-  const quotes = await Promise.all(wanted.map((k) => assetQuote(assets[k]).catch(() => null)));
+  const quotes = await assetQuotes(wanted.map((k) => assets[k]));
   const out = { ...assets };
-  wanted.forEach((k, i) => {
-    const quote = quotes[i];
-    if (quote) out[k] = { ...assets[k], quote, quotedAt: Date.now() };
-  });
+  for (const k of wanted) if (quotes[k]) out[k] = { ...assets[k], quote: quotes[k], quotedAt: Date.now() };
   return out;
 }
 
@@ -174,8 +211,11 @@ export async function refreshAssets(assets: Assets, held: AssetKey[]): Promise<A
  * Throws if the listed tokens can't be quoted.
  */
 export async function deskPrices(state: { assets: Assets; portfolio: { positions: Array<{ token: AssetKey }> } }): Promise<Prices> {
-  const held = state.portfolio.positions.map((p) => p.token).filter((t) => !isToken(t));
-  const [quotes, assets] = await Promise.all([listedQuotes(), refreshAssets(state.assets, held)]);
+  const all = state.portfolio.positions.map((p) => p.token);
+  const held = all.filter((t) => !isToken(t));
+  // ETH and Stock Tokens are priced only while the desk still holds one.
+  const none: Partial<Record<Token, Quote>> = {};
+  const [quotes, assets] = await Promise.all([all.some(isToken) ? listedQuotes() : none, refreshAssets(state.assets, held)]);
   const prices: Prices = Object.fromEntries(Object.entries(quotes).map(([t, q]) => [t, q.price]));
   for (const k of held) if (assets[k]) prices[k] = assets[k].quote.price;
   return prices;

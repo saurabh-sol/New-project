@@ -1,7 +1,7 @@
 /** Everything an agent is told at the start of a round, as text and as structured data. */
 import { AGENTS } from "@/lib/agents";
 import type { RequestBrief } from "@/lib/assets";
-import { agentPnl, canSell, poolCapital, poolEquity, positionOf, unrealized, type Portfolio } from "@/lib/council";
+import { agentPnl, canSell, poolCapital, poolEquity, positionOf, unitsOf, unrealized, type Portfolio } from "@/lib/council";
 import type { Exchange, Pitch, Proposal, TokenStats } from "@/lib/council-types";
 import { priceDecimals, SESSION_LABEL, type AssetKey, type Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
@@ -31,6 +31,10 @@ export interface RoundCtx {
   mustTrade: Record<AgentId, boolean>;
   /** Tokens colleagues have already picked for their starter positions this round. The desk spreads its books. */
   taken: AssetKey[];
+  /** Tokens the desk holds from before and no longer buys. They can only be sold. */
+  sellOnly: AssetKey[];
+  /** Tokens each agent holds and may sell this round on its own decision. */
+  mine: Record<AgentId, AssetKey[]>;
 }
 
 export const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -72,6 +76,8 @@ export function marketTable(stats: TokenStats[]): string {
     [
       s.token.padEnd(5),
       `price ${px(s.price)}`,
+      s.change5m === undefined ? null : `5m ${signed(s.change5m)}`,
+      s.buys5m === undefined || s.sells5m === undefined ? null : `last 5m: ${s.buys5m} buys, ${s.sells5m} sells`,
       `15m ${signed(s.change15m)}`,
       `1h ${signed(s.change1h)}`,
       `4h ${signed(s.change4h)}`,
@@ -105,7 +111,10 @@ function deskReport(ctx: RoundCtx, agent: AgentId): string {
     lines.push(
       `- ${pos.token}: ${usd(pos.cost)} in at ${px(pos.entryPrice)}, now ${px(now)} (${signed((unrealized(pos, now) / pos.cost) * 100)}), ` +
         `held ${ctx.round - pos.openedRound} rounds, stop ${px(pos.stop)}, target ${px(pos.target)}, led by ${nameOf(pos.leader)}. ` +
-        `Your stake ${usd(pos.stake[agent])}. Can be sold this round: ${
+        (pos.stake[agent] > 0.005
+          ? `You hold ${usd(pos.stake[agent])} of it, worth ${usd(unitsOf(pos, agent) * now)} now. Yours to sell this round: ${ctx.mine[agent].includes(pos.token) ? "yes" : "no"}. `
+          : "You hold none of it. ") +
+        `The council can sell it this round: ${
           canSell(p, pos.token, ctx.round) ? "yes" : ctx.round < (pos.lockedUntil ?? 0) ? `no, bought for a funder and held until round ${pos.lockedUntil}` : "no, too new"
         }.`,
     );
@@ -117,8 +126,9 @@ export function briefing(ctx: RoundCtx, agent: AgentId): string {
   return [
     `ROUND ${ctx.round}`,
     "",
-    "MARKET (live prices in USD. ETH is crypto. The rest are Robinhood Stock Tokens, which follow share prices.)",
+    "MARKET (live prices in USD. These are the tokens trending on Robinhood Chain right now. They are young, thinly traded, and move fast.)",
     marketTable(ctx.stats),
+    ...(ctx.sellOnly.length ? [`Held from before, and no longer bought. They can only be sold: ${ctx.sellOnly.join(", ")}.`] : []),
     ...(ctx.closed.length ? [`Closed now, so they can be neither bought nor sold this round: ${ctx.closed.join(", ")}.`] : []),
     "",
     ...(ctx.request ? ["A FUNDER'S REQUEST THIS ROUND", describeRequest(ctx), ""] : []),
@@ -163,6 +173,9 @@ export function briefingState(ctx: RoundCtx, agent: AgentId) {
       token: s.token,
       poolLiquidityUsd: s.pool?.liquidityUsd ?? null,
       priceUsd: s.price,
+      change5mPct: s.change5m ?? null,
+      buysLast5m: s.buys5m ?? null,
+      sellsLast5m: s.sells5m ?? null,
       change15mPct: +s.change15m.toFixed(2),
       change1hPct: +s.change1h.toFixed(2),
       change4hPct: +s.change4h.toFixed(2),

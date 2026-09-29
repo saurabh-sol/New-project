@@ -31,6 +31,12 @@ export interface AssetQuote {
   volume24hUsd: number;
   /** Set for Stock Tokens. */
   session?: Session;
+  /** For a pool token, when its pool reports them: the change over five minutes and over an hour, in percent. */
+  change5m?: number;
+  change1h?: number;
+  /** For a pool token: purchases and sales in its pool over the last five minutes. */
+  buys5m?: number;
+  sells5m?: number;
 }
 
 /** A token the desk has been asked to trade, with the last price seen for it. */

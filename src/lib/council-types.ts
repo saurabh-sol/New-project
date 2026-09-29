@@ -34,6 +34,10 @@ export interface TokenStats {
   name?: string;
   /** Set for a token priced by its trading pool. */
   pool?: { liquidityUsd: number; volume24hUsd: number };
+  /** For a pool token, when its pool reports them: the change over the last five minutes, and the purchases and sales in that time. */
+  change5m?: number;
+  buys5m?: number;
+  sells5m?: number;
 }
 
 export interface Pitch {
@@ -120,6 +124,8 @@ export interface CouncilSnapshot {
   portfolio: Portfolio;
   /** The contract that holds the agents' USDG and records their trades. Null if none is deployed. */
   desk: DeskInfo | null;
+  /** The tokens the agents chose from in the latest session: the ones trending on Robinhood Chain then. */
+  board: AssetKey[];
   /** Tokens funders asked for, with the last price seen for each. */
   assets: Record<AssetKey, DeskAsset>;
   fills: Fill[];

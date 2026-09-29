@@ -8,7 +8,7 @@ import { experimental_evaluate as evaluate, type Experimental_EvaluationQuestion
 import type { Emotion } from "@/lib/council";
 import type { Proposal } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { backers, clamp, mostStake, openTokens, presents, requestStake, starterStake, starterTokens, weighs, type Brain } from "./brain";
+import { backers, clamp, mostStake, openTokens, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefingState, describeDebate, describePitches, describeProposal, nameOf, px, type RoundCtx } from "./context";
 import { fundingLevel, pick } from "./skills";
@@ -110,7 +110,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       const a = await ask(agent, briefingState(ctx, agent), questions);
       const odds = ctx.stats.map((s) => ({ token: s.token, p: a.probability(`up_${s.token}`) }));
       const cash = ctx.portfolio.cash[agent];
-      const base = { stopPct: 4, targetPct: 8, sellPct: 100, stakeUsd: 0 };
+      const base = { stopPct: 8, targetPct: 16, sellPct: 100, stakeUsd: 0 };
 
       /** The second reading for a token, as a short clause. */
       const also = (token: string) => {
@@ -172,7 +172,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         };
       }
 
-      const weakest = odds.filter((o) => ctx.sellable.includes(o.token)).sort((x, y) => x.p - y.p)[0];
+      const weakest = odds.filter((o) => saleTokens(ctx, agent).includes(o.token)).sort((x, y) => x.p - y.p)[0];
       if (weakest && weakest.p < SELL_BELOW) {
         const t = weakest.token;
         const read = `${pct(weakest.p)} odds ${t} is higher in an hour${also(t)}`;
@@ -278,7 +278,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       const concede = p >= 0.6 && proposal.action === "BUY";
       // Giving way to "your stop is too tight" means moving the stop away, not closer.
       const widen = a.probability("tight") >= 0.5;
-      const stopPct = !concede ? proposal.stopPct : widen ? Math.min(10, proposal.stopPct + 2) : Math.max(2, proposal.stopPct - 1);
+      const stopPct = !concede ? proposal.stopPct : widen ? Math.min(STOP_RANGE[1], proposal.stopPct + 3) : Math.max(STOP_RANGE[0], proposal.stopPct - 1);
       const moved = widen ? "widened" : "tightened";
       return {
         emotion: concede ? "worried" : "confident",

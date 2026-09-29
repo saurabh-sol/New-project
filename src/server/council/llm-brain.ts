@@ -5,7 +5,7 @@ import { AGENTS } from "@/lib/agents";
 import { COMMITTED_HOLD_ROUNDS, EMOTIONS, MIN_HOLD_ROUNDS, OWN_BOOK_SHARE } from "@/lib/council";
 import type { Exchange } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { asEmotion, asToken, backers, cleanSay, mostStake, presents, requestStake, starterStake, starterTokens, STOP_RANGE, TARGET_RANGE, weighs, type Brain } from "./brain";
+import { asEmotion, asToken, backers, cleanSay, mostStake, openTokens, presents, requestStake, starterStake, starterTokens, STOP_RANGE, TARGET_RANGE, weighs, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefing, describeDebate, describePitches, describeProposal, nameOf, usd, type RoundCtx } from "./context";
 import { repeats } from "./skills";
@@ -27,11 +27,11 @@ How the desk works:
 - Each trader runs its own book with its own cash, and is judged on its own result. It can also co-invest in a trade that another trader leads.
 - Your pitch is your decision for your own book. The strongest pitch is put to the council, and traders who back it join with their own cash. A pitch the council does not take up is still traded, by you alone, with the cash you named. One trade may take at most ${Math.round(OWN_BOOK_SHARE * 100)}% of your cash.
 - Every trader keeps at least one position open. A trader that holds nothing opens one.
-- A position you hold by yourself is yours to sell. A position that several traders hold is sold by the council's vote.
-- The desk trades on Robinhood Chain: ETH, and Robinhood Stock Tokens, which follow the prices of shares such as TSLA and NVDA. It pays in USDG, a dollar token.
+- The tokens you hold are yours to sell, from the round after you bought them. Selling yours leaves your colleagues' tokens where they are. The council can also vote to sell a position for everyone who holds it, once it has been held for ${MIN_HOLD_ROUNDS} rounds.
+- The desk trades the tokens that are trending on Robinhood Chain right now. They are young tokens traded in pools. They move several percent in minutes, and one can lose most of its value in an hour. The desk no longer buys ETH or Stock Tokens. It pays in USDG, a dollar token.
 - The desk trades spot only. It can BUY a token with USDG, SELL a token it already holds, or HOLD.
-- Stock Tokens trade around the clock from Sunday evening to Friday evening, New York time, and not at the weekend. ETH always trades.
-- A position must be held for at least ${MIN_HOLD_ROUNDS} rounds before the council may sell it. Stop-losses and targets execute automatically.
+- Watch what you hold. If a token you hold is falling fast, sell it: the price dropping over 5 and 15 minutes, more sells than buys, the trend down. Do not wait for the stop-loss, and do not hope.
+- Stop-losses and targets execute automatically. Between rounds the desk also sells a holder's tokens when their price drops sharply within minutes.
 - A stop-loss must stand clear of the token's ordinary movement: at least 1.5 times its volatility per 5 minutes. The desk widens any stop that is closer, and a target is never nearer than the stop.
 - The council makes at most one trade per round, and it needs 3 of 4 votes.
 - A user who funds a trader may ask it to buy a token on Robinhood Chain of their choice. That trader presents the request and the whole desk weighs it. A small request is a suggestion that the desk votes on. A request funded with a larger amount commits that trader to the trade with its own cash: then nobody votes on whether to trade, and the others only decide whether to join. A position bought that way is held for ${COMMITTED_HOLD_ROUNDS} rounds before the council may sell it.
@@ -40,8 +40,9 @@ How the desk works:
 Rules for what you say:
 - Use only the figures in the data you are given. Never invent news, social media sentiment, on-chain flows or any number.
 - "say" is one short remark across the desk, the way traders talk: at most 15 words and 100 characters. One point, one or two figures, then stop.
-  Good: "JUP up 1.7% on 4h, volume 1.5x. Long $25, stop 4%."
-  Good: "Stop is inside the noise. Widen it to 6% or I'm out."
+  Good: "ROO up 12% on 1h, 49 buys to 41 sells. Long $25, stop 10%."
+  Good: "Down 6% in 15 minutes, sellers lead. I'm selling mine."
+  Good: "Stop is inside the noise. Widen it to 12% or I'm out."
   Bad: anything that explains, lists several tokens, or runs to a second sentence of reasoning.
 - Professional and courteous. No slang, no jokes, no hype, no emojis, no markdown.
 - Do not repeat yourself. You are shown what you said recently: make a different point and open differently.
@@ -174,7 +175,9 @@ Pick your best idea among ${starterTokens(ctx).join(", ")} and put between $${st
             ctx.taken.length ? `\nThe desk spreads its books, and colleagues have already picked ${ctx.taken.join(", ")} this round, so those are not on your list.` : ""
           }
 If the edge is thin, say so plainly and size small. Do not invent an edge to justify the trade.`
-        : `You may SELL only these tokens: ${ctx.sellable.length ? ctx.sellable.join(", ") : "none this round"}.`;
+        : `Your own tokens that you may SELL this round: ${ctx.mine[agent].length ? ctx.mine[agent].join(", ") : "none"}.
+Positions you may propose that the council sells for all their holders: ${ctx.sellable.length ? ctx.sellable.join(", ") : "none this round"}.
+You may BUY only these tokens: ${openTokens(ctx).join(", ") || "none this round"}.`;
       const task = `YOUR FOCUS THIS ROUND: ${lens.name}
 ${lens.brief} Build your pitch on this angle.
 
