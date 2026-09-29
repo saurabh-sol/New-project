@@ -9,7 +9,7 @@ import { createPublicClient, http, parseAbi } from "viem";
 import { robinhood } from "viem/chains";
 import type { Asset, AssetPreview, AssetQuote } from "@/lib/assets";
 import { isToken, type Candle, type Interval } from "@/lib/market";
-import { cached, getJson } from "./http";
+import { cached, cachedOrKept, getJson } from "./http";
 import { findStock, stockCandles, stockQuotes, stockTokens } from "./stocks";
 
 const DEXSCREENER = "https://api.dexscreener.com/latest/dex";
@@ -282,6 +282,8 @@ function evenly(candles: Candle[], step: number): Candle[] {
   return out;
 }
 
+const KEEP_CANDLES_MS = 15 * 60_000;
+
 /** How many candles a request may ask for. Few sizes, so that requests for the same pool share an answer. */
 const SIZES = [60, 300, 1000];
 
@@ -299,7 +301,8 @@ async function poolCandles(pool: string, token: string, span: Interval, limit: n
   const { unit, every, seconds, freshMs } = SPAN[span];
   const wanted = Math.min(Math.max(limit, 1), 1000);
   const count = SIZES.find((n) => n >= wanted) ?? 1000;
-  const all = await cached(`candles:${pool}:${token.toLowerCase()}:${span}:${count}`, freshMs, async () => {
+  // Candles that can't be had again for the moment are used as they were, for a quarter of an hour at most.
+  const all = await cachedOrKept(`candles:${pool}:${token.toLowerCase()}:${span}:${count}`, freshMs, KEEP_CANDLES_MS, async () => {
     const url = `${GECKOTERMINAL}/pools/${pool}/ohlcv/${unit}?aggregate=${every}&limit=${count}&currency=usd&token=${token.toLowerCase()}`;
     const body = await getJson<{ data?: { attributes?: { ohlcv_list?: number[][] } } }>(url, patient);
     const rows = (body.data?.attributes?.ohlcv_list ?? []).map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));

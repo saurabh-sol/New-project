@@ -62,7 +62,8 @@ interface ChartApi {
 const toChartTime = (unixSeconds: number) => (unixSeconds - new Date().getTimezoneOffset() * 60) as UTCTimestamp;
 
 /** How often the chart of a token that has no live stream asks for new candles. */
-const REFRESH_MS = 30_000;
+// The live price moves the latest candle in between, so the candles themselves need not be asked for often.
+const REFRESH_MS = 60_000;
 
 const candleBar = (c: Candle) => ({ time: toChartTime(c.time), open: c.open, high: c.high, low: c.low, close: c.close });
 const volumeBar = (c: Candle) => ({ time: toChartTime(c.time), value: c.volume, color: c.close >= c.open ? `${UP}55` : `${DOWN}55` });

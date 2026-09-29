@@ -4,7 +4,7 @@ import { fetchCandles, geckoPrices, isCrypto, isToken, type AssetKey, type Candl
 import { assetCandles, assetQuote, assetQuotes } from "../market/assets";
 import { listedQuotes } from "../market/quotes";
 import { stockCandles } from "../market/stocks";
-import { trendingBoard } from "../market/trending";
+import { boardSource, trendingBoard } from "../market/trending";
 
 /** The stock market as a whole, which a Stock Token's move is measured against. */
 const BENCHMARK = "QQQ";
@@ -131,7 +131,8 @@ export async function fetchBoard(desk?: Desk): Promise<Board> {
     trendingBoard(known).catch(async (e) => {
       // The ranking can't be read. The last board is still a list of real tokens with live prices.
       console.error("[board] could not read the trending tokens:", e instanceof Error ? e.message : e);
-      const last = (desk?.board ?? []).flatMap((k) => (known[k] ? [known[k]] : []));
+      // A board of Pons tokens stays one: what was on an earlier board and did not come from Pons is left off.
+      const last = (desk?.board ?? []).flatMap((k) => (known[k] && (boardSource() !== "pons" || known[k].launchpad === "pons") ? [known[k]] : []));
       const quotes = await assetQuotes(last).catch(() => ({}) as Record<string, AssetQuote>);
       return last.flatMap((a) => (quotes[a.key] ? [{ ...a, quote: quotes[a.key], quotedAt: Date.now() }] : []));
     }),

@@ -81,18 +81,22 @@ export function trendingBoard(known: Record<string, DeskAsset> = {}): Promise<De
     const limits = boardLimits();
     const pons = source === "pons";
     const onPons = (p: Pool) => PONS_DEXES.includes(p.relationships.dex?.data?.id ?? "");
-    const list = (path: string, patient = false) => getJson<Trending>(`${GECKOTERMINAL}/${path}${path.includes("?") ? "&" : "?"}include=base_token,dex&page=1`, patient);
+    // The data service allows few requests a minute, and the agents' candles need most of them. Pons's own lists change slowly, and are kept for five minutes.
+    const list = (path: string, patient = false) =>
+      cached(`board:list:${path}`, path.startsWith("dexes/") ? 300_000 : 55_000, () => getJson<Trending>(`${GECKOTERMINAL}/${path}${path.includes("?") ? "&" : "?"}include=base_token,dex&page=1`, patient));
     // What is trending on the whole chain comes first. Pons's own busiest pools follow: by trades made, then by money traded.
     const [trending, busiest, largest, older, stocks] = await Promise.all([
-      list("trending_pools?duration=1h", true),
+      // With Pons's own lists to go by, the board can be made without the chain's ranking.
+      pons ? list("trending_pools?duration=1h", true).catch(() => null) : list("trending_pools?duration=1h", true),
       pons ? list(`dexes/${PONS_DEXES[0]}/pools?sort=h24_tx_count_desc`, true).catch(() => null) : null,
       pons ? list(`dexes/${PONS_DEXES[0]}/pools?sort=h24_volume_usd_desc`).catch(() => null) : null,
       pons ? list(`dexes/${PONS_DEXES[1]}/pools?sort=h24_tx_count_desc`).catch(() => null) : null,
       stockTokens().catch(() => new Map<string, { address: string }>()),
     ]);
     const lists = [trending, busiest, older, largest].filter((l): l is Trending => !!l);
+    if (lists.length === 0) throw new Error("The lists of trending pools can't be reached");
     const ranking: Trending = {
-      data: lists.flatMap((l, i) => (l.data ?? []).filter((p) => !pons || (i === 0 ? onPons(p) : true))),
+      data: lists.flatMap((l) => (l.data ?? []).filter((p) => !pons || onPons(p))),
       included: lists.flatMap((l) => l.included ?? []),
     };
     const tokens = new Map((ranking.included ?? []).map((t) => [t.id, t.attributes]));
