@@ -4,8 +4,8 @@
  */
 import { AGENT_ORDER } from "@/lib/agents";
 import type { DeskAsset } from "@/lib/assets";
-import { buy, canSell, COMMITTED_HOLD_ROUNDS, fitStakes, positionOf, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
-import type { CouncilMode, Exchange, Line, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
+import { buy, canSell, COMMITTED_HOLD_ROUNDS, fitStakes, holdsAlone, invested, MIN_ORDER_USD, OWN_BOOK_SHARE, positionOf, sell, userFunding, zeroStakes, type Fill, type Portfolio } from "@/lib/council";
+import type { CouncilMode, Exchange, Line, OwnTrade, Pitch, Pledge, Proposal, Source, Stage, TokenStats, Vote } from "@/lib/council-types";
 import type { AssetKey, Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { backers, clamp, enforcePitch, fitTerms, type Brain } from "./brain";
@@ -15,7 +15,7 @@ import { jevBrain } from "./jev-brain";
 import { llmBrain } from "./llm-brain";
 import { linesAbout, recentLines, saveRound } from "./memory";
 import { scriptedBrain } from "./scripted-brain";
-import { fundingLevel, pickLens, type Effort, type Skill } from "./skills";
+import { fundingLevel, pick, pickLens, type Effort, type Skill } from "./skills";
 import { settleOnChain } from "../chains/desk";
 import { liveRequests, type ActiveRequest, type RequestSource } from "../requests/service";
 import { assetQuote } from "../market/assets";
@@ -198,6 +198,9 @@ export async function runRound(
       lens,
       effort,
       request,
+      // Every agent keeps a position open. One that holds nothing opens one this round, unless a funder's request has the floor.
+      taken: [],
+      mustTrade: perAgent((a) => !request && !invested(before, a) && Math.floor(before.cash[a] * OWN_BOOK_SHARE) >= MIN_ORDER_USD && stats.some((s) => !closed.includes(s.token))),
     };
     await updateState((s) => ({ ...s, lenses: perAgent((a) => [...(s.lenses[a] ?? []), lens[a].id].slice(-LENS_MEMORY)) }));
     run.push({ stage: "open", round: run.id, mode, stats, portfolio: before, startedAt, request });
@@ -206,14 +209,27 @@ export async function runRound(
     const sellPct = { quant: 100, degen: 100, guardian: 100, oracle: 100 } as Record<AgentId, number>;
 
     // 1. Pitches
-    const pitches: Pitch[] = await Promise.all(
-      AGENT_ORDER.map(async (agent) => {
-        const raw = await think(agent, (b) => b.pitch(agent, ctx));
-        const p = enforcePitch(agent, ctx, raw);
-        sellPct[agent] = p.sellPct;
-        return heard({ agent, action: p.action, token: p.token, stakeUsd: p.stakeUsd, stopPct: p.stopPct, targetPct: p.targetPct, conviction: p.conviction, emotion: p.emotion, say: p.say, source: raw.source });
-      }),
-    );
+    const pitch = async (agent: AgentId): Promise<Pitch> => {
+      const raw = await think(agent, (b) => b.pitch(agent, ctx));
+      const p = enforcePitch(agent, ctx, raw);
+      sellPct[agent] = p.sellPct;
+      return heard({ agent, action: p.action, token: p.token, stakeUsd: p.stakeUsd, stopPct: p.stopPct, targetPct: p.targetPct, conviction: p.conviction, emotion: p.emotion, say: p.say, source: raw.source });
+    };
+    let pitches: Pitch[];
+    if (AGENT_ORDER.some((a) => ctx.mustTrade[a])) {
+      // Agents opening a first position choose one after another, each knowing what the others took,
+      // so the desk's books are spread. Who chooses first moves round the desk.
+      const order = AGENT_ORDER.map((_, i) => AGENT_ORDER[(i + run.id) % AGENT_ORDER.length]);
+      const made: Pitch[] = [];
+      for (const agent of order) {
+        const p = await pitch(agent);
+        made.push(p);
+        if (ctx.mustTrade[agent] && p.action === "BUY" && !ctx.taken.includes(p.token)) ctx.taken.push(p.token);
+      }
+      pitches = AGENT_ORDER.map((a) => made.find((p) => p.agent === a)!);
+    } else {
+      pitches = await Promise.all(AGENT_ORDER.map(pitch));
+    }
     // A funder's request takes the floor. Otherwise the strongest pitch does.
     const asking = request && pitches.find((p) => p.agent === request.agent && p.action === "BUY" && p.token === request.asset.key);
     if (asked && !asking) {
@@ -225,6 +241,68 @@ export async function runRound(
       : chooseProposal(pitches, sellPct);
     const bound = !!asking && request?.mode === "commit";
     run.push({ stage: "pitches", pitches, proposal });
+
+    /**
+     * An agent's trade for its own book: an idea the council did not take up, traded by the
+     * agent who had it, alone and with its own cash. A sale is its own to make only if it
+     * holds the position by itself.
+     */
+    async function tradeOwn(p: Pitch, terms: { stopPct: number; targetPct: number }): Promise<OwnTrade | null> {
+      const price = await market.price(p.token, assets).catch(() => prices[p.token]);
+      if (!price) return null;
+      const ts = Date.now();
+      const id = `own-${run.id}-${p.agent}-${p.token}-${ts}`;
+      const fitted = fitTerms(terms.stopPct, terms.targetPct, stats.find((s) => s.token === p.token)?.atrPct ?? 0);
+      let made: Fill | null = null;
+      let adding = false;
+      const saved = await updateState((s) => {
+        made = null;
+        const book = s.portfolio;
+        const held = positionOf(book, p.token);
+        if (p.action === "BUY") {
+          const wanted = zeroStakes();
+          wanted[p.agent] = Math.min(p.stakeUsd, Math.floor(book.cash[p.agent] * OWN_BOOK_SHARE));
+          const stakes = fitStakes(book, p.token, wanted, prices);
+          if (stakes[p.agent] <= 0) return s;
+          adding = !!held;
+          const done = buy(book, { token: p.token, price, stakes, ...fitted, round: run.id, leader: p.agent, ts, id, reason: "OWN", keepTerms: true });
+          made = done.fill;
+          return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill], lastRiskCheck: s.portfolio.positions.length ? s.lastRiskCheck : ts };
+        }
+        if (!held || !holdsAlone(held, p.agent) || !canSell(book, p.token, run.id)) return s;
+        const done = sell(book, { token: p.token, price, fraction: sellPct[p.agent] / 100, reason: "OWN", round: run.id, leader: p.agent, ts, id });
+        if (!done) return s;
+        made = done.fill;
+        return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill] };
+      });
+      const f = made as Fill | null;
+      if (!f) return null;
+      const who = nameOf(p.agent);
+      const note =
+        f.side === "BUY"
+          ? adding
+            ? `${who} added ${usd(f.usd)} of ${f.token} at ${px(price)} for its own book.`
+            : `${who} bought ${usd(f.usd)} of ${f.token} at ${px(price)} for its own book. Stop ${fitted.stopPct}% below, target ${fitted.targetPct}% above.`
+          : `${who} sold its ${f.token} at ${px(price)}. Realized ${signed(f.realized ?? 0, "")} USDG.`;
+      return { agent: p.agent, fill: f, portfolio: saved.portfolio, note };
+    }
+
+    /** Trades for their own books by every agent that pitched one and is not in `except`. */
+    async function ownBooks(except: AgentId[], leaderTerms?: { agent: AgentId; stopPct: number; targetPct: number }): Promise<OwnTrade[]> {
+      const made: OwnTrade[] = [];
+      if (request) return made;
+      for (const p of pitches) {
+        if (p.action === "HOLD" || except.includes(p.agent)) continue;
+        const terms = leaderTerms?.agent === p.agent ? leaderTerms : p;
+        const trade = await tradeOwn(p, terms).catch((e) => (console.error(`[council] ${p.agent}'s own trade failed:`, e instanceof Error ? e.message : e), null));
+        if (trade) made.push(trade);
+      }
+      if (made.length) {
+        const line = `Round ${run.id}, own books: ${made.map((t) => `${nameOf(t.agent)} ${t.fill.side === "BUY" ? "bought" : "sold"} ${t.fill.token} (${usd(t.fill.usd)})`).join("; ")}.`;
+        await updateState((s) => ({ ...s, recent: [...s.recent, line] }));
+      }
+      return made;
+    }
 
     if (!proposal) {
       const note = "The council holds. No agent proposed a trade this round.";
@@ -261,6 +339,16 @@ export async function runRound(
     const buying = final.action === "BUY";
     const pledges: Pledge[] = await Promise.all(
       AGENT_ORDER.filter((a) => a !== leader).map(async (agent) => {
+        // An agent that pitched the same trade has already decided. It joins with what it named.
+        const mine = pitches.find((x) => x.agent === agent)!;
+        if (!asking && mine.action === final.action && mine.token === final.token) {
+          const stake = buying ? Math.floor(clamp(mine.stakeUsd, 0, before.cash[agent])) : 0;
+          const say = buying
+            ? pick([`My pick too. In for $${stake}.`, `Same trade I pitched. $${stake} from me.`, `I had ${final.token} as well. Joining with $${stake}.`], ctx, agent)
+            : pick([`I pitched the same sale. Agreed.`, `My call too. Sell ${final.token}.`], ctx, agent);
+          said[agent].push(say);
+          return { agent, to: leader, emotion: mine.emotion, say, source: mine.source, support: !buying || stake >= 1, stakeUsd: stake, reason: "pitched the same trade" };
+        }
         const p = await think(agent, (b) => b.pledge(agent, ctx, final, pitches, exchanges));
         const stakeUsd = p.support && buying ? Math.floor(clamp(p.stakeUsd, 0, before.cash[agent])) : 0;
         const support = p.support && (!buying || stakeUsd >= 1);
@@ -287,7 +375,11 @@ export async function runRound(
       return { agent, approve: p.support, reason: p.reason };
     });
 
-    const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd, committed: bound }));
+    // Without the council's backing the leader still trades its idea, alone: a purchase with its own cash, a sale if the position is its own.
+    const leaderHeld = positionOf(before, final.token);
+    const alone = !approved && !asking && (buying ? (pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0) >= MIN_ORDER_USD : !!leaderHeld && holdsAlone(leaderHeld, leader));
+    const ownUsd = buying ? Math.min(pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0, Math.floor(before.cash[leader] * OWN_BOOK_SHARE)) : 0;
+    const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd: alone ? ownUsd : totalUsd, committed: bound, alone }));
     const closing: Line = { agent: leader, emotion: c.emotion, say: c.say, source: c.source };
     run.push({ stage: "decision", pledges, closing, votes, approved, committed: bound });
 
@@ -332,7 +424,11 @@ export async function runRound(
       await requests.finish(asked.id, fill ? "executed" : passed || bound ? "failed" : "rejected", note);
       settled = true;
     }
-    run.push({ stage: "outcome", fill, portfolio: after, note });
+    // Whoever took part in the council's trade has traded. Everyone else trades the idea it pitched.
+    const inCouncilTrade = fill ? AGENT_ORDER.filter((a) => a === leader || (buying && stakes[a] > 0)) : [];
+    const own = await ownBooks(inCouncilTrade, { agent: leader, stopPct: final.stopPct, targetPct: final.targetPct });
+    if (!approved && own.length) note = `The council did not back ${nameOf(leader)}'s proposal, ${yes} to ${4 - yes}, so there is no desk trade. The agents trade their own books.`;
+    run.push({ stage: "outcome", fill, portfolio: after, note, own });
   } catch (e) {
     console.error("[council] round failed:", e);
     run.failed = true;

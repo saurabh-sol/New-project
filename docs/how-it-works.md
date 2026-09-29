@@ -96,6 +96,21 @@ The engine is `src/server/council/round.ts`. It sends the browser one **stage** 
 
 Because a vote is derived from the pledge, an agent can never say yes and vote no.
 
+### Every agent trades its own book
+
+Each agent has $100 of the treasury's capital and is judged on its own result. The council decides which trades the desk makes together; it does not decide whether an agent may trade.
+
+| Rule | What it means |
+| --- | --- |
+| A pitch is a decision | An agent that pitched the same trade as the proposal joins it. Every other agent trades the idea it pitched by itself |
+| Without backing, alone | If the vote fails there is no desk trade, and the leader takes the trade for its own book. A funder's suggestion is the exception: it is bought only if the council backs it |
+| Nobody sits in cash | An agent that holds nothing must open a position that session, of at least $20 |
+| The books are spread | Agents opening a first position choose one after another. Each is told what the others took, and picks something else |
+| Selling | A position one agent holds alone is its own to sell. A position several hold is sold by vote |
+| Size | One trade takes at most 60% of an agent's cash |
+
+An agent told to open a position is also told not to invent a reason for it. When the edge is thin, it says so and sizes small.
+
 If a model call fails, that one agent's line is written by the scripted stand-in and the session carries on.
 
 ## 5. Rules the desk enforces
@@ -114,7 +129,8 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 | Target range | 3% to 20% |
 | Stop must clear the token's usual movement | at least 1.5 × its 5-minute movement |
 | Target | never nearer than the stop |
-| Trades per session | at most one |
+| Trades per session | at most one by the council, and one by each agent for its own book |
+| An agent's own trade | at most 60% of its cash |
 | Stock Tokens while their market is closed | neither bought nor sold |
 
 The accounting is in `src/lib/council.ts`. It is pure arithmetic shared by the server and the browser, so both always agree on what a position is worth.
@@ -239,6 +255,7 @@ The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Et
 
 The browser plays each session like a short scene (`src/lib/director.ts`):
 
+- The conversation is on the left, the floor with the agents on the right, and the chart below them. On a phone the floor comes first.
 - Agents are characters with desks. They walk to the leader's desk to argue, carry coins over when they pledge cash, and gather at the table to vote.
 - Each line comes with an emotion, which the character shows.
 - The chart follows whichever token the council is debating, and marks the desk's trades with arrows.

@@ -8,7 +8,7 @@ import { experimental_evaluate as evaluate, type Experimental_EvaluationQuestion
 import type { Emotion } from "@/lib/council";
 import type { Proposal } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { backers, clamp, presents, requestStake, weighs, type Brain } from "./brain";
+import { backers, clamp, mostStake, openTokens, presents, requestStake, starterStake, starterTokens, weighs, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefingState, describeDebate, describePitches, describeProposal, nameOf, px, type RoundCtx } from "./context";
 import { fundingLevel, pick } from "./skills";
@@ -186,16 +186,37 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         };
       }
 
+      // The best odds among tokens that can be bought. An agent that must open a position takes the best there is.
+      const buyable = odds.filter((o) => starterTokens(ctx).includes(o.token)).sort((x, y) => y.p - x.p);
+      if (ctx.mustTrade[agent] && buyable.length) {
+        const top = buyable[0];
+        const c = conviction(top.p);
+        const stake = Math.round(clamp(cash * 0.1 * c, starterStake(ctx, agent), mostStake(ctx, agent)));
+        const read = `${pct(top.p)} odds ${top.token} is higher in an hour${also(top.token)}`;
+        const thin = top.p < BUY_ABOVE;
+        return {
+          ...base,
+          action: "BUY",
+          token: top.token,
+          stakeUsd: thin ? starterStake(ctx, agent) : stake,
+          conviction: thin ? 1 : c,
+          emotion: thin ? "neutral" : "confident",
+          say: thin
+            ? pick([`${read}. Thin, but the best I have. Starter of $${starterStake(ctx, agent)}.`, `I hold nothing. ${top.token} leads at ${pct(top.p)}. Small starter.`, `No strong edge. ${top.token} is the best of them: ${pct(top.p)}. Starting small.`], ctx, agent)
+            : pick([`${read}. Best edge on the board. Buying $${stake}.`, `${top.token} leads my odds: ${read}. Long $${stake}.`], ctx, agent),
+        };
+      }
+
       const best = [...odds].sort((x, y) => y.p - x.p)[0];
       const t = best.token;
       const read = `${pct(best.p)} odds ${t} is higher in an hour${also(t)}`;
-      if (best.p >= BUY_ABOVE && cash >= 10) {
+      if (best.p >= BUY_ABOVE && cash >= 10 && openTokens(ctx).includes(t)) {
         const c = conviction(best.p);
         return {
           ...base,
           action: "BUY",
           token: t,
-          stakeUsd: Math.floor(cash * 0.1 * c),
+          stakeUsd: Math.min(Math.floor(cash * 0.1 * c), mostStake(ctx, agent)),
           conviction: c,
           emotion: c >= 4 ? "confident" : "neutral",
           say: pick([`${read}. Best edge on the board. Buying.`, `${t} leads my odds: ${read}. Long.`, `${read}. That clears my bar. Buy.`], ctx, agent),
@@ -322,6 +343,18 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       const size = `$${input.totalUsd.toFixed(0)}`;
       const t = proposal.token;
       const tally = `${input.yes} to ${4 - input.yes}`;
+      if (input.alone) {
+        return {
+          emotion: "neutral",
+          say: pick(
+            proposal.action === "BUY"
+              ? [`No backing, ${tally}. I take ${t} alone: ${size}.`, `${tally} against. It goes on my own book, ${size} of ${t}.`, `The desk passes. My book takes ${size} of ${t}.`]
+              : [`No backing, ${tally}. It is my position. I sell ${t}.`, `${tally} against. ${t} is mine alone, and I close it.`],
+            ctx,
+            agent,
+          ),
+        };
+      }
       if (input.committed && input.approved) {
         const with_ = backers(input.pledges, short);
         return { emotion: "neutral", say: pick([`Buying ${size} ${t} for my funder. Joined by ${with_}.`, `${size} of ${t} goes in, as asked. With me: ${with_}.`, `Order is ${size} ${t}. Joined by ${with_}.`], ctx, agent) };

@@ -146,7 +146,7 @@ export const useArena = create<ArenaStore>((set) => ({
             focus: null,
             // While a session plays, show the desk as it stood when that session began.
             portfolio: e.portfolio,
-            fills: s.fills.filter((f) => !(f.round === e.round && f.reason === "COUNCIL")),
+            fills: s.fills.filter((f) => !(f.round === e.round && (f.reason === "COUNCIL" || f.reason === "OWN"))),
             // A session watched in part and then started over must not leave its first lines behind.
             messages: s.messages.filter((m) => m.round !== e.round),
             agents: patchAll({ vote: null, voteReason: "", bubble: null }),

@@ -24,6 +24,10 @@ export const MIN_HOLD_ROUNDS = 2;
  * council may sell it. Its stop-loss and target still close it at any time.
  */
 export const COMMITTED_HOLD_ROUNDS = 12;
+/** The most of its cash an agent may put into one trade for its own book. */
+export const OWN_BOOK_SHARE = 0.6;
+/** What an agent with no position puts on at least, when the desk tells it to open one. */
+export const STARTER_USD = 20;
 
 export type Stakes = Record<AgentId, number>;
 
@@ -53,7 +57,8 @@ export interface Portfolio {
   positions: Position[];
 }
 
-export type FillReason = "COUNCIL" | "STOP" | "TARGET";
+/** OWN: an agent's trade for its own book, made without a vote. */
+export type FillReason = "COUNCIL" | "OWN" | "STOP" | "TARGET";
 
 export interface Fill {
   id: string;
@@ -128,6 +133,18 @@ export const poolCapital = (p: Portfolio) => sum(p.capital);
 export const poolEquity = (p: Portfolio, prices: Prices) => AGENT_ORDER.reduce((t, a) => t + agentEquity(p, a, prices), 0);
 export const poolCash = (p: Portfolio) => sum(p.cash);
 
+/** Agents with money in a position. */
+export const holders = (pos: Position): AgentId[] => AGENT_ORDER.filter((a) => pos.stake[a] > 0.005);
+
+/** Whether the agent holds this position by itself, and so may sell it on its own decision. */
+export const holdsAlone = (pos: Position, agent: AgentId) => {
+  const h = holders(pos);
+  return h.length === 1 && h[0] === agent;
+};
+
+/** Whether the agent has money in any open position. */
+export const invested = (p: Portfolio, agent: AgentId) => p.positions.some((pos) => pos.stake[agent] > 0.005);
+
 /** Whether the council is allowed to sell this token in this round. */
 export function canSell(p: Portfolio, token: string, round: number): boolean {
   const pos = positionOf(p, token);
@@ -161,6 +178,10 @@ interface BuyOrder {
   id: string;
   /** Bought on a commitment to a funder, so the council may not sell it for a while. */
   committed?: boolean;
+  /** Why the purchase was made. The council's, unless said otherwise. */
+  reason?: FillReason;
+  /** Adding to a position leaves its stop and target where its holders set them. */
+  keepTerms?: boolean;
 }
 
 /** Opens a position, or adds to the one already held in that token. */
@@ -178,8 +199,8 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
     cost,
     entryPrice,
     stake: mapStakes((a) => (held?.stake[a] ?? 0) + o.stakes[a]),
-    stop: entryPrice * (1 - o.stopPct / 100),
-    target: entryPrice * (1 + o.targetPct / 100),
+    stop: held && o.keepTerms ? held.stop : entryPrice * (1 - o.stopPct / 100),
+    target: held && o.keepTerms ? held.target : entryPrice * (1 + o.targetPct / 100),
     openedRound: held?.openedRound ?? o.round,
     openedAt: held?.openedAt ?? o.ts,
     leader: held?.leader ?? o.leader,
@@ -201,7 +222,7 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
       qty,
       price: o.price,
       usd,
-      reason: "COUNCIL",
+      reason: o.reason ?? "COUNCIL",
       leader: o.leader,
       realized: null,
       stake: o.stakes,

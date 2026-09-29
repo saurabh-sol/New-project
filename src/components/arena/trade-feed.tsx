@@ -7,7 +7,7 @@ import type { Fill } from "@/lib/council";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 
-const TRIGGER: Record<Fill["reason"], string> = { COUNCIL: "Council vote", STOP: "Stop-loss", TARGET: "Profit target" };
+const TRIGGER: Record<Fill["reason"], string> = { COUNCIL: "Council vote", OWN: "Own book", STOP: "Stop-loss", TARGET: "Profit target" };
 
 /**
  * Every trade the desk has made. With a desk contract, each is recorded on Robinhood Chain

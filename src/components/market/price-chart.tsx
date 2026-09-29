@@ -181,7 +181,7 @@ export function PriceChart() {
         position: f.side === "BUY" ? ("belowBar" as const) : ("aboveBar" as const),
         shape: f.side === "BUY" ? ("arrowUp" as const) : ("arrowDown" as const),
         color: f.side === "BUY" ? UP : DOWN,
-        text: `${f.reason === "COUNCIL" ? f.side : f.reason} $${f.usd.toFixed(0)}`,
+        text: `${f.reason === "STOP" || f.reason === "TARGET" ? f.reason : f.side} $${f.usd.toFixed(0)}`,
       }))
       .sort((a, b) => (a.time as number) - (b.time as number));
     api.markers.setMarkers(loaded === `${token}:${interval}` ? marks : []);

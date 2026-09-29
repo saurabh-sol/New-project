@@ -79,6 +79,15 @@ export interface Pledge extends Line {
   reason: string;
 }
 
+/** A trade an agent made for its own book, without a vote. */
+export interface OwnTrade {
+  agent: AgentId;
+  fill: Fill;
+  /** The desk's books after the trade. */
+  portfolio: Portfolio;
+  note: string;
+}
+
 export interface Vote {
   agent: AgentId;
   approve: boolean;
@@ -98,7 +107,8 @@ export type Stage =
   | { stage: "debate"; exchanges: Exchange[] }
   /** `committed`: the leader was bound by a funder's request to trade whatever the vote. */
   | { stage: "decision"; pledges: Pledge[]; closing: Line; votes: Vote[]; approved: boolean; committed?: boolean }
-  | { stage: "outcome"; fill: Fill | null; portfolio: Portfolio; note: string }
+  /** `own`: trades the agents then made for their own books, in the order they were made. */
+  | { stage: "outcome"; fill: Fill | null; portfolio: Portfolio; note: string; own?: OwnTrade[] }
   | { stage: "error"; message: string };
 
 export interface CouncilSnapshot {

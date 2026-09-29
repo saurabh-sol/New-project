@@ -5,7 +5,7 @@
 import { AGENT_ORDER, AGENTS } from "./agents";
 import type { DeskAsset, RequestBrief } from "./assets";
 import { agentPnl, type Emotion, type Fill } from "./council";
-import type { CouncilSnapshot, Line, Proposal, RoundResponse, Stage } from "./council-types";
+import type { CouncilSnapshot, Line, OwnTrade, Proposal, RoundResponse, Stage } from "./council-types";
 import { walkSeconds } from "./layout";
 import type { AgentId, AgentState, ArenaEvent, ChatMessage, MessageKind, Spot } from "./types";
 import { fmtPrice, fmtSigned } from "./utils";
@@ -114,7 +114,10 @@ function transcriptOf(stages: Stage[]): { round: number; messages: ChatMessage[]
       s.votes.forEach((v) => add(v.agent, "vote", `${voteWord(v.approve, !!s.committed)}: ${v.reason}`));
       spoken(s.closing, "closing");
     }
-    if (s.stage === "outcome") add(leader, "system", s.note);
+    if (s.stage === "outcome") {
+      add(leader, "system", s.note);
+      for (const t of s.own ?? []) add(t.agent, "system", t.note);
+    }
   }
   return { round, messages };
 }
@@ -300,7 +303,7 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
         for (const fill of snapshot.fills) {
           if (knownFills.has(fill.id)) continue;
           knownFills.add(fill.id);
-          if (fill.reason !== "COUNCIL") await riskExit(fill, snapshot);
+          if (fill.reason === "STOP" || fill.reason === "TARGET") await riskExit(fill, snapshot);
         }
         moodFromPnl(snapshot);
       }
@@ -367,6 +370,22 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       setState(p.agent, "thinking");
       await sleep(600);
       await say(p, "pitch");
+    }
+
+    /** Each agent that traded for its own book places its order from its own desk. */
+    async function ownBooks(trades: OwnTrade[]) {
+      for (const t of trades) {
+        knownFills.add(t.fill.id);
+        if (at[t.agent].kind !== "home") await walkAndWait(t.agent, HOME);
+        emit({ type: "focus", token: t.fill.token });
+        setState(t.agent, "executing");
+        await sleep(1400);
+        emit({ type: "fill", fill: t.fill, portfolio: t.portfolio });
+        system(t.note, t.agent);
+        feel(t.agent, t.fill.side === "BUY" ? "confident" : (t.fill.realized ?? 0) >= 0 ? "happy" : "sad");
+        await sleep(1800);
+        setState(t.agent, "idle");
+      }
     }
 
     const proposal = pitched.proposal;
@@ -485,6 +504,11 @@ export function startShow(apply: (e: ArenaEvent) => void): () => void {
       await sleep(2200);
     }
     await walkAll(AGENT_ORDER.filter((a) => at[a].kind !== "home"), HOME);
+    if (outcome.own?.length) {
+      emit({ type: "phase", phase: "execute" });
+      await ownBooks(outcome.own);
+      emit({ type: "phase", phase: "settle" });
+    }
     return open.round;
   }
 

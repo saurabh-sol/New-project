@@ -1,4 +1,4 @@
-import { EMOTIONS, MIN_ORDER_USD, type Emotion } from "@/lib/council";
+import { EMOTIONS, MIN_ORDER_USD, OWN_BOOK_SHARE, STARTER_USD, type Emotion } from "@/lib/council";
 import type { Exchange, Line, Pitch, Pledge, Proposal } from "@/lib/council-types";
 import type { AssetKey } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
@@ -18,6 +18,8 @@ export interface ClosingInput {
   totalUsd: number;
   /** The leader is bound to the trade by a funder's request, so nobody voted on whether to trade: the others only joined or stayed out. */
   committed: boolean;
+  /** The council did not back the proposal, so the leader trades it alone, for its own book. */
+  alone: boolean;
 }
 
 /** Who put cash in beside the leader, as "The Quant ($10)", or "nobody". */
@@ -77,6 +79,22 @@ export const asToken = (v: unknown, ctx: RoundCtx): AssetKey => {
   return ctx.stats.find((s) => s.token.toUpperCase() === t)?.token ?? ctx.stats[0].token;
 };
 
+/** The most an agent may put behind its own pitch this round. */
+export const mostStake = (ctx: RoundCtx, agent: AgentId) => Math.floor(ctx.portfolio.cash[agent] * OWN_BOOK_SHARE);
+
+/** The smallest position an agent with none may open. Less, if it has less. */
+export const starterStake = (ctx: RoundCtx, agent: AgentId) => Math.min(STARTER_USD, mostStake(ctx, agent));
+
+/** Tokens that can be bought this round. */
+export const openTokens = (ctx: RoundCtx) => ctx.stats.map((s) => s.token).filter((t) => !ctx.closed.includes(t));
+
+/** Tokens for a starter position: those no colleague has picked this round, or any open one if all are picked. */
+export function starterTokens(ctx: RoundCtx): AssetKey[] {
+  const open = openTokens(ctx);
+  const free = open.filter((t) => !ctx.taken.includes(t));
+  return free.length ? free : open;
+}
+
 /** Whether this agent is the one presenting a funder's request this round. */
 export const presents = (agent: AgentId, ctx: RoundCtx) => ctx.request?.agent === agent;
 
@@ -118,8 +136,19 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
   }
   if (p.action !== "HOLD" && ctx.closed.includes(p.token)) p.action = "HOLD";
   if (p.action === "SELL" && !ctx.sellable.includes(p.token)) p.action = "HOLD";
+  // An agent with no position opens one. If it named a token that can be bought, that is the one.
+  if (ctx.mustTrade[agent] && p.action !== "BUY") {
+    const open = starterTokens(ctx);
+    if (open.length && starterStake(ctx, agent) >= MIN_ORDER_USD) {
+      p.action = "BUY";
+      p.token = open.includes(p.token) ? p.token : open[0];
+      p.stakeUsd = starterStake(ctx, agent);
+      p.say = cleanSay(`Desk rule: I hold nothing, so I open a starter. $${p.stakeUsd} of ${p.token}.`);
+    }
+  }
   if (p.action === "BUY") {
-    p.stakeUsd = Math.floor(clamp(p.stakeUsd, 0, cash));
+    const most = weighs(agent, ctx) ? cash : mostStake(ctx, agent);
+    p.stakeUsd = Math.floor(clamp(p.stakeUsd, ctx.mustTrade[agent] ? starterStake(ctx, agent) : 0, most));
     if (p.stakeUsd < 5) p.action = "HOLD";
   }
   if (p.action !== "BUY") p.stakeUsd = 0;

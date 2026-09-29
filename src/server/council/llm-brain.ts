@@ -2,10 +2,10 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS } from "@/lib/agents";
-import { COMMITTED_HOLD_ROUNDS, EMOTIONS, MIN_HOLD_ROUNDS } from "@/lib/council";
+import { COMMITTED_HOLD_ROUNDS, EMOTIONS, MIN_HOLD_ROUNDS, OWN_BOOK_SHARE } from "@/lib/council";
 import type { Exchange } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { asEmotion, asToken, backers, cleanSay, presents, requestStake, STOP_RANGE, TARGET_RANGE, weighs, type Brain } from "./brain";
+import { asEmotion, asToken, backers, cleanSay, mostStake, presents, requestStake, starterStake, starterTokens, STOP_RANGE, TARGET_RANGE, weighs, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefing, describeDebate, describePitches, describeProposal, nameOf, usd, type RoundCtx } from "./context";
 import { repeats } from "./skills";
@@ -24,7 +24,10 @@ const system = (agent: AgentId) =>
   `You are ${AGENTS[agent].name}, one of four AI traders who share a trading desk called The Council. ${PERSONA[agent]}
 
 How the desk works:
-- Each trader manages its own cash and can co-invest in a trade that another trader leads.
+- Each trader runs its own book with its own cash, and is judged on its own result. It can also co-invest in a trade that another trader leads.
+- Your pitch is your decision for your own book. The strongest pitch is put to the council, and traders who back it join with their own cash. A pitch the council does not take up is still traded, by you alone, with the cash you named. One trade may take at most ${Math.round(OWN_BOOK_SHARE * 100)}% of your cash.
+- Every trader keeps at least one position open. A trader that holds nothing opens one.
+- A position you hold by yourself is yours to sell. A position that several traders hold is sold by the council's vote.
 - The desk trades on Robinhood Chain: ETH, and Robinhood Stock Tokens, which follow the prices of shares such as TSLA and NVDA. It pays in USDG, a dollar token.
 - The desk trades spot only. It can BUY a token with USDG, SELL a token it already holds, or HOLD.
 - Stock Tokens trade around the clock from Sunday evening to Friday evening, New York time, and not at the weekend. ETH always trades.
@@ -163,15 +166,24 @@ JSON shape:
         const o = await ask(agent, ctx, task, pitchShape);
         return { ...o, ...spoken(o), token: r.asset.key };
       }
+      const most = mostStake(ctx, agent);
+      const must = ctx.mustTrade[agent];
+      const rule = must
+        ? `DESK RULE: you hold no position, and every trader here keeps at least one open. You must BUY this round.
+Pick your best idea among ${starterTokens(ctx).join(", ")} and put between $${starterStake(ctx, agent)} and $${most} behind it.${
+            ctx.taken.length ? `\nThe desk spreads its books, and colleagues have already picked ${ctx.taken.join(", ")} this round, so those are not on your list.` : ""
+          }
+If the edge is thin, say so plainly and size small. Do not invent an edge to justify the trade.`
+        : `You may SELL only these tokens: ${ctx.sellable.length ? ctx.sellable.join(", ") : "none this round"}.`;
       const task = `YOUR FOCUS THIS ROUND: ${lens.name}
 ${lens.brief} Build your pitch on this angle.
 
-TASK: Pitch your trade for this round.
-You may SELL only these tokens: ${ctx.sellable.length ? ctx.sellable.join(", ") : "none this round"}.
+TASK: Pitch your trade for this round. It is what you will do with your own book.
+${rule}
 JSON shape:
-{"action": "BUY" | "SELL" | "HOLD",
- "token": one of ${ctx.stats.map((s) => s.token).join(", ")},
- "stakeUsd": your own cash to commit if BUY, from 0 to ${cash.toFixed(0)},
+{"action": ${must ? '"BUY"' : '"BUY" | "SELL" | "HOLD"'},
+ "token": one of ${(must ? starterTokens(ctx) : ctx.stats.map((s) => s.token)).join(", ")},
+ "stakeUsd": your own cash to commit if BUY, from ${must ? starterStake(ctx, agent) : 0} to ${most},
  "stopPct": stop-loss distance in percent, ${STOP_RANGE[0]} to ${STOP_RANGE[1]},
  "targetPct": profit target distance in percent, ${TARGET_RANGE[0]} to ${TARGET_RANGE[1]},
  "sellPct": 50 or 100, share of the position to sell if SELL,
@@ -234,7 +246,11 @@ JSON shape: {"support": true | false, "stakeUsd": ${buying ? `0 to ${cash.toFixe
     async closing(agent, ctx, proposal, input) {
       const word = (yes: boolean) => (input.committed ? (yes ? "IN" : "OUT") : yes ? "YES" : "NO");
       const votes = input.pledges.map((p) => `- ${nameOf(p.agent)}: ${word(p.support)} ("${p.say}")`).join("\n");
-      const result = input.committed
+      const result = input.alone
+        ? proposal.action === "BUY"
+          ? `The council does not back it, ${input.yes} to ${4 - input.yes}, so it is no desk trade. You take it alone, for your own book, with ${usd(input.totalUsd)}.`
+          : `The council does not back it, ${input.yes} to ${4 - input.yes}. The position is yours alone, so you sell it for your own book.`
+        : input.committed
         ? input.approved
           ? `You buy ${proposal.token} for your funder, as committed. Joined by: ${backers(input.pledges, nameOf)}. Total size ${usd(input.totalUsd)}.`
           : `The order came out under the desk's smallest size, so nothing is bought.`

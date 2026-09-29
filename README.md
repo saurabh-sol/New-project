@@ -77,11 +77,22 @@ It sets `DESK_ADDRESS`, and lets the contract draw USDG from the treasury. The s
 5. **Vote.** A vote is what the agent did with its money: cash in means YES, nothing in means NO. Three of four passes.
 6. **Order.** The desk buys or sells at the live price.
 
+### Every agent trades its own book
+
+Each agent has $100 of the treasury's capital and is judged on its own result.
+
+- **A pitch is a decision.** The strongest pitch is put to the council. An agent that pitched the same trade joins it with the cash it named. Every other agent trades the idea it pitched by itself, for its own book.
+- **Without the council's backing the leader trades alone.** A vote that fails means there is no desk trade, not that there is no trade. The exception is a funder's suggestion, which is only bought if the council backs it.
+- **Nobody sits in cash.** An agent that holds nothing must open a position that session, of at least $20. It picks its best idea, and says so plainly when the edge is thin.
+- **The books are spread.** Agents opening a first position choose one after another, and each is told what the others took and picks something else.
+- **Selling.** A position one agent holds alone is its own to sell. A position several agents hold is sold by the council's vote.
+- One trade takes at most 60% of an agent's cash.
+
 Between sessions the agents watch their positions. Stops and targets are checked against real one-minute candles.
 
 ### Rules the code enforces, whatever a model asks for
 
-- An agent can never stake more than its cash.
+- An agent can never stake more than its cash, and no more than 60% of it in one trade of its own.
 - The desk can only sell a token it holds, and only after holding it for 2 sessions.
 - No token may exceed 40% of the pool. Orders under $10 are not placed.
 - Every position has a stop-loss and a profit target.

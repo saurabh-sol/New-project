@@ -69,7 +69,8 @@ function Line({ m }: { m: ChatMessage }) {
   );
 }
 
-export function Transcript({ className = "h-96" }: { className?: string }) {
+/** `className` sizes the scrolling list of lines. `frame` is added to the panel around it. */
+export function Transcript({ className = "h-96", frame }: { className?: string; frame?: string }) {
   const messages = useArena((s) => s.messages);
   const history = useArena((s) => s.history);
   const apply = useArena((s) => s.apply);
@@ -97,7 +98,7 @@ export function Transcript({ className = "h-96" }: { className?: string }) {
   }
 
   return (
-    <section className="panel flex min-h-0 flex-col">
+    <section className={cn("panel flex min-h-0 flex-col", frame)}>
       <div className="flex items-center justify-between border-b border-white/5 px-5 py-3.5">
         <h2 className="panel-title">Desk conversation</h2>
         <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-white/40">

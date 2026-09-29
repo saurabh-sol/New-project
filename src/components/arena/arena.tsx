@@ -32,21 +32,27 @@ export function Arena() {
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 px-4 pb-12 pt-5 sm:px-6">
       <HeroStats />
 
-      {/* Floor and chart share the first screen. */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3">
+      {/* The conversation beside the floor. On a narrow screen the floor comes first. */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)]">
+        {/* The conversation takes the floor's height, however much has been said. */}
+        <div className="order-2 min-w-0 xl:relative xl:order-1">
+          <div className="flex xl:absolute xl:inset-0">
+            <Transcript frame="w-full" className="h-96 xl:h-auto xl:min-h-0 xl:flex-1" />
+          </div>
+        </div>
+        <div className="order-1 flex min-w-0 flex-col gap-3 xl:order-2">
           <PhaseTimeline />
           <Floor />
         </div>
+      </div>
+
+      {/* The chart below, with what the desk holds beside it. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
         <PriceChart />
+        <Positions />
       </div>
 
       <AgentCards />
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <Positions />
-        <Transcript />
-      </div>
 
       <TradeFeed />
     </div>

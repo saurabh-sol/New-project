@@ -27,6 +27,10 @@ export interface RoundCtx {
   effort: Record<AgentId, Effort>;
   /** The funder's trade request this session is hearing, if there is one. */
   request: RequestBrief | null;
+  /** Agents that hold nothing, and so must open a position this round. */
+  mustTrade: Record<AgentId, boolean>;
+  /** Tokens colleagues have already picked for their starter positions this round. The desk spreads its books. */
+  taken: AssetKey[];
 }
 
 export const usd = (n: number) => `$${n.toFixed(2)}`;

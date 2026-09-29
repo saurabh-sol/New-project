@@ -6,7 +6,7 @@
 import { positionOf, type Emotion } from "@/lib/council";
 import type { Proposal, TokenStats } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { backers, clamp, presents, requestStake, weighs, type Brain } from "./brain";
+import { backers, clamp, mostStake, presents, requestStake, starterStake, starterTokens, weighs, type Brain } from "./brain";
 import { nameOf, signed, type RoundCtx } from "./context";
 import { pick } from "./skills";
 
@@ -137,6 +137,24 @@ export function scriptedBrain(): Brain {
         };
       }
 
+      // An agent that must open a position takes the best of what can be bought.
+      const top = ranked.find((r) => starterTokens(ctx).includes(r.s.token));
+      if (ctx.mustTrade[agent] && top) {
+        const strong = top.e > BUY_ABOVE[agent];
+        const stake = strong ? Math.round(clamp(ctx.portfolio.cash[agent] * SIZE[agent] * clamp(top.e + 0.4, 0.4, 1), starterStake(ctx, agent), mostStake(ctx, agent))) : starterStake(ctx, agent);
+        return {
+          ...base,
+          action: "BUY",
+          token: top.s.token,
+          stakeUsd: stake,
+          conviction: strong ? Math.round(clamp(1 + top.e * 5, 1, 5)) : 1,
+          emotion: strong ? "confident" : "neutral",
+          say: strong
+            ? BUY_LINE[agent](top.s)
+            : pick([`${facts(top.s)}. Thin, but my best. Starter of $${stake}.`, `I hold nothing. ${swing(top.s)}. Small starter, $${stake}.`, `No strong edge. ${top.s.token} is the best of them. $${stake} to start.`, `${top.s.token} at ${top.s.rangePos}% of its day range. Starting small, $${stake}.`], ctx, agent),
+        };
+      }
+
       const best = ranked[0];
       const cash = ctx.portfolio.cash[agent];
       if (best.e > BUY_ABOVE[agent] && cash >= 10) {
@@ -145,7 +163,7 @@ export function scriptedBrain(): Brain {
           ...base,
           action: "BUY",
           token: best.s.token,
-          stakeUsd: Math.floor(cash * SIZE[agent] * clamp(best.e + 0.4, 0.4, 1)),
+          stakeUsd: Math.min(Math.floor(cash * SIZE[agent] * clamp(best.e + 0.4, 0.4, 1)), mostStake(ctx, agent)),
           conviction: c,
           emotion: "confident",
           say: BUY_LINE[agent](best.s),
@@ -213,6 +231,18 @@ export function scriptedBrain(): Brain {
       const size = `$${input.totalUsd.toFixed(0)}`;
       const t = proposal.token;
       const tally = `${input.yes} to ${4 - input.yes}`;
+      if (input.alone) {
+        return {
+          emotion: "neutral",
+          say: pick(
+            proposal.action === "BUY"
+              ? [`No backing, ${tally}. I take ${t} alone: ${size}.`, `${tally} against. It goes on my own book, ${size} of ${t}.`, `The desk passes. My book takes ${size} of ${t}.`]
+              : [`No backing, ${tally}. It is my position. I sell ${t}.`, `${tally} against. ${t} is mine alone, and I close it.`],
+            ctx,
+            agent,
+          ),
+        };
+      }
       if (input.committed && input.approved) {
         const with_ = backers(input.pledges, short);
         return { emotion: "neutral", say: pick([`Buying ${size} ${t} for my funder. Joined by ${with_}.`, `${size} of ${t} goes in, as asked. With me: ${with_}.`], ctx, agent) };

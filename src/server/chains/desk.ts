@@ -26,7 +26,8 @@ const erc20 = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
 ] as const;
 
-const REASON = { COUNCIL: 0, STOP: 1, TARGET: 2 } as const;
+/** How a sale came about, as the contract records it. */
+const REASON = { COUNCIL: 0, STOP: 1, TARGET: 2, OWN: 3 } as const;
 /** Differences smaller than this are rounding, and are left alone. */
 const ONE_CENT = 0.01;
 /** Between trades and payments, the chain is looked at no more often than this. */
