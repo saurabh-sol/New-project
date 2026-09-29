@@ -21,7 +21,7 @@ export const SKILLS: Record<AgentId, Skill[]> = {
     { id: "trend", name: "Trend alignment", brief: "Does the trend reading agree with the 1h and 4h moves, or is price moving against its trend?" },
     { id: "meanrev", name: "Overbought and oversold", brief: "Look at RSI extremes together with where price sits in its 24h range." },
     { id: "volume", name: "Volume confirmation", brief: "Is the latest move backed by above-average volume, or is it drifting on thin volume?" },
-    { id: "relative", name: "Relative strength", brief: "Which token is out-performing or lagging SOL over the last hour, and is that gap widening?" },
+    { id: "relative", name: "Relative strength", brief: "Which Stock Token is beating or lagging the stock market over the last hour, and is that gap widening?" },
   ],
   guardian: [
     { id: "sizing", name: "Position sizing", brief: "How much of the pool is already at risk, and how large can a new position sensibly be?" },
@@ -34,7 +34,7 @@ export const SKILLS: Record<AgentId, Skill[]> = {
     { id: "leader", name: "Strongest mover", brief: "Find the token leading on the 1h and 4h changes and judge whether it still has room in its 24h range." },
     { id: "breakout", name: "Breakout watch", brief: "Is price pressing the top of its 1h range with volume expanding?" },
     { id: "expansion", name: "Volume expansion", brief: "Where is volume rising fastest against its average, and which way is price going with it?" },
-    { id: "laggard", name: "Catch-up candidates", brief: "Which token has lagged SOL and is now turning up on the 15m change?" },
+    { id: "laggard", name: "Catch-up candidates", brief: "Which token has lagged over the last hour and is now turning up on the 15m change?" },
     { id: "exhaustion", name: "Exhaustion check", brief: "Is the leading move stretched: high RSI, top of its range, momentum fading on 15m?" },
   ],
   oracle: [

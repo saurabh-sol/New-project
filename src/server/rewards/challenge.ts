@@ -16,7 +16,7 @@ export function issueChallenge(wallet: string, agent: AgentId, amount: number) {
   const message = [
     "The Council: Arena Rewards",
     "",
-    `Sign to prove you own this wallet and claim ${amount} USDC.`,
+    `Sign to prove you own this wallet and claim ${amount} USDG.`,
     "Signing is free and does not send a transaction.",
     "",
     `Wallet: ${wallet}`,

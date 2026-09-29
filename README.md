@@ -1,6 +1,8 @@
 # The Council
 
-Four AI agents share a trading desk. They read the same live market data, pitch trades, argue at each other's desks, commit their own cash, vote, and hold positions with stops and targets.
+Four AI agents share a trading desk on [Robinhood Chain](https://docs.robinhood.com/chain). They read the same live market data, pitch trades, argue at each other's desks, commit their own cash, vote, and hold positions with stops and targets.
+
+The desk trades ETH and Robinhood Stock Tokens (TSLA, NVDA, AAPL, AMZN, PLTR), and pays in USDG.
 
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
@@ -32,14 +34,15 @@ npm run dev -- -p 3210
 
 | Part | Status |
 | --- | --- |
-| Prices, candles, RSI, trend, volume | Real. Binance public data, with CoinGecko as the backup |
+| Prices | Real. Stock Tokens from Robinhood's Stock Token API; ETH from Binance, with CoinGecko as the backup |
+| Candles, RSI, trend, volume | Real. For Stock Tokens they are the underlying share's, from Yahoo Finance's public chart data, scaled to the token's price |
 | What the agents say and decide | Real model output, when a gateway key is set |
 | Trades and results | Paper trades at real prices. Nothing is bought or sold on a market |
-| Deposits, withdrawals, bonuses, rewards | Real token transfers on the configured Solana cluster |
+| Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
 
 A line tagged `scripted` in the conversation was written by a rule-based stand-in, because that model could not be reached or no key is configured.
 
-Because trades are paper trades while funding uses real tokens, **the treasury is the counterparty to the agents' results**: if an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a devnet demo. Do not run funding with real money until the agents trade for real.
+Because trades are paper trades while funding uses real tokens, **the treasury is the counterparty to the agents' results**: if an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a testnet demo. Do not run funding with real money until the agents trade for real.
 
 ## How a session runs
 
@@ -58,6 +61,7 @@ Between sessions the agents watch their positions. Stops and targets are checked
 - The desk can only sell a token it holds, and only after holding it for 2 sessions.
 - No token may exceed 40% of the pool. Orders under $10 are not placed.
 - Every position has a stop-loss and a profit target.
+- A Stock Token is neither bought nor sold while its market is closed. Stock Tokens trade around the clock from Sunday evening to Friday evening, New York time. ETH always trades.
 
 ### Keeping the agents from repeating themselves
 
@@ -96,7 +100,7 @@ A user deposits tokens, which the agent gets as extra capital. The user holds sh
 
 ### Trade requests
 
-With a deposit, a funder may paste the address of any Solana token and ask the agent they fund to trade it. How far that binds the agent depends on the size of the deposit:
+With a deposit, a funder may name a token on Robinhood Chain and ask the agent they fund to trade it: any of Robinhood's Stock Tokens by symbol (such as MSFT), or any other token by its contract address. How far that binds the agent depends on the size of the deposit:
 
 | Deposit | What happens |
 | --- | --- |
@@ -106,7 +110,9 @@ With a deposit, a funder may paste the address of any Solana token and ask the a
 The threshold is `REQUEST_COMMIT_FROM_USD`.
 
 - One request is heard per session, oldest first. A wallet can have one request waiting at a time.
-- The token must have a trading pool on Solana with at least $50,000 of liquidity and $10,000 of daily volume, and be at least a day old (`REQUEST_MIN_LIQUIDITY_USD`, `REQUEST_MIN_VOLUME_USD`, `REQUEST_MIN_AGE_HOURS`). This is checked when the request is made and again when it is heard.
+- A token that is not a Stock Token must have a trading pool on Robinhood Chain with at least $50,000 of liquidity and $10,000 of daily volume, and be at least a day old (`REQUEST_MIN_LIQUIDITY_USD`, `REQUEST_MIN_VOLUME_USD`, `REQUEST_MIN_AGE_HOURS`). This is checked when the request is made and again when it is heard.
+- Anyone can launch a token called TSLA. A token that borrows a Stock Token's symbol is given a longer name, such as `TSLA.A1B2`, so it can't be mistaken for the real one.
+- A request for a Stock Token waits while its market is closed. Requests behind it in the queue go ahead.
 - A request is dropped if the funding behind it was withdrawn before it was heard.
 - If the token's market data can't be reached, the request keeps its place and is tried at a later session, six times at most.
 - In a request session every agent speaks to the requested token, so the request is the desk's business and not one agent's.
@@ -114,20 +120,25 @@ The threshold is `REQUEST_COMMIT_FROM_USD`.
 - A committed purchase is held for at least 12 sessions (`COMMITTED_HOLD_ROUNDS` in `src/lib/council.ts`) before the council may vote to sell it. Its stop-loss and target still close it at any time.
 - A request for a token the desk already holds adds to the position. The agents are given what they said about the token before and are told to say only what has changed, and the debate is skipped.
 - The trade is a paper trade like every other: it has a stop-loss and a target.
+- An agent's capital is pooled, so the result of a requested trade is shared by everyone who funds that agent. The fund page says so.
+
+Stock Tokens are priced by Robinhood. Other tokens are priced by their pool: price and liquidity from DexScreener, candles from GeckoTerminal. None of these needs a key. The agents are told that a funder's wish is not evidence, and they say so when the data is weak.
 
 ### Stops
 
 Whatever an agent asks for, the desk sets a purchase's stop-loss at least 1.5 times the token's usual 5-minute movement away (within the 2% to 10% range), and its target no nearer than the stop. A stop closer than that is set off by ordinary movement. The rule is `fitTerms` in `src/server/council/brain.ts`.
-- An agent's capital is pooled, so the result of a requested trade is shared by everyone who funds that agent. The fund page says so.
 
-Prices and liquidity for requested tokens come from DexScreener, and candles from GeckoTerminal. Neither needs a key. The agents are told that a funder's wish is not evidence, and they say so when the data is weak.
+### Testnet setup
 
-### Devnet setup
+| Network | Chain ID | Funding token |
+| --- | --- | --- |
+| Robinhood Chain Testnet (the default) | 46630 | A test USDG that the setup script deploys |
+| Robinhood Chain | 4663 | USDG, `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
 
-1. Set `DATABASE_URL`, `TREASURY_SECRET_KEY` and `CLAIM_SECRET` in `.env.local`.
-2. Send the treasury address some devnet SOL from <https://faucet.solana.com>.
-3. Run `node --env-file=.env.local scripts/setup-devnet.mjs`. It creates a test token the treasury can mint and sets `USDC_MINT`.
-4. Restart the server. Users can now press "Get free test USDC" and fund an agent.
+1. Set `DATABASE_URL`, `TREASURY_PRIVATE_KEY` and `CLAIM_SECRET` in `.env.local`. The treasury is an ordinary Ethereum-type wallet.
+2. Send the treasury's address some testnet ETH. Faucets: [Alchemy](https://www.alchemy.com/faucets/robinhood-testnet), [Chainstack](https://faucet.chainstack.com/robinhood-chain-testnet-faucet), [QuickNode](https://faucet.quicknode.com/robinhood/testnet).
+3. Run `node --env-file=.env.local scripts/setup-testnet.mjs`. It deploys a test USDG the treasury can mint (`contracts/TestUSDG.sol`) and sets `USDG_ADDRESS`.
+4. Restart the server. Users can now press "Get free test USDG" and fund an agent. The faucet also sends a little ETH, so a new wallet can pay its first network fees.
 
 Funding refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`.
 
@@ -137,7 +148,11 @@ The user connects a wallet, backs an agent and signs a free message. The server 
 
 ## Wallets
 
-The app runs on Solana only. It uses the Wallet Standard, so every Solana wallet installed in the browser appears in the connect window. Phantom and MetaMask are always listed, with a link to install them if they are missing; MetaMask connects through its Solana account. RainbowKit is not used because it only supports Ethereum-type chains.
+The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Ethereum-type wallet works. The connect window always lists MetaMask and Robinhood Wallet, then every other wallet installed in the browser.
+
+- A wallet that has never seen Robinhood Chain is given the network's details and asked to add it.
+- Robinhood Wallet is a phone app. It connects by QR code through WalletConnect, which needs a free project ID from <https://cloud.reown.com> in `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`. Without one, its row links to the download page.
+- A deposit is a USDG transfer that the wallet sends itself, so the wallet needs a little ETH for the network fee.
 
 ## Showing it on a Raspberry Pi
 
@@ -150,6 +165,10 @@ chromium-browser --kiosk --noerrdialogs --disable-infobars --app=http://<server-
 ```
 
 Turn off screen blanking in `raspi-config` so the display stays on. A Pi 4 or 5 with a 1080p screen is the target.
+
+## If the network's name lookups are unreliable
+
+On some networks the system's lookup of a host name fails now and then, although a plain DNS query finds the host at once. The server then asks the network's DNS server directly, and public ones after that (`src/server/dns-fallback.ts`). The scripts in `scripts/` do the same.
 
 ## Cost
 

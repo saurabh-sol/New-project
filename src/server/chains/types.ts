@@ -4,9 +4,9 @@ export type Fate = "landed" | "dead" | "unknown";
 
 /** A payment from the treasury that has been signed but not sent. */
 export interface SignedPayment {
-  /** Transaction signature. Known before sending, so it can be recorded first. */
+  /** Transaction hash. Known before sending, so it can be recorded first. */
   id: string;
-  /** The last block height at which the payment can still land. */
+  /** The payment's place in the treasury's queue of transactions (its nonce). Once another transaction has taken that place, this one can never land. */
   expiry: number;
   /** Sends it and waits for confirmation. Throws if the network rejects it or it fails. */
   send(): Promise<void>;

@@ -44,7 +44,7 @@ const declines = (s: TokenStats) => [
   `${swing(s)}. Not for my cash.`,
   `${s.token} moves ${s.atrPct}% per 5m, trend ${s.trend}. I pass.`,
   `${s.token} sits at ${s.rangePos}% of its day range. No entry for me.`,
-  `${s.token} ${signed(s.vsSol1h, "pp")} against SOL this hour. I keep my cash.`,
+  `${s.token} ${signed(s.change24h)} on the day, trend ${s.trend}. I keep my cash.`,
   `RSI ${s.rsi14} on ${s.token}, ${volume(s)}. Nothing to buy.`,
   `${s.token} ${signed(s.change24h)} on the day. I want a turn first.`,
 ];
@@ -56,7 +56,7 @@ const refusals = (s: TokenStats) => [
   `I pass. ${s.token} trend ${s.trend}, ${volume(s)}.`,
   `Staying out. ${s.token} moves ${s.atrPct}% per 5m for no edge.`,
   `No. ${s.token} at ${s.rangePos}% of its day range, no bid.`,
-  `Not from me. ${s.token} ${signed(s.vsSol1h, "pp")} against SOL this hour.`,
+  `Not from me. ${s.token} ${signed(s.change4h)} over 4h, RSI ${s.rsi14}.`,
   `I keep my cash. ${s.token} ${signed(s.change24h)} on the day.`,
 ];
 
@@ -70,7 +70,7 @@ const BUY_LINE: Record<AgentId, (s: TokenStats) => string> = {
 /** Several ways to say "no trade", each leaning on different figures. */
 const HOLD_LINES: Record<AgentId, (s: TokenStats) => string[]> = {
   quant: (s) => [`Best is ${facts(s)}. Not enough. Hold.`, `Timeframes disagree: ${swing(s)}. No trade.`, `${s.token} trend ${s.trend}, RSI ${s.rsi14}. Neutral. Cash.`],
-  degen: (s) => [`No momentum. ${s.token} only ${signed(s.change1h)} 1h. Pass.`, `Nothing breaking out. ${swing(s)}. Waiting.`, `${s.token} ${signed(s.vsSol1h, "pp")} vs SOL. Too weak to chase.`],
+  degen: (s) => [`No momentum. ${s.token} only ${signed(s.change1h)} 1h. Pass.`, `Nothing breaking out. ${swing(s)}. Waiting.`, `${s.token} ${signed(s.change4h)} over 4h. Too weak to chase.`],
   guardian: (s) => [`Nothing pays for the risk. ${facts(s)}. Hold.`, `${s.token} moves ${s.atrPct}% per 5m. Edge is inside the noise.`, `${swing(s)}. Reward does not cover risk. Cash.`],
   oracle: (s) => [`${facts(s)}. Coin flip. Hold.`, `No edge. ${swing(s)}. Even odds.`, `Readings flat, ${s.token} least weak. I wait.`],
 };

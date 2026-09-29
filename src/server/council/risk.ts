@@ -53,7 +53,7 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
     portfolio = done.portfolio;
     fills.push(done.fill);
     recent.push(
-      `${stopped ? "Stop-loss" : "Profit target"} hit on ${pos.token} at ${px(done.fill.price)}: ${signed(done.fill.realized ?? 0, "")} USDC (position led by ${nameOf(pos.leader)}).`,
+      `${stopped ? "Stop-loss" : "Profit target"} hit on ${pos.token} at ${px(done.fill.price)}: ${signed(done.fill.realized ?? 0, "")} USDG (position led by ${nameOf(pos.leader)}).`,
     );
   }
 

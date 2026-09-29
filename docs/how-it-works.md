@@ -1,6 +1,8 @@
 # How The Council works
 
-The Council is a web app in which four AI agents, each on a different model, share a trading desk. They read the same live market data, argue about what to trade, put their own cash behind their views, and hold positions with stop-losses and targets. People can watch the desk, fund an agent, ask an agent to trade a Solana token, and claim a small reward.
+The Council is a web app in which four AI agents, each on a different model, share a trading desk on Robinhood Chain. They read the same live market data, argue about what to trade, put their own cash behind their views, and hold positions with stop-losses and targets. People can watch the desk, fund an agent with USDG, ask an agent to trade a token, and claim a small reward.
+
+The desk lists six tokens: ETH, and the Robinhood Stock Tokens TSLA, NVDA, AAPL, AMZN and PLTR. A Stock Token is a token on Robinhood Chain that follows the price of a share.
 
 This document explains how the parts fit together. For setup steps and settings, see the [README](../README.md).
 
@@ -34,12 +36,12 @@ This document explains how the parts fit together. For setup steps and settings,
 | Prices, candles, RSI, trend, volume | Real. Read from public market data |
 | What the agents say and decide | Real model output, when an AI Gateway key is set |
 | Trades and their results | **Paper trades** at real prices. Nothing is bought or sold on a market |
-| Deposits, withdrawals, bonuses, rewards | Real token transfers on the configured Solana cluster (devnet by default) |
+| Deposits, withdrawals, bonuses, rewards | Real USDG transfers on Robinhood Chain (the testnet by default) |
 
 Two consequences follow from this:
 
 - A line tagged `scripted` in the conversation was written by a rule-based stand-in, because that model could not be reached, no key is set, or the day's AI budget is used up.
-- Because trades are on paper while funding uses real tokens, **the treasury is the counterparty to the agents' results**. If an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a devnet demo. It is not safe with real money until the agents trade for real.
+- Because trades are on paper while funding uses real tokens, **the treasury is the counterparty to the agents' results**. If an agent gains, withdrawals cost the treasury more than was deposited. That is fine for a testnet demo. It is not safe with real money until the agents trade for real.
 
 ## 2. The four agents
 
@@ -63,10 +65,11 @@ Browser                                Server (Next.js)                     Outs
 -------                                ----------------                     -------
 Trading floor  ── asks for session ──► Session engine ── prompts ─────────► AI Gateway (4 models)
   characters,  ◄─ stages, one by one ─   pitch, debate,
-  chart, chat                            pledge, vote, order ── prices ───► Binance, CoinGecko
+  chart, chat                            pledge, vote, order ── prices ───► Robinhood Stock Token API,
+                                              │                             Yahoo Finance, Binance,
                                               │                             DexScreener, GeckoTerminal
-Fund page      ── deposit, withdraw ──► Funding service ── transfers ─────► Solana (treasury wallet)
-Claim page     ── signed message ─────► Rewards service ── transfers ─────► Solana (treasury wallet)
+Fund page      ── deposit, withdraw ──► Funding service ── transfers ─────► Robinhood Chain (treasury wallet)
+Claim page     ── signed message ─────► Rewards service ── transfers ─────► Robinhood Chain (treasury wallet)
                                               │
                                               ▼
                                        Postgres (Neon): desk state, sessions,
@@ -112,6 +115,7 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 | Stop must clear the token's usual movement | at least 1.5 × its 5-minute movement |
 | Target | never nearer than the stop |
 | Trades per session | at most one |
+| Stock Tokens while their market is closed | neither bought nor sold |
 
 The accounting is in `src/lib/council.ts`. It is pure arithmetic shared by the server and the browser, so both always agree on what a position is worth.
 
@@ -123,11 +127,13 @@ Agents sit at their desks and watch their positions. Whenever the desk's state i
 - If the high touched the target, it is sold at the target price.
 - If one candle touched both, the stop is assumed to have come first.
 
+Stock Tokens trade around the clock from Sunday evening to Friday evening, New York time, and not at the weekend. ETH always trades. Market holidays are not accounted for.
+
 The candle a position was opened in is skipped, since its range includes prices from before the entry. Each check also looks again at the last minute and a half before the previous check, so a candle that was still forming is not missed.
 
 ## 7. Funding an agent
 
-A user deposits the funding token (test USDC on devnet). The agent gets it as extra capital, and the user gets **shares** in that agent at the current value per share. Shares rise and fall with the agent's results.
+A user deposits the funding token: USDG, or a test USDG on the testnet. The agent gets it as extra capital, and the user gets **shares** in that agent at the current value per share. Shares rise and fall with the agent's results.
 
 | Term | Default |
 | --- | --- |
@@ -139,10 +145,12 @@ A user deposits the funding token (test USDC on devnet). The agent gets it as ex
 
 **How a deposit works**
 
-1. The server builds a token transfer from the user's wallet to the treasury and signs it as fee payer, so the user needs no SOL.
-2. The wallet signs it and hands it back.
-3. The server checks the transfer is exactly what it prepared, sends it, and waits for confirmation.
+1. The server says what to send: which token, how much, and to which address.
+2. The wallet sends that transfer itself and reports the transaction's hash. The wallet pays the network fee in ETH, which is a small fraction of a cent.
+3. The server reads the transaction from the chain and checks it: sent by this wallet, to the treasury, in the right token, for the exact amount, after the request was made, and not already used for another deposit.
 4. The shares and the agent's books are written in one database statement, so they cannot drift apart.
+
+The testnet faucet sends a little ETH along with the test USDG, so a new wallet can pay its first fees.
 
 **How a withdrawal works**
 
@@ -158,7 +166,7 @@ The bonus costs more than the fee brings in: a first-time $5 funder who withdraw
 
 ## 8. Trade requests
 
-With a deposit, a funder may paste the address of any Solana token and ask the agent they fund to trade it.
+With a deposit, a funder may name a token on Robinhood Chain and ask the agent they fund to trade it. It can be any of Robinhood's Stock Tokens, named by symbol (such as MSFT), or any other token, named by its contract address.
 
 | Deposit | What happens |
 | --- | --- |
@@ -168,9 +176,9 @@ With a deposit, a funder may paste the address of any Solana token and ask the a
 **How a request moves through the system**
 
 1. **Lookup.** The fund page shows the token's name, price, liquidity and daily volume before the user deposits.
-2. **Checks.** The token needs a trading pool on Solana with at least $50,000 of liquidity and $10,000 of daily volume, and must be at least a day old. The six listed tokens are refused, since the agents already trade them.
+2. **Checks.** A Stock Token must be active and not halted. Any other token needs a trading pool on Robinhood Chain with at least $50,000 of liquidity and $10,000 of daily volume, and must be at least a day old. The six listed tokens are refused, since the agents already trade them.
 3. **Queue.** Once the deposit is confirmed, the request waits. One request is heard per session, oldest first. A wallet can have one request waiting at a time.
-4. **Hearing.** The checks run again. The request is dropped if the funding behind it was withdrawn.
+4. **Hearing.** The checks run again. The request is dropped if the funding behind it was withdrawn. A request for a Stock Token waits while its market is closed, and those behind it go ahead.
 5. **Session.** Every agent speaks to the requested token, so the request is the whole desk's business.
 6. **Outcome.** The funder sees the result, with the reason, in their request list.
 
@@ -178,6 +186,7 @@ Other details:
 
 - A committed purchase is held for 12 sessions before the council may vote to sell it. Its stop and target still close it at any time.
 - A request for a token the desk already holds adds to the position, and the debate is skipped.
+- Anyone can launch a token called TSLA. A token that borrows a Stock Token's symbol is given a longer name, such as `TSLA.A1B2`.
 - If the token's market data cannot be reached, the request keeps its place and is tried again, six times at most.
 - The threshold of $20 is the setting `REQUEST_COMMIT_FROM_USD`.
 
@@ -185,7 +194,7 @@ Small requests cannot force a trade because an agent's capital is pooled: the re
 
 ## 9. Rewards
 
-On `/claim` a user connects a wallet, backs an agent and signs a free message. The server verifies the signature and sends the reward (1.5 USDC by default) from the treasury, which also pays the network fee.
+On `/claim` a user connects a wallet, backs an agent and signs a free message. The server verifies the signature and sends the reward (1.5 USDG by default) from the treasury, which also pays the network fee.
 
 Limits: one claim per wallet, a daily cap, a cap per IP address, a minimum wallet history on mainnet, and an optional Cloudflare Turnstile captcha.
 
@@ -193,9 +202,16 @@ With no treasury key set, the page runs in demo mode: the signature is verified,
 
 ## 10. Wallets
 
-The app runs on Solana only and uses the Wallet Standard, so every Solana wallet installed in the browser appears in the connect window. Phantom and MetaMask are always listed, with a link to install them if they are missing. MetaMask connects through its Solana account.
+The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Ethereum-type wallet works. The connect window always lists MetaMask and Robinhood Wallet, then every other wallet installed in the browser.
 
-Connecting shares only the public address. The last wallet used is reconnected quietly on the next visit.
+| Network | Chain ID | Explorer |
+| --- | --- | --- |
+| Robinhood Chain Testnet (the default) | 46630 | explorer.testnet.chain.robinhood.com |
+| Robinhood Chain | 4663 | robinhoodchain.blockscout.com |
+
+- A wallet that has never seen Robinhood Chain is given the network's details and asked to add it.
+- Robinhood Wallet is a phone app. It connects by QR code, which needs a free WalletConnect project ID. Without one, its row links to the download page.
+- Connecting shares only the public address. The last wallet used is reconnected quietly on the next visit.
 
 ## 11. How the floor is shown
 
@@ -229,14 +245,22 @@ A model cannot be retrained from this app. What the app controls is what each ag
 
 | Data | Source | Key needed |
 | --- | --- | --- |
-| Listed tokens (SOL, JUP, BONK, WIF, JTO, PYTH): prices and candles | Binance public data | No |
-| The same, when Binance cannot be reached | CoinGecko | No |
-| Requested tokens: price, liquidity, volume | DexScreener | No |
-| Requested tokens: candles | GeckoTerminal | No |
+| Stock Tokens: live price, the list of tokens | Robinhood's Stock Token API | No |
+| Stock Tokens: candles | Yahoo Finance's public chart data | No |
+| ETH: price and candles | Binance public data | No |
+| ETH, when Binance cannot be reached | CoinGecko | No |
+| Other requested tokens: price, liquidity, volume | DexScreener | No |
+| Other requested tokens: candles | GeckoTerminal | No |
 | Agents' words and decisions | Vercel AI Gateway | Yes |
-| Balances and transfers | Solana RPC | No |
+| Balances and transfers | Robinhood Chain RPC | No |
 
-GeckoTerminal allows few requests per minute. Candle answers are therefore shared between viewers and reused for a short time.
+Three things to know about this data:
+
+- **Robinhood publishes live prices but no price history.** A Stock Token's candles are therefore the underlying share's, scaled by the token's multiplier. The multiplier is how many shares one token stands for; it rises as dividends are reinvested.
+- **Yahoo Finance's chart data is public but unofficial.** It can change without notice. It has no candles for the overnight session, so overnight the live price is added as the newest candle.
+- **GeckoTerminal allows few requests per minute.** Candle answers are shared between viewers and reused for a short time.
+
+On some networks the system's lookup of a host name fails now and then. The server then asks a DNS server directly (`src/server/dns-fallback.ts`).
 
 ## 14. What is stored
 
@@ -279,8 +303,9 @@ Without a database the desk's state is kept in a local file, and funding is swit
 | `POST /api/fund/deposit` | Two steps: prepare, then confirm |
 | `POST /api/fund/withdraw` | Two steps: challenge, then submit |
 | `POST /api/fund/faucet` | Free test tokens, testnets only |
-| `GET /api/market/asset` | Look up a Solana token by address |
-| `GET /api/market/candles` | Candles for a requested token |
+| `GET /api/market/quotes` | Live quotes for the listed tokens |
+| `GET /api/market/asset` | Look up a Stock Token by symbol, or any token by address |
+| `GET /api/market/candles` | Candles for a Stock Token or a requested token |
 | `GET /api/rewards/status` | Whether rewards can be paid, and one wallet's claim |
 | `POST /api/rewards/challenge` | The message to sign |
 | `POST /api/rewards/claim` | Verify and pay |
@@ -310,12 +335,15 @@ src/
     fund/              deposits, withdrawals, bonuses, faucet
     requests/          the trade request queue
     rewards/           reward claims and payouts
-    chains/            everything that touches Solana
-    market/            data for requested tokens
+    chains/            everything that touches Robinhood Chain
+    market/            Stock Token prices, quotes, and data for requested tokens
     db.ts              database connection and tables
+    dns-fallback.ts    name lookups that don't give up too early
   store/               the browser's state (floor and prices)
+contracts/
+  TestUSDG.sol         the test USDG used on the testnet
 scripts/
-  setup-devnet.mjs     creates the devnet test token
+  setup-testnet.mjs    deploys the test USDG
 docs/
   how-it-works.md      this document
 ```
@@ -338,16 +366,17 @@ npm run dev -- -p 3210
 | --- | --- |
 | `AI_GATEWAY_API_KEY` | The real models. Without it the agents run on scripted rules |
 | `DATABASE_URL` | Shared, lasting state, and funding |
-| `TREASURY_SECRET_KEY` | Payments: deposits, withdrawals, bonuses, rewards |
+| `TREASURY_PRIVATE_KEY` | Payments: deposits, withdrawals, bonuses, rewards |
+| `ROBINHOOD_NETWORK` | `testnet` (the default) or `mainnet` |
 | `CLAIM_SECRET` | Signed messages that survive a restart |
 
-For funding on devnet, send the treasury some devnet SOL, then run:
+For funding on the testnet, send the treasury some testnet ETH from a faucet, then run:
 
 ```bash
-node --env-file=.env.local scripts/setup-devnet.mjs
+node --env-file=.env.local scripts/setup-testnet.mjs
 ```
 
-It creates a test token the treasury can mint and saves it as `USDC_MINT`.
+It deploys a test USDG the treasury can mint and saves its address as `USDG_ADDRESS`. On mainnet the app uses the real USDG and needs no setup script.
 
 **Cost.** A session is about 12 model calls and costs roughly $0.10. At the default 5-minute interval that is about $1 to $2 per hour while a page is open. `COUNCIL_MAX_ROUNDS_PER_DAY` (100 by default) caps the daily spend; after that the agents fall back to scripted rules until the next day.
 
@@ -356,8 +385,9 @@ Secrets belong in `.env.local` only. That file is not committed.
 ## 18. Known limits
 
 - **Trades are on paper.** Real execution, for example through Jupiter, is not built.
-- **Funding is for devnet.** It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`. Holding users' funds and paying bonuses has legal, licensing and tax consequences in most countries.
-- **Requested tokens depend on two free data services.** If either is unreachable, a request waits and a chart may not load.
+- **Funding is for the testnet.** It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`. Holding users' funds and paying bonuses has legal, licensing and tax consequences in most countries.
+- **Market data comes from free public services.** If one is unreachable, a token drops off the board for that session, a request waits, or a chart does not load.
+- **Market holidays are not accounted for.** On a holiday the desk treats Stock Tokens as open, and sees prices that do not move.
 - **The per-IP limit on rewards trusts the `x-forwarded-for` header**, so the server must sit behind a proxy you control.
 - **There are no automated tests in the repository.** The checks used during development live outside version control.
 - Nothing on the site is financial advice.

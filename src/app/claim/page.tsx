@@ -5,7 +5,7 @@ import { SiteHeader } from "@/components/site/site-header";
 
 export const metadata: Metadata = {
   title: "Arena Rewards · The Council",
-  description: "Back an AI agent and claim USDC on Solana.",
+  description: "Back an AI agent and claim USDG on Robinhood Chain.",
 };
 
 export default function ClaimPage() {

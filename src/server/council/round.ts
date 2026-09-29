@@ -18,7 +18,7 @@ import { scriptedBrain } from "./scripted-brain";
 import { fundingLevel, pickLens, type Effort, type Skill } from "./skills";
 import { liveRequests, type ActiveRequest, type RequestSource } from "../requests/service";
 import { assetQuote } from "../market/assets";
-import { fetchPrice, fetchStats, poolStats } from "./stats";
+import { assetStats, fetchBoard, fetchPrice, type Board } from "./stats";
 import { updateState, type CouncilState } from "./store";
 
 const VOTES_TO_PASS = 3;
@@ -109,11 +109,11 @@ function chooseChallengers(pitches: Pitch[], proposal: Proposal): AgentId[] {
 
 /** Where a round gets its market data. Replaceable so a round can be tested against a chosen market. */
 export interface MarketSource {
-  stats(): Promise<TokenStats[]>;
+  board(): Promise<Board>;
   price(token: AssetKey, assets: Record<AssetKey, DeskAsset>): Promise<number>;
 }
 
-const liveMarket: MarketSource = { stats: fetchStats, price: fetchPrice };
+const liveMarket: MarketSource = { board: fetchBoard, price: fetchPrice };
 
 const LENS_MEMORY = 6;
 const perAgent = <T,>(fn: (a: AgentId) => T) => Object.fromEntries(AGENT_ORDER.map((a) => [a, fn(a)])) as Record<AgentId, T>;
@@ -134,13 +134,12 @@ export async function runRound(
   let settled = false;
   try {
     const startedAt = opening.lastRoundAt;
-    const listed = await market.stats();
+    const { stats: listed, market1h } = await market.board();
     if (listed.length === 0) throw new Error("No market data available");
     const before = opening.portfolio;
 
     // A funder's request, if one is waiting. A failure here must not cost the desk its session.
-    const solChange = listed.find((s) => s.token === "SOL")?.change1h ?? 0;
-    const asked = await requests.take(run.id, before.cash, opening.assets, solChange).catch((e) => {
+    const asked = await requests.take(run.id, before.cash, opening.assets, market1h).catch((e) => {
       console.error("[council] could not read the request queue:", e instanceof Error ? e.message : e);
       return null;
     });
@@ -148,8 +147,7 @@ export async function runRound(
     const request = asked?.brief ?? null;
     let assets = opening.assets;
     if (asked && request) {
-      const quote = { price: asked.price, change24h: asked.stats.change24h, liquidityUsd: request.liquidityUsd, volume24hUsd: request.volume24hUsd };
-      assets = { ...assets, [request.asset.key]: { ...request.asset, quote, quotedAt: Date.now() } };
+      assets = { ...assets, [request.asset.key]: { ...request.asset, quote: asked.quote, quotedAt: Date.now() } };
       const known = assets;
       await updateState((s) => ({ ...s, assets: { ...s.assets, [request.asset.key]: known[request.asset.key] } }));
     }
@@ -159,11 +157,14 @@ export async function runRound(
     const heldStats = await Promise.all(
       heldAssets.map(async (t) => {
         const quote = await assetQuote(assets[t]).catch(() => null);
-        return quote ? poolStats(assets[t], quote, solChange).catch(() => null) : null;
+        return quote ? assetStats(assets[t], quote, market1h).catch(() => null) : null;
       }),
     );
     const stats = [...listed.filter((s) => s.token !== request?.asset.key), ...heldStats.filter((s): s is TokenStats => !!s), ...(asked ? [asked.stats] : [])];
     const prices: Prices = Object.fromEntries(stats.map((s) => [s.token, s.price]));
+
+    // A Stock Token can't be bought or sold while its market is closed.
+    const closed = stats.filter((s) => s.session === "closed").map((s) => s.token);
 
     const lens: Record<AgentId, Skill> = perAgent((a) => pickLens(a, opening.lenses[a] ?? []));
     const effort: Record<AgentId, Effort> = perAgent((a) => fundingLevel(userFunding(before, a)).effort);
@@ -188,7 +189,8 @@ export async function runRound(
       stats,
       portfolio: before,
       prices,
-      sellable: before.positions.filter((p) => canSell(before, p.token, run.id)).map((p) => p.token),
+      sellable: before.positions.filter((p) => canSell(before, p.token, run.id) && !closed.includes(p.token)).map((p) => p.token),
+      closed,
       recent: opening.recent,
       said,
       floor,
@@ -315,7 +317,7 @@ export async function runRound(
           ? bound
             ? `${nameOf(leader)} bought ${usd(f.usd)} of ${f.token} at ${px(price)} for its funder, joined by ${joined}. Stop ${final.stopPct}% below, target ${final.targetPct}% above. Held for at least ${COMMITTED_HOLD_ROUNDS} sessions unless one of them is hit.`
             : `Bought ${usd(f.usd)} of ${f.token} at ${px(price)}. Stop ${final.stopPct}% below, target ${final.targetPct}% above.`
-          : `Sold ${final.sellPct}% of ${f.token} at ${px(price)}. Realized ${signed(f.realized ?? 0, "")} USDC.`;
+          : `Sold ${final.sellPct}% of ${f.token} at ${px(price)}. Realized ${signed(f.realized ?? 0, "")} USDG.`;
     }
 
     const origin = asking ? " at a funder's request" : "";

@@ -11,7 +11,7 @@ import type { AgentId } from "./types";
 export const EMOTIONS = ["neutral", "confident", "excited", "skeptical", "worried", "annoyed", "happy", "sad"] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
-/** USDC the house gives each agent to start with. */
+/** USDG the house gives each agent to start with. */
 export const START_CASH = 100;
 /** Smallest order the desk will place. */
 export const MIN_ORDER_USD = 10;
@@ -30,10 +30,10 @@ export type Stakes = Record<AgentId, number>;
 export interface Position {
   token: AssetKey;
   qty: number;
-  /** USDC paid for the quantity still held. */
+  /** USDG paid for the quantity still held. */
   cost: number;
   entryPrice: number;
-  /** Each agent's share of `cost`, in USDC. */
+  /** Each agent's share of `cost`, in USDG. */
   stake: Stakes;
   stop: number;
   target: number;
@@ -69,7 +69,7 @@ export interface Fill {
   leader: AgentId;
   /** PnL booked by this fill. Null for buys. */
   realized: number | null;
-  /** USDC each agent put in (buy) or got back (sell). */
+  /** USDG each agent put in (buy) or got back (sell). */
   stake: Stakes;
 }
 

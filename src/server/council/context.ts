@@ -3,7 +3,7 @@ import { AGENTS } from "@/lib/agents";
 import type { RequestBrief } from "@/lib/assets";
 import { agentPnl, canSell, poolCapital, poolEquity, positionOf, unrealized, type Portfolio } from "@/lib/council";
 import type { Exchange, Pitch, Proposal, TokenStats } from "@/lib/council-types";
-import { priceDecimals, type AssetKey, type Prices } from "@/lib/market";
+import { priceDecimals, SESSION_LABEL, type AssetKey, type Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import type { Effort, Skill } from "./skills";
 
@@ -14,6 +14,8 @@ export interface RoundCtx {
   prices: Prices;
   /** Tokens the council is allowed to sell this round. */
   sellable: AssetKey[];
+  /** Stock Tokens whose market is closed. They can be neither bought nor sold this round. */
+  closed: AssetKey[];
   recent: string[];
   /** What each agent said lately, including earlier in this round. Grows as the round goes on. */
   said: Record<AgentId, string[]>;
@@ -44,8 +46,12 @@ export function describeRequest(ctx: Pick<RoundCtx, "request" | "portfolio" | "p
       : `${who} presents it once, and the whole desk weighs it. The desk buys it only if 3 of 4 traders back it.`;
   const held = positionOf(ctx.portfolio, r.asset.key);
   const now = held ? (ctx.prices[held.token] ?? held.entryPrice) : 0;
+  const what =
+    r.asset.kind === "stock"
+      ? `a Robinhood Stock Token that follows the share price of ${r.asset.name}`
+      : `a token on Robinhood Chain traded in a pool with ${big(r.liquidityUsd ?? 0)} of liquidity`;
   return [
-    `A user who funded ${who} with ${usd(r.usd)} asked the desk to buy ${r.asset.key} (${r.asset.name}), a Solana token traded on a DEX pool with ${big(r.liquidityUsd)} of liquidity.`,
+    `A user who funded ${who} with ${usd(r.usd)} asked the desk to buy ${r.asset.key} (${r.asset.name}), ${what}.`,
     rule,
     ...(held
       ? [
@@ -71,9 +77,10 @@ export function marketTable(stats: TokenStats[]): string {
       s.volRatio === null ? "volume n/a" : `volume x${s.volRatio} of average`,
       `volatility ${s.atrPct}% per 5m`,
       `at ${s.rangePos}% of 24h range`,
-      s.token === "SOL" ? null : `vs SOL 1h ${signed(s.vsSol1h, "pp")}`,
+      s.vsMarket1h === null ? null : `vs stock market 1h ${signed(s.vsMarket1h, "pp")}`,
       `1h range ${px(s.low1h)} to ${px(s.high1h)}`,
-      s.pool ? `DEX pool, liquidity ${big(s.pool.liquidityUsd)}, 24h volume ${big(s.pool.volume24hUsd)}` : null,
+      s.session ? SESSION_LABEL[s.session].toLowerCase() : null,
+      s.pool ? `priced by its pool, liquidity ${big(s.pool.liquidityUsd)}, 24h volume ${big(s.pool.volume24hUsd)}` : null,
     ]
       .filter(Boolean)
       .join(" | "),
@@ -85,7 +92,7 @@ function deskReport(ctx: RoundCtx, agent: AgentId): string {
   const p = ctx.portfolio;
   const lines = [
     `Pool equity: ${usd(poolEquity(p, ctx.prices))} on ${usd(poolCapital(p))} of capital.`,
-    `Your cash: ${usd(p.cash[agent])}. Your PnL so far: ${signed(agentPnl(p, agent, ctx.prices), "")} USDC.`,
+    `Your cash: ${usd(p.cash[agent])}. Your PnL so far: ${signed(agentPnl(p, agent, ctx.prices), "")} USDG.`,
     "Open positions:",
   ];
   if (p.positions.length === 0) lines.push("- none");
@@ -106,8 +113,9 @@ export function briefing(ctx: RoundCtx, agent: AgentId): string {
   return [
     `ROUND ${ctx.round}`,
     "",
-    "MARKET (live spot prices, USDT pairs)",
+    "MARKET (live prices in USD. ETH is crypto. The rest are Robinhood Stock Tokens, which follow share prices.)",
     marketTable(ctx.stats),
+    ...(ctx.closed.length ? [`Closed now, so they can be neither bought nor sold this round: ${ctx.closed.join(", ")}.`] : []),
     "",
     ...(ctx.request ? ["A FUNDER'S REQUEST THIS ROUND", describeRequest(ctx), ""] : []),
     "DESK",
@@ -149,7 +157,7 @@ export function briefingState(ctx: RoundCtx, agent: AgentId) {
     funderRequest: ctx.request ? describeRequest(ctx) : null,
     market: ctx.stats.map((s) => ({
       token: s.token,
-      dexPoolLiquidityUsd: s.pool?.liquidityUsd ?? null,
+      poolLiquidityUsd: s.pool?.liquidityUsd ?? null,
       priceUsd: s.price,
       change15mPct: +s.change15m.toFixed(2),
       change1hPct: +s.change1h.toFixed(2),
@@ -160,7 +168,8 @@ export function briefingState(ctx: RoundCtx, agent: AgentId) {
       volumeVsAverage: s.volRatio,
       volatilityPctPer5m: s.atrPct,
       positionIn24hRangePct: s.rangePos,
-      vsSol1hPctPoints: s.vsSol1h,
+      vsStockMarket1hPctPoints: s.vsMarket1h,
+      marketSession: s.session ?? "always open",
       low1h: s.low1h,
       high1h: s.high1h,
     })),

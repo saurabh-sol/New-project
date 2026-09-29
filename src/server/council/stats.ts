@@ -1,7 +1,12 @@
 import type { Asset, AssetQuote, DeskAsset } from "@/lib/assets";
 import type { TokenStats } from "@/lib/council-types";
-import { fetchCandles, fetchQuotes, geckoPrices, isToken, TOKENS, type AssetKey, type Candle, type Prices, type Quote, type Token } from "@/lib/market";
+import { fetchCandles, geckoPrices, isCrypto, isToken, TOKENS, type AssetKey, type Candle, type Prices, type Quote, type Token } from "@/lib/market";
 import { assetCandles, assetQuote } from "../market/assets";
+import { listedQuotes } from "../market/quotes";
+import { stockCandles } from "../market/stocks";
+
+/** The stock market as a whole, which a Stock Token's move is measured against. */
+const BENCHMARK = "QQQ";
 
 const pct = (from: number, to: number) => (from > 0 ? ((to - from) / from) * 100 : 0);
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -41,8 +46,11 @@ function atrPct(candles: Candle[], period = 14): number {
   return last > 0 ? (avg(ranges) / last) * 100 : 0;
 }
 
+/** Change over the last hour of five-minute candles, in percent. */
+const hourChange = (candles: Candle[]) => (candles.length ? pct(candles.slice(-12)[0].open, candles[candles.length - 1].close) : 0);
+
 /** `candles` are five minutes apart, oldest first. */
-function summarize(token: AssetKey, candles: Candle[], quote: Quote | undefined, hasVolume: boolean): TokenStats {
+function summarize(token: AssetKey, candles: Candle[], quote: Pick<Quote, "change24h" | "high24h" | "low24h"> | undefined, hasVolume: boolean): TokenStats {
   const last = candles[candles.length - 1];
   const closes = candles.map((c) => c.close);
   const back = (n: number) => candles[Math.max(0, candles.length - n)];
@@ -66,8 +74,8 @@ function summarize(token: AssetKey, candles: Candle[], quote: Quote | undefined,
     volRatio: hasVolume && baseVol > 0 ? round(recentVol / baseVol, 1) : null,
     trend: gap > 0.08 ? "up" : gap < -0.08 ? "down" : "flat",
     atrPct: round(atrPct(candles)),
-    rangePos: high24h > low24h ? Math.round(((last.close - low24h) / (high24h - low24h)) * 100) : 50,
-    vsSol1h: 0,
+    rangePos: high24h > low24h ? Math.round(Math.min(Math.max((last.close - low24h) / (high24h - low24h), 0), 1) * 100) : 50,
+    vsMarket1h: null,
     high1h: Math.max(...hour.map((c) => c.high)),
     low1h: Math.min(...hour.map((c) => c.low)),
   };
@@ -80,7 +88,10 @@ const fromPrices = (points: Array<{ time: number; price: number }>): Candle[] =>
     return { time: p.time, open, high: Math.max(open, p.price), low: Math.min(open, p.price), close: p.price, volume: 0 };
   });
 
-async function series(token: Token, signal: AbortSignal): Promise<{ candles: Candle[]; hasVolume: boolean }> {
+async function series(token: Token): Promise<{ candles: Candle[]; hasVolume: boolean }> {
+  // A session can wait a few seconds for a Stock Token's history. Without it the token can't be discussed.
+  if (!isCrypto(token)) return { candles: await stockCandles(token, "5m", 60, true), hasVolume: true };
+  const signal = AbortSignal.timeout(20_000);
   try {
     return { candles: await fetchCandles(token, "5m", 60, signal), hasVolume: true };
   } catch {
@@ -88,28 +99,48 @@ async function series(token: Token, signal: AbortSignal): Promise<{ candles: Can
   }
 }
 
-/** The same real numbers every agent sees: price, momentum, trend, volatility and volume for each token. */
-export async function fetchStats(): Promise<TokenStats[]> {
-  const signal = AbortSignal.timeout(20_000);
-  const [quotes, ...all] = await Promise.all([fetchQuotes(signal), ...TOKENS.map((t) => series(t, signal).catch(() => null))]);
-  const stats = TOKENS.flatMap((t, i) => {
-    const s = all[i];
-    return s && s.candles.length >= 30 ? [summarize(t, s.candles, quotes[t], s.hasVolume)] : [];
-  });
-  const sol = stats.find((s) => s.token === "SOL")?.change1h ?? 0;
-  return stats.map((s) => ({ ...s, vsSol1h: round(s.change1h - sol) }));
+/** How far the stock market as a whole moved in the last hour, in percent. Zero if it can't be read. */
+export const benchmarkChange = () =>
+  stockCandles(BENCHMARK, "5m", 60)
+    .then(hourChange)
+    .catch(() => 0);
+
+export interface Board {
+  stats: TokenStats[];
+  /** The stock market's move over the last hour, which Stock Tokens are measured against. */
+  market1h: number;
 }
 
-/** The same figures for a token traded on a DEX pool. Null if the pool has too little history to read. */
-export async function poolStats(asset: Asset, quote: AssetQuote, solChange1h: number): Promise<TokenStats | null> {
-  // A session can wait a few seconds for these. Without them the token can't be discussed at all.
+/** The same real numbers every agent sees: price, momentum, trend, volatility and volume for each listed token. */
+export async function fetchBoard(): Promise<Board> {
+  const [quotes, market1h, ...all] = await Promise.all([listedQuotes(), benchmarkChange(), ...TOKENS.map((t) => series(t).catch(() => null))]);
+  const stats = TOKENS.flatMap((t, i): TokenStats[] => {
+    const s = all[i];
+    const quote = quotes[t];
+    if (!s || s.candles.length < 30 || !quote) return [];
+    const stock = !isCrypto(t);
+    return [{ ...summarize(t, s.candles, quote, s.hasVolume), price: quote.price, vsMarket1h: stock ? round(hourChange(s.candles) - market1h) : null, session: quote.session }];
+  });
+  return { stats, market1h };
+}
+
+export const fetchStats = async () => (await fetchBoard()).stats;
+
+/** The same figures for a token a funder asked for. Null if it has too little history to read. */
+export async function assetStats(asset: Asset, quote: AssetQuote, market1h: number): Promise<TokenStats | null> {
   const candles = await assetCandles(asset, "5m", 60, true);
   if (candles.length < 30) return null;
-  // The pool's latest trade can be minutes old. The quote is the price an order would get now.
+  // The latest trade can be minutes old. The quote is the price an order would get now.
   const last = candles[candles.length - 1];
   const live = [...candles.slice(0, -1), { ...last, close: quote.price, high: Math.max(last.high, quote.price), low: Math.min(last.low, quote.price) }];
-  const s = summarize(asset.key, live, { price: quote.price, change24h: quote.change24h }, true);
-  return { ...s, vsSol1h: round(s.change1h - solChange1h), pool: { name: asset.name, liquidityUsd: quote.liquidityUsd, volume24hUsd: quote.volume24hUsd } };
+  const s = summarize(asset.key, live, { change24h: quote.change24h }, true);
+  return {
+    ...s,
+    vsMarket1h: asset.kind === "stock" ? round(s.change1h - market1h) : null,
+    session: quote.session,
+    name: asset.name,
+    pool: asset.kind === "pool" ? { liquidityUsd: quote.liquidityUsd ?? 0, volume24hUsd: quote.volume24hUsd } : undefined,
+  };
 }
 
 type Assets = Record<AssetKey, DeskAsset>;
@@ -120,7 +151,7 @@ export async function fetchPrice(token: AssetKey, assets: Assets = {}): Promise<
     if (!asset) throw new Error(`No live price for ${token}`);
     return (await assetQuote(asset)).price;
   }
-  const quote = (await fetchQuotes(AbortSignal.timeout(10_000)))[token];
+  const quote = (await listedQuotes())[token];
   if (!quote) throw new Error(`No live price for ${token}`);
   return quote.price;
 }
@@ -139,25 +170,26 @@ export async function refreshAssets(assets: Assets, held: AssetKey[]): Promise<A
 }
 
 /**
- * The price of everything the desk can hold: listed tokens from the exchange feed,
- * requested tokens from their pools. Throws if the exchange feed can't be reached.
+ * The price of everything the desk can hold: listed tokens, and the requested tokens it holds.
+ * Throws if the listed tokens can't be quoted.
  */
 export async function deskPrices(state: { assets: Assets; portfolio: { positions: Array<{ token: AssetKey }> } }): Promise<Prices> {
   const held = state.portfolio.positions.map((p) => p.token).filter((t) => !isToken(t));
-  const [quotes, assets] = await Promise.all([fetchQuotes(AbortSignal.timeout(10_000)), refreshAssets(state.assets, held)]);
+  const [quotes, assets] = await Promise.all([listedQuotes(), refreshAssets(state.assets, held)]);
   const prices: Prices = Object.fromEntries(Object.entries(quotes).map(([t, q]) => [t, q.price]));
   for (const k of held) if (assets[k]) prices[k] = assets[k].quote.price;
   return prices;
 }
 
 /**
- * Lowest and highest price seen since `sinceMs`, with the time each was reached.
- * Used to decide whether a stop or target was touched.
+ * One-minute candles since `sinceMs`, used to decide whether a stop or target was touched.
+ * Empty for a token whose market is closed, since its price can't have moved.
  */
 export async function extremesSince(token: AssetKey, sinceMs: number, nowMs: number, assets: Assets = {}): Promise<Candle[]> {
-  const signal = AbortSignal.timeout(10_000);
   const minutes = Math.min(Math.ceil((nowMs - sinceMs) / 60_000) + 1, 1000);
   if (!isToken(token)) return assets[token] ? assetCandles(assets[token], "1m", minutes) : [];
+  if (!isCrypto(token)) return stockCandles(token, "1m", minutes);
+  const signal = AbortSignal.timeout(10_000);
   try {
     return await fetchCandles(token, "1m", minutes, signal);
   } catch {

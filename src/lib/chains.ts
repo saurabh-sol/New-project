@@ -1,23 +1,31 @@
-/** The network the app pays and takes deposits on. Shared by server and browser. */
+/** The network the app pays and takes deposits on: Robinhood Chain. Shared by server and browser. */
 
-export type ChainId = "solana";
+export type ChainId = "robinhood";
 
-/** What the browser must do to make a deposit: sign a transfer the server built and co-signed, and hand it back. */
+export type Network = "mainnet" | "testnet";
+
+/** Chain ids of Robinhood Chain and its testnet. */
+export const CHAIN_IDS: Record<Network, number> = { mainnet: 4663, testnet: 46630 };
+
+/** What the browser must do to make a deposit: send a token transfer from the wallet, and report its hash. */
 export interface PreparedDeposit {
-  kind: "solana";
-  transaction: string;
-  cluster: "devnet" | "mainnet-beta";
+  kind: "robinhood";
+  chainId: number;
+  token: `0x${string}`;
+  to: `0x${string}`;
+  /** The amount in the token's smallest unit. */
+  units: string;
 }
 
 /** What the browser hands back as evidence of the deposit. */
 export interface DepositProof {
-  kind: "solana";
-  transaction: string;
+  kind: "robinhood";
+  hash: `0x${string}`;
 }
 
 export interface ChainStatus {
   id: ChainId;
-  /** For people: "Solana devnet". */
+  /** For people: "Robinhood Chain Testnet". */
   network: string;
   testnet: boolean;
   tokenSymbol: string;
@@ -28,7 +36,7 @@ export interface ChainStatus {
   payoutReason: string | null;
   faucet: boolean;
   faucetAmount: number;
-  /** Link to a transaction on a block explorer; "{id}" is replaced by the signature. */
+  /** Link to a transaction on the block explorer; "{id}" is replaced by the transaction hash. */
   explorerTx: string;
 }
 

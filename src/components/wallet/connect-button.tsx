@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { shortAddress } from "@/lib/wallet";
-import { cn } from "@/lib/utils";
+import { cn, shortAddress } from "@/lib/utils";
 import { useWallet } from "./wallet-provider";
 
 export function ConnectButton({ className }: { className?: string }) {

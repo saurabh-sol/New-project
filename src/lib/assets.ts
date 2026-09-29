@@ -1,5 +1,5 @@
-/** Solana tokens a funder asked an agent to trade, found by mint address. Shared by server and browser. */
-import type { AssetKey } from "./market";
+/** Tokens on Robinhood Chain that a funder asked an agent to trade. Shared by server and browser. */
+import type { AssetKey, Session } from "./market";
 import type { AgentId } from "./types";
 
 export interface Asset {
@@ -7,17 +7,25 @@ export interface Asset {
   key: AssetKey;
   symbol: string;
   name: string;
-  /** The token's mint address. */
+  /** The token's contract address on Robinhood Chain. */
   address: string;
-  /** Its most liquid trading pool, which is where its price and candles come from. */
-  pool: string;
+  /**
+   * stock: a Robinhood Stock Token, priced by Robinhood.
+   * pool: any other token, priced by its most liquid trading pool.
+   */
+  kind: "stock" | "pool";
+  /** For a pool token: the pool its price and candles come from. */
+  pool?: string;
 }
 
 export interface AssetQuote {
   price: number;
   change24h: number; // percent
-  liquidityUsd: number;
+  /** What the token's pool holds. Null for a Stock Token, which is not priced by a pool. */
+  liquidityUsd: number | null;
   volume24hUsd: number;
+  /** Set for Stock Tokens. */
+  session?: Session;
 }
 
 /** A token the desk has been asked to trade, with the last price seen for it. */
@@ -42,7 +50,7 @@ export interface RequestBrief {
   mode: RequestMode;
   /** The funding that came with the request. */
   usd: number;
-  liquidityUsd: number;
+  liquidityUsd: number | null;
   volume24hUsd: number;
 }
 

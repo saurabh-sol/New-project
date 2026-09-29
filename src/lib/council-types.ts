@@ -1,7 +1,7 @@
 /** What the server sends the browser about a council session. */
 import type { DeskAsset, RequestBrief } from "./assets";
 import type { Emotion, Fill, Portfolio } from "./council";
-import type { AssetKey } from "./market";
+import type { AssetKey, Session } from "./market";
 import type { AgentId } from "./types";
 
 /** model: written by the AI model. scripted: rule-based stand-in, used when a model can't be reached. */
@@ -23,12 +23,16 @@ export interface TokenStats {
   atrPct: number;
   /** Where the price sits in its 24-hour range, 0 (low) to 100 (high). */
   rangePos: number;
-  /** 1-hour change minus SOL's 1-hour change, in percentage points. */
-  vsSol1h: number;
+  /** For a Stock Token: its 1-hour change minus the stock market's, in percentage points. Null for anything else. */
+  vsMarket1h: number | null;
   high1h: number;
   low1h: number;
-  /** Set for a token traded on a DEX pool rather than listed on the exchange feed. */
-  pool?: { name: string; liquidityUsd: number; volume24hUsd: number };
+  /** Set for a Stock Token: whether it can be traded now. It can't at the weekend. */
+  session?: Session;
+  /** Full name, for a token a funder asked for. */
+  name?: string;
+  /** Set for a token priced by its trading pool. */
+  pool?: { liquidityUsd: number; volume24hUsd: number };
 }
 
 export interface Pitch {

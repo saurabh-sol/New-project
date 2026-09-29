@@ -116,6 +116,7 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
     p.token = ctx.request!.asset.key;
     if (p.action === "SELL") p.action = "HOLD";
   }
+  if (p.action !== "HOLD" && ctx.closed.includes(p.token)) p.action = "HOLD";
   if (p.action === "SELL" && !ctx.sellable.includes(p.token)) p.action = "HOLD";
   if (p.action === "BUY") {
     p.stakeUsd = Math.floor(clamp(p.stakeUsd, 0, cash));

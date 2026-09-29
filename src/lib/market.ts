@@ -1,15 +1,30 @@
 /**
- * Real market data. Binance's public spot endpoints are the primary source
- * (USDT pairs); CoinGecko is the backup when Binance can't be reached.
- * Neither needs an API key.
+ * What the desk trades, and the market data the browser can read for itself.
+ *
+ * The desk lists ETH and a handful of Robinhood Stock Tokens. ETH is priced on Binance's
+ * public feed. Stock Tokens are priced by the server from Robinhood's Stock Token API,
+ * which a browser can't call directly.
  */
 
-export const TOKENS = ["SOL", "JUP", "BONK", "WIF", "JTO", "PYTH"] as const;
+export const TOKENS = ["ETH", "TSLA", "NVDA", "AAPL", "AMZN", "PLTR"] as const;
 export type Token = (typeof TOKENS)[number];
 
+/** Listed tokens that are crypto assets. They trade every hour of every day. */
+const CRYPTO: readonly string[] = ["ETH"];
+
+/** Contract address of each listed token on Robinhood Chain. ETH is held as wrapped ETH. */
+export const ADDRESSES: Record<Token, string> = {
+  ETH: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+  TSLA: "0x322F0929c4625eD5bAd873c95208D54E1c003b2d",
+  NVDA: "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+  AAPL: "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+  AMZN: "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
+  PLTR: "0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A",
+};
+
 /**
- * Names any asset the desk can hold: a listed token's symbol ("SOL"), or a key made for a
- * token a funder asked for by contract address.
+ * Names any asset the desk can hold: a listed token's symbol ("TSLA"), or a key made for a
+ * token a funder asked for.
  */
 export type AssetKey = string;
 
@@ -18,10 +33,9 @@ export type Prices = Record<AssetKey, number | undefined>;
 
 export const INTERVALS = ["1m", "5m", "15m", "1h"] as const;
 export type Interval = (typeof INTERVALS)[number];
+export const isInterval = (v: unknown): v is Interval => typeof v === "string" && (INTERVALS as readonly string[]).includes(v);
 
 export const INTERVAL_SECONDS: Record<Interval, number> = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600 };
-
-export type PriceSource = "binance" | "coingecko";
 
 export interface Candle {
   time: number; // candle open, unix seconds
@@ -32,38 +46,52 @@ export interface Candle {
   volume: number;
 }
 
+/**
+ * When a Stock Token can be traded. Stock Tokens trade around the clock from Sunday evening
+ * to Friday evening, New York time, and not at the weekend.
+ */
+export type Session = "regular" | "extended" | "overnight" | "closed";
+
 export interface Quote {
   price: number;
-  change24h: number; // percent
+  change24h: number; // percent; for a Stock Token, against the previous close
   high24h?: number;
   low24h?: number;
+  /** Set for Stock Tokens. Crypto is always open. */
+  session?: Session;
 }
+
+export const isToken = (t: string): t is Token => (TOKENS as readonly string[]).includes(t);
+export const isCrypto = (t: string) => CRYPTO.includes(t);
+
+const NEW_YORK = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "numeric", hourCycle: "h23" });
+
+/** The Stock Token session at a given moment. Market holidays are not accounted for. */
+export function stockSession(at = new Date()): Session {
+  const parts = Object.fromEntries(NEW_YORK.formatToParts(at).map((p) => [p.type, p.value]));
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  const day = parts.weekday;
+  const evening = 20 * 60;
+  if (day === "Sat" || (day === "Fri" && minutes >= evening) || (day === "Sun" && minutes < evening)) return "closed";
+  if (day === "Sun") return "overnight";
+  if (minutes >= 9 * 60 + 30 && minutes < 16 * 60) return "regular";
+  if (minutes >= 4 * 60 && minutes < evening) return "extended";
+  return "overnight";
+}
+
+export const SESSION_LABEL: Record<Session, string> = {
+  regular: "Market open",
+  extended: "Extended hours",
+  overnight: "Overnight session",
+  closed: "Closed for the weekend",
+};
 
 const BINANCE = "https://data-api.binance.vision/api/v3";
 const BINANCE_WS = "wss://data-stream.binance.vision/ws";
 const COINGECKO = "https://api.coingecko.com/api/v3";
-
-const GECKO_ID: Record<Token, string> = {
-  SOL: "solana",
-  JUP: "jupiter-exchange-solana",
-  BONK: "bonk",
-  WIF: "dogwifcoin",
-  JTO: "jito-governance-token",
-  PYTH: "pyth-network",
-};
-
-/** Mint address of each listed token on Solana. */
-export const MINTS: Record<Token, string> = {
-  SOL: "So11111111111111111111111111111111111111112",
-  JUP: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
-  BONK: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-  WIF: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
-  JTO: "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
-  PYTH: "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
-};
+const GECKO_ID: Record<string, string> = { ETH: "ethereum" };
 
 const pair = (token: string) => `${token}USDT`;
-export const isToken = (t: string): t is Token => (TOKENS as readonly string[]).includes(t);
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal });
@@ -71,7 +99,7 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
-// --- Binance ---
+// --- crypto: Binance, with CoinGecko as the backup ---
 
 type RawKline = [number, string, string, string, string, string, ...unknown[]];
 
@@ -84,88 +112,54 @@ const toCandle = (k: RawKline): Candle => ({
   volume: +k[5],
 });
 
-/** Candles from Binance. Throws if Binance can't be reached. */
-export async function fetchCandles(token: Token, interval: Interval, limit = 300, signal?: AbortSignal): Promise<Candle[]> {
+/** Candles of a crypto token from Binance. Throws if Binance can't be reached. */
+export async function fetchCandles(token: string, interval: Interval, limit = 300, signal?: AbortSignal): Promise<Candle[]> {
   const rows = await getJson<RawKline[]>(`${BINANCE}/klines?symbol=${pair(token)}&interval=${interval}&limit=${limit}`, signal);
   return rows.map(toCandle);
 }
 
-async function binanceQuotes(signal?: AbortSignal): Promise<Partial<Record<Token, Quote>>> {
-  const symbols = encodeURIComponent(JSON.stringify(TOKENS.map(pair)));
+/** One day of prices about five minutes apart, newest last. */
+export async function geckoPrices(token: string, signal?: AbortSignal): Promise<Array<{ time: number; price: number }>> {
+  const rows = await getJson<{ prices: Array<[number, number]> }>(`${COINGECKO}/coins/${GECKO_ID[token]}/market_chart?vs_currency=usd&days=1`, signal);
+  return rows.prices.map(([ms, price]) => ({ time: Math.floor(ms / 1000), price }));
+}
+
+async function binanceQuotes(tokens: string[], signal?: AbortSignal): Promise<Record<string, Quote>> {
+  const symbols = encodeURIComponent(JSON.stringify(tokens.map(pair)));
   const rows = await getJson<Array<{ symbol: string; lastPrice: string; priceChangePercent: string; highPrice: string; lowPrice: string }>>(
     `${BINANCE}/ticker/24hr?symbols=${symbols}`,
     signal,
   );
-  const out: Partial<Record<Token, Quote>> = {};
-  for (const r of rows) {
-    const token = r.symbol.replace(/USDT$/, "");
-    if (isToken(token)) out[token] = { price: +r.lastPrice, change24h: +r.priceChangePercent, high24h: +r.highPrice, low24h: +r.lowPrice };
-  }
-  return out;
+  return Object.fromEntries(rows.map((r) => [r.symbol.replace(/USDT$/, ""), { price: +r.lastPrice, change24h: +r.priceChangePercent, high24h: +r.highPrice, low24h: +r.lowPrice }]));
 }
 
-// --- CoinGecko ---
-
-async function geckoQuotes(signal?: AbortSignal): Promise<Partial<Record<Token, Quote>>> {
-  const ids = TOKENS.map((t) => GECKO_ID[t]).join(",");
-  const rows = await getJson<Record<string, { usd: number; usd_24h_change: number }>>(
-    `${COINGECKO}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
-    signal,
-  );
-  const out: Partial<Record<Token, Quote>> = {};
-  for (const t of TOKENS) {
+async function geckoQuotes(tokens: string[], signal?: AbortSignal): Promise<Record<string, Quote>> {
+  const ids = tokens.map((t) => GECKO_ID[t]).join(",");
+  const rows = await getJson<Record<string, { usd: number; usd_24h_change: number }>>(`${COINGECKO}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`, signal);
+  const out: Record<string, Quote> = {};
+  for (const t of tokens) {
     const r = rows[GECKO_ID[t]];
     if (r) out[t] = { price: r.usd, change24h: r.usd_24h_change };
   }
   return out;
 }
 
-/** One day of 30-minute candles. CoinGecko's free tier offers nothing finer, and no volume. */
-async function geckoCandles(token: Token, signal?: AbortSignal): Promise<Candle[]> {
-  const rows = await getJson<Array<[number, number, number, number, number]>>(`${COINGECKO}/coins/${GECKO_ID[token]}/ohlc?vs_currency=usd&days=1`, signal);
-  return rows.map(([ms, open, high, low, close]) => ({ time: Math.floor(ms / 1000) - 1800, open, high, low, close, volume: 0 }));
-}
-
-/** One day of prices about five minutes apart, newest last. */
-export async function geckoPrices(token: Token, signal?: AbortSignal): Promise<Array<{ time: number; price: number }>> {
-  const rows = await getJson<{ prices: Array<[number, number]> }>(`${COINGECKO}/coins/${GECKO_ID[token]}/market_chart?vs_currency=usd&days=1`, signal);
-  return rows.prices.map(([ms, price]) => ({ time: Math.floor(ms / 1000), price }));
-}
-
-// --- with fallback ---
-
-export async function fetchQuotesFrom(signal?: AbortSignal): Promise<{ quotes: Partial<Record<Token, Quote>>; source: PriceSource }> {
+/** Quotes for the listed crypto tokens. */
+export async function cryptoQuotes(signal?: AbortSignal): Promise<Record<string, Quote>> {
+  const tokens = TOKENS.filter(isCrypto);
   try {
-    return { quotes: await binanceQuotes(signal), source: "binance" };
+    return await binanceQuotes(tokens, signal);
   } catch (e) {
     if (signal?.aborted) throw e;
-    return { quotes: await geckoQuotes(signal), source: "coingecko" };
-  }
-}
-
-export const fetchQuotes = async (signal?: AbortSignal) => (await fetchQuotesFrom(signal)).quotes;
-
-export interface ChartData {
-  candles: Candle[];
-  source: PriceSource;
-  /** Seconds per candle actually returned, which differs from the request on the backup source. */
-  step: number;
-}
-
-export async function fetchChart(token: Token, interval: Interval, limit = 300, signal?: AbortSignal): Promise<ChartData> {
-  try {
-    return { candles: await fetchCandles(token, interval, limit, signal), source: "binance", step: INTERVAL_SECONDS[interval] };
-  } catch (e) {
-    if (signal?.aborted) throw e;
-    return { candles: await geckoCandles(token, signal), source: "coingecko", step: 1800 };
+    return geckoQuotes(tokens, signal);
   }
 }
 
 /**
- * Streams the live (still forming) candle from Binance. Reconnects on drop.
+ * Streams the live (still forming) candle of a crypto token from Binance. Reconnects on drop.
  * Returns an unsubscribe function.
  */
-export function subscribeCandles(token: Token, interval: Interval, onCandle: (c: Candle) => void): () => void {
+export function subscribeCandles(token: string, interval: Interval, onCandle: (c: Candle) => void): () => void {
   let ws: WebSocket | null = null;
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
@@ -197,7 +191,23 @@ export function subscribeCandles(token: Token, interval: Interval, onCandle: (c:
   };
 }
 
-/** Decimal places that keep ~5 significant digits, so BONK and SOL both read well. */
+// --- everything, through this app's own server ---
+
+/** Quotes for every listed token and every token a funder asked for. */
+export async function fetchQuotes(signal?: AbortSignal): Promise<Record<AssetKey, Quote>> {
+  const res = await fetch("/api/market/quotes", { signal, cache: "no-store" });
+  if (!res.ok) throw new Error(`Market data request failed (${res.status})`);
+  return ((await res.json()) as { quotes: Record<AssetKey, Quote> }).quotes;
+}
+
+/** Candles of any token that isn't crypto. */
+export async function fetchServerCandles(token: AssetKey, interval: Interval, signal?: AbortSignal): Promise<Candle[]> {
+  const res = await fetch(`/api/market/candles?token=${encodeURIComponent(token)}&interval=${interval}`, { signal, cache: "no-store" });
+  if (!res.ok) throw new Error("Candles unavailable");
+  return ((await res.json()) as { candles: Candle[] }).candles;
+}
+
+/** Decimal places that keep ~5 significant digits, so a fraction of a cent and a share price both read well. */
 export function priceDecimals(price: number): number {
   if (!isFinite(price) || price <= 0) return 2;
   return Math.min(Math.max(2, 4 - Math.floor(Math.log10(price))), 10);

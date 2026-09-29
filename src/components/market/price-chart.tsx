@@ -18,10 +18,13 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import {
   fetchCandles,
+  fetchServerCandles,
   INTERVAL_SECONDS,
   INTERVALS,
+  isCrypto,
   isToken,
   priceDecimals,
+  SESSION_LABEL,
   subscribeCandles,
   TOKENS,
   type AssetKey,
@@ -45,15 +48,8 @@ interface ChartApi {
 /** The chart library plots UTC; shift so the axis reads in the viewer's local time. */
 const toChartTime = (unixSeconds: number) => (unixSeconds - new Date().getTimezoneOffset() * 60) as UTCTimestamp;
 
-/** How often the chart of a DEX-traded token asks for new candles. Its data source allows few requests. */
-const POOL_REFRESH_MS = 45_000;
-
-/** Candles of a token a funder asked for, which the server reads from the token's trading pool. */
-async function poolCandles(token: AssetKey, interval: Interval, signal: AbortSignal): Promise<Candle[]> {
-  const res = await fetch(`/api/market/candles?token=${encodeURIComponent(token)}&interval=${interval}`, { signal, cache: "no-store" });
-  if (!res.ok) throw new Error("Candles unavailable");
-  return ((await res.json()) as { candles: Candle[] }).candles;
-}
+/** How often the chart of a token that has no live stream asks for new candles. */
+const REFRESH_MS = 30_000;
 
 const candleBar = (c: Candle) => ({ time: toChartTime(c.time), open: c.open, high: c.high, low: c.low, close: c.close });
 const volumeBar = (c: Candle) => ({ time: toChartTime(c.time), value: c.volume, color: c.close >= c.open ? `${UP}55` : `${DOWN}55` });
@@ -62,10 +58,11 @@ export function PriceChart() {
   const councilToken = useArena((s) => s.focus);
   const fills = useArena((s) => s.fills);
   const held = useArena((s) => s.portfolio.positions);
+  const assets = useArena((s) => s.assets);
   const [pinned, setPinned] = useState<AssetKey | null>(null);
   const [interval, setChartInterval] = useState<Interval>("1m");
-  const token: AssetKey = pinned ?? councilToken ?? "SOL";
-  const listed = isToken(token);
+  const token: AssetKey = pinned ?? councilToken ?? TOKENS[0];
+  const crypto = isCrypto(token);
   // Tokens funders asked for get a tab while the desk holds them or is debating them.
   const extra = [...new Set([...held.map((p) => p.token), councilToken ?? "", pinned ?? ""])].filter((t) => t && !isToken(t));
   const key = `${token}:${interval}`;
@@ -132,7 +129,7 @@ export function PriceChart() {
       setLoaded(`${token}:${interval}`);
     };
 
-    if (isToken(token)) {
+    if (isCrypto(token)) {
       fetchCandles(token, interval, 300, ctrl.signal)
         .then((rows) => {
           if (!alive() || rows.length === 0) return;
@@ -148,10 +145,10 @@ export function PriceChart() {
           if (alive()) setFailed(`${token}:${interval}`);
         });
     } else {
-      // A DEX pool has no live stream to subscribe to, so its candles are fetched again every so often.
+      // Only crypto has a live stream to subscribe to. Everything else is fetched again every so often.
       let first = true;
       const load = () =>
-        poolCandles(token, interval, ctrl.signal)
+        fetchServerCandles(token, interval, ctrl.signal)
           .then((rows) => {
             if (!alive() || rows.length === 0) return;
             draw(rows, first);
@@ -162,7 +159,7 @@ export function PriceChart() {
             if (alive() && first) setFailed(`${token}:${interval}`);
           });
       void load();
-      const timer = setInterval(load, POOL_REFRESH_MS);
+      const timer = setInterval(load, REFRESH_MS);
       unsubscribe = () => clearInterval(timer);
     }
 
@@ -191,6 +188,7 @@ export function PriceChart() {
   }, [fills, token, interval, loaded]);
 
   const decimals = quote ? priceDecimals(quote.price) : 2;
+  const source = crypto ? "Live prices · Binance spot" : isToken(token) || assets[token]?.kind === "stock" ? "Robinhood Stock Token · history from Yahoo Finance" : "Pool prices · GeckoTerminal";
 
   return (
     <section className="flex min-w-0 flex-col panel">
@@ -198,14 +196,15 @@ export function PriceChart() {
         <div className="flex items-baseline gap-2">
           <h2 className="text-base font-semibold text-white">
             {token}
-            <span className="text-white/35">{listed ? "/USDT" : "/USD"}</span>
+            <span className="text-white/35">{crypto ? "/USDT" : "/USD"}</span>
           </h2>
           {quote && (
             <>
               <span className="font-mono text-base font-semibold tabular-nums text-white">${quote.price.toFixed(decimals)}</span>
               <span className={cn("font-mono text-xs tabular-nums", quote.change24h >= 0 ? "text-green-400" : "text-red-400")}>
-                {quote.change24h >= 0 ? "▲" : "▼"} {Math.abs(quote.change24h).toFixed(2)}% 24h
+                {quote.change24h >= 0 ? "▲" : "▼"} {Math.abs(quote.change24h).toFixed(2)}% {crypto ? "24h" : "today"}
               </span>
+              {quote.session && <span className="rounded-full border border-white/15 px-2 py-px text-[10px] uppercase tracking-wider text-white/50">{SESSION_LABEL[quote.session]}</span>}
             </>
           )}
         </div>
@@ -251,7 +250,7 @@ export function PriceChart() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-4 py-2 text-[11px] text-white/40">
         <span className="flex items-center gap-1.5">
           <span className={cn("size-1.5 rounded-full", status === "live" ? "animate-pulse bg-white" : "bg-white/30")} />
-          {status !== "live" ? "Offline" : listed ? "Live prices · Binance spot" : "DEX pool prices · GeckoTerminal"}
+          {status !== "live" ? "Offline" : source}
         </span>
         <span>Arrows mark the council&apos;s paper trades</span>
       </div>

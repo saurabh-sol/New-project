@@ -16,12 +16,12 @@ export function fmtSigned(n: number, digits = 2) {
   return `${n > 0 ? "+" : "−"}$${shown}`;
 }
 
-/** Smallest PnL range a sparkline spans, in USDC, so cent-sized noise draws as a flat line. */
+/** Smallest PnL range a sparkline spans, in USDG, so cent-sized noise draws as a flat line. */
 export const MIN_SPARK_SPAN = 2;
 
 export const fmtPrice = (p: number) => p.toFixed(priceDecimals(p));
 
 export const shortHash = (h: string) => `${h.slice(0, 5)}…${h.slice(-5)}`;
 
-export const solscanTx = (sig: string, cluster: "devnet" | "mainnet-beta" = "mainnet-beta") =>
-  `https://solscan.io/tx/${sig}${cluster === "devnet" ? "?cluster=devnet" : ""}`;
+/** A wallet address cut down to its first and last characters. */
+export const shortAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;

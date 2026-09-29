@@ -8,9 +8,8 @@ import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink, type ChainStatus } from "@/lib/chains";
 import type { ChallengeResponse, ClaimRecord, ClaimResponse, RewardsStatus } from "@/lib/rewards-types";
 import type { AgentId } from "@/lib/types";
-import { cn, shortHash } from "@/lib/utils";
+import { cn, shortAddress, shortHash } from "@/lib/utils";
 import { useWallet } from "@/components/wallet/wallet-provider";
-import { shortAddress } from "@/lib/wallet";
 import { Turnstile } from "./turnstile";
 
 type Outcome =
@@ -102,14 +101,14 @@ export function ClaimFlow() {
       <div className="mb-6 text-center">
         <h1 className="font-display text-4xl font-bold tracking-tight text-white">Arena Rewards</h1>
         <p className="mt-2 text-sm text-white/55">
-          Back an agent and claim <span className="font-semibold text-white/80">{status ? `${status.amount} USDC` : "USDC"}</span>, paid on {status?.chain.network ?? "Solana"}. One
+          Back an agent and claim <span className="font-semibold text-white/80">{status ? `${status.amount} USDG` : "USDG"}</span>, paid on {status?.chain.network ?? "Robinhood Chain"}. One
           claim per wallet. You pay no fee.
         </p>
       </div>
 
       {status?.mode === "demo" && (
         <div className="mb-4 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-xs leading-relaxed text-white/80">
-          <span className="font-semibold">Demo mode.</span> No reward treasury is configured for {status.chain.network}, so you can try the whole flow but no USDC will
+          <span className="font-semibold">Demo mode.</span> No reward treasury is configured for {status.chain.network}, so you can try the whole flow but no USDG will
           be sent.
         </div>
       )}
@@ -127,7 +126,7 @@ export function ClaimFlow() {
             {step === 0 && (
               <Pane key="connect">
                 <h2 className="font-display text-lg font-semibold text-white">Connect your wallet</h2>
-                <p className="mt-1 text-sm text-white/50">Use any Solana wallet. Connecting only shares your public address.</p>
+                <p className="mt-1 text-sm text-white/50">Use MetaMask or any wallet that works with Robinhood Chain. Connecting only shares your public address.</p>
                 <button onClick={open} className="btn-primary mt-5 w-full py-3.5 text-sm">
                   Connect wallet
                 </button>
@@ -183,7 +182,7 @@ export function ClaimFlow() {
                 <ul className="mt-5 space-y-2 text-sm text-white/60">
                   <li>1. Your wallet asks you to sign a short message. This is free and is not a transaction.</li>
                   <li>
-                    2. We send <span className="text-white">{status?.amount} USDC</span> to {address && shortAddress(address)} and pay the network fee.
+                    2. We send <span className="text-white">{status?.amount} USDG</span> to {address && shortAddress(address)} and pay the network fee.
                   </li>
                 </ul>
 
@@ -200,7 +199,7 @@ export function ClaimFlow() {
                   disabled={busy !== null || needsCaptcha || !!blocked}
                   className="btn-primary mt-5 w-full px-5 py-3.5 text-sm"
                 >
-                  {busy === "sign" ? "Check your wallet…" : busy === "send" ? "Sending your USDC…" : `Sign & claim ${status?.amount ?? ""} USDC`}
+                  {busy === "sign" ? "Check your wallet…" : busy === "send" ? "Sending your USDG…" : `Sign & claim ${status?.amount ?? ""} USDG`}
                 </button>
               </Pane>
             )}
@@ -308,8 +307,8 @@ function Done({ outcome }: { outcome: Outcome }) {
         <>
           <h2 className="mt-3 text-xl font-semibold text-white">Wallet verified</h2>
           <p className="mx-auto mt-2 max-w-sm text-sm text-white/55">
-            Your signature checked out. This server is in demo mode, so <span className="text-white/80">no USDC was sent</span>. With a funded treasury
-            this step pays {amount} USDC.
+            Your signature checked out. This server is in demo mode, so <span className="text-white/80">no USDG was sent</span>. With a funded treasury
+            this step pays {amount} USDG.
           </p>
           <span className="mt-4 inline-block rounded bg-white/10 px-2 py-1 font-mono text-[10px] tracking-wider text-white/80 ring-1 ring-white/30">
             DEMO · NO TRANSACTION
@@ -327,7 +326,7 @@ function Done({ outcome }: { outcome: Outcome }) {
             transition={{ type: "spring", stiffness: 220, damping: 12 }}
           >
             {paid ? "+" : ""}
-            {amount.toFixed(2)} USDC
+            {amount.toFixed(2)} USDG
           </motion.div>
           <p className="mt-2 text-sm text-white/50">
             {pending

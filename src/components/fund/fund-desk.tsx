@@ -8,7 +8,7 @@ import { Face } from "@/components/arena/face";
 import { useWallet } from "@/components/wallet/wallet-provider";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { requestMode, type AssetPreview, type TradeRequest } from "@/lib/assets";
-import { priceDecimals } from "@/lib/market";
+import { priceDecimals, SESSION_LABEL } from "@/lib/market";
 import { bonusFor, estimate, withdrawFee, type FundingTerms } from "@/lib/funding";
 import { COMMITTED_HOLD_ROUNDS } from "@/lib/council";
 import type { FundBonus, FundPosition, FundResult, FundStatus } from "@/lib/funding-types";
@@ -43,7 +43,7 @@ function useTokenPreview(address: string): AssetPreview | null {
     if (!address) return;
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/market/asset?address=${encodeURIComponent(address)}`, { signal: ctrl.signal, cache: "no-store" })
+      fetch(`/api/market/asset?token=${encodeURIComponent(address)}`, { signal: ctrl.signal, cache: "no-store" })
         .then((res) => res.json() as Promise<AssetPreview>)
         .then((preview) => setFound({ address, preview }))
         .catch(() => !ctrl.signal.aborted && setFound({ address, preview: { ok: false, error: "Token data is unavailable right now. Try again in a moment." } }));
@@ -77,7 +77,7 @@ export function FundDesk() {
   const preview = useTokenPreview(tokenAddress);
   const openRequest = wallet?.requests.find(waiting) ?? null;
   const chain = status?.chain;
-  const symbol = chain?.tokenSymbol ?? "USDC";
+  const symbol = chain?.tokenSymbol ?? "USDG";
   const link = (id: string) => (chain ? explorerLink(chain, id) : "#");
   const firstDeposit = wallet?.bonusAvailable ?? true;
 
@@ -261,16 +261,17 @@ export function FundDesk() {
           ) : (
             <>
               <p className="mt-3 text-sm leading-relaxed text-white/55">
-                Paste the address of any Solana token, and {AGENTS[agent].name} takes it to the council.
+                Name a Stock Token by its symbol, such as MSFT, or paste the address of any token on Robinhood Chain. {AGENTS[agent].name} takes it
+                to the council.
               </p>
               <label className="mt-3 block">
-                <span className="sr-only">Solana token address</span>
+                <span className="sr-only">Stock symbol or token address</span>
                 <input
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value.replace(/\s/g, ""))}
                   spellCheck={false}
                   autoComplete="off"
-                  placeholder="Token address"
+                  placeholder="Symbol or token address"
                   className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 font-mono text-xs text-white outline-none placeholder:text-white/25 focus:border-white/60"
                 />
               </label>
@@ -402,12 +403,13 @@ function TokenPreview({ preview }: { preview: AssetPreview | null }) {
         <span className="ml-auto font-mono text-sm text-white">${quote.price.toFixed(priceDecimals(quote.price))}</span>
         <span className={cn("font-mono text-xs", quote.change24h >= 0 ? "text-emerald-400" : "text-red-400")}>
           {quote.change24h >= 0 ? "+" : ""}
-          {quote.change24h.toFixed(1)}% 24h
+          {quote.change24h.toFixed(1)}% {asset.kind === "stock" ? "today" : "24h"}
         </span>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-x-4 font-mono text-[11px] text-white/45">
-        <span>liquidity {compact(quote.liquidityUsd)}</span>
-        <span>24h volume {compact(quote.volume24hUsd)}</span>
+        <span>{asset.kind === "stock" ? "Robinhood Stock Token" : `liquidity ${compact(quote.liquidityUsd ?? 0)}`}</span>
+        <span>{asset.kind === "stock" ? "volume today" : "24h volume"} {compact(quote.volume24hUsd)}</span>
+        {quote.session && <span>{SESSION_LABEL[quote.session].toLowerCase()}</span>}
       </div>
     </div>
   );
@@ -437,7 +439,7 @@ function RequestRules({ agent, usd, commitFrom, token }: { agent: AgentId; usd: 
         ))}
       </ul>
       <p className="mt-3 text-xs leading-relaxed text-white/40">
-        One request per session, in the order they arrive. The trade is a paper trade with a stop-loss, made with the agent&apos;s capital, so its result is
+        One request per session, in the order they arrive. A Stock Token is heard once its market is open. The trade is a paper trade with a stop-loss, made with the agent&apos;s capital, so its result is
         shared by everyone who funds that agent. Asking for a token does not make it a good trade.
       </p>
     </>
@@ -658,10 +660,10 @@ function Terms({ terms, symbol }: { terms: FundingTerms; symbol: string }) {
             becomes free when that position closes.
           </li>
           <li>
-            <strong className="font-medium text-white/85">Trade requests.</strong> With a deposit you may name one Solana token. Under{" "}
+            <strong className="font-medium text-white/85">Trade requests.</strong> With a deposit you may name one token on Robinhood Chain. Under{" "}
             {money(terms.commitFrom)} the council votes on it; from {money(terms.commitFrom)} the agent you fund is committed to buy it, and the
-            position is held for at least {COMMITTED_HOLD_ROUNDS} sessions unless its stop-loss or target is hit. The token must have an active trading
-            pool.
+            position is held for at least {COMMITTED_HOLD_ROUNDS} sessions unless its stop-loss or target is hit. A request for a Stock Token is heard when its
+            market is open.
           </li>
           <li>
             <strong className="font-medium text-white/85">Limits.</strong> {money(terms.minDeposit)} to {money(terms.maxDeposit)} per agent, in {symbol}.

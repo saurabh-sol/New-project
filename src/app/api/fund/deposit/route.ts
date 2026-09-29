@@ -18,8 +18,8 @@ interface Body {
 }
 
 function asProof(v: unknown): DepositProof | null {
-  const p = v as { kind?: unknown; transaction?: unknown } | null;
-  if (p?.kind === "solana" && typeof p.transaction === "string") return { kind: "solana", transaction: p.transaction };
+  const p = v as { kind?: unknown; hash?: unknown } | null;
+  if (p?.kind === "robinhood" && typeof p.hash === "string") return { kind: "robinhood", hash: p.hash as `0x${string}` };
   return null;
 }
 

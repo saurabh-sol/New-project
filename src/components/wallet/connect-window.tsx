@@ -9,6 +9,8 @@ export interface WalletOption {
   key: string;
   name: string;
   icon: string | null;
+  /** A few words under the name: what kind of wallet it is. */
+  note: string;
   /** Missing when the wallet isn't installed; the row then links to its download page. */
   connect?: () => Promise<void>;
   installUrl?: string;
@@ -40,7 +42,7 @@ function Logo({ option, size = "size-9" }: { option: WalletOption; size?: string
 
 /**
  * The wallet picker: the list on the left, help or progress on the right.
- * It shows Phantom and MetaMask, then any other Solana wallet installed in this browser.
+ * It shows MetaMask and Robinhood Wallet, then any other wallet installed in this browser.
  */
 export function ConnectWindow({ popular, installed, onClose }: Props) {
   const [pending, setPending] = useState<WalletOption | null>(null);
@@ -71,7 +73,7 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
         <Logo option={o} />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold text-white">{o.name}</span>
-          <span className="block text-xs text-white/40">{o.connect ? "Installed" : "Solana"}</span>
+          <span className="block text-xs text-white/40">{o.note}</span>
         </span>
         {!o.connect && <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">{o.installLabel ?? "Install"}</span>}
       </>
@@ -122,7 +124,7 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
         {/* the list */}
         <div className="overflow-y-auto border-b border-white/10 p-5 md:border-b-0 md:border-r">
           <h2 className="font-display text-xl font-bold text-white">Connect a Wallet</h2>
-          <p className="mt-1 text-xs text-white/40">On Solana</p>
+          <p className="mt-1 text-xs text-white/40">On Robinhood Chain</p>
 
           <h3 className="mb-1 mt-5 px-2.5 text-sm font-semibold text-white/40">Popular</h3>
           <ul className="grid gap-0.5">{popular.map(row)}</ul>
@@ -171,7 +173,7 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
                   </span>
                   <div>
                     <dt className="text-sm font-semibold text-white">A home for your digital assets</dt>
-                    <dd className="mt-1 text-sm leading-relaxed text-white/50">Wallets hold, send and receive tokens such as USDC.</dd>
+                    <dd className="mt-1 text-sm leading-relaxed text-white/50">Wallets hold, send and receive tokens such as USDG.</dd>
                   </div>
                 </div>
                 <div className="flex gap-4">
@@ -185,10 +187,10 @@ export function ConnectWindow({ popular, installed, onClose }: Props) {
                 </div>
               </dl>
               <div className="mt-8 flex flex-col items-center gap-3">
-                <a href="https://phantom.com/download" target="_blank" rel="noreferrer" className="btn-primary px-5 py-2 text-sm">
+                <a href="https://metamask.io/download" target="_blank" rel="noreferrer" className="btn-primary px-5 py-2 text-sm">
                   Get a Wallet
                 </a>
-                <a href="https://solana.com/solana-wallets" target="_blank" rel="noreferrer" className="text-sm font-semibold text-white/70 hover:text-white">
+                <a href="https://docs.robinhood.com/chain/add-network-to-wallet" target="_blank" rel="noreferrer" className="text-sm font-semibold text-white/70 hover:text-white">
                   Learn More
                 </a>
               </div>
