@@ -16,6 +16,8 @@
   --color-red-300: #ffa3a3;
 }
 :root {
+  /* The header's height, until the header has measured itself. */
+  --header-h: 5.75rem;
   --background: #000000;
   --foreground: #f5f5f5;
   --shade: rgba(0, 0, 0, 0.9);

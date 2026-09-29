@@ -80,17 +80,17 @@ export function CouncilTable() {
           className="absolute inset-x-[-10%] bottom-[-14%] top-[30%] -z-10 bg-gradient-to-t from-white/30 to-transparent"
           style={{ clipPath: "polygon(0 0, 100% 0, 68% 100%, 32% 100%)" }}
         />
-        <div className="font-mono text-[clamp(6px,0.95cqw,9px)] tracking-[0.3em] text-white/80">POOL EQUITY</div>
+        <div className="font-mono [font-size:clamp(6px,calc(var(--u)*0.95),9px)] tracking-[0.3em] text-white/80">POOL EQUITY</div>
         <RollingNumber
           value={equity}
           format={(n) => `$${n.toFixed(2)}`}
-          className="font-mono text-[clamp(13px,2.9cqw,27px)] font-bold leading-none text-white [text-shadow:0_0_14px_rgba(255,255,255,0.6)]"
+          className="font-mono [font-size:clamp(13px,calc(var(--u)*2.9),27px)] font-bold leading-none text-white [text-shadow:0_0_14px_rgba(255,255,255,0.6)]"
         />
         <AnimatePresence mode="wait">
           {focus && quote && (
             <motion.div
               key={focus}
-              className="mt-1 rounded-full border border-white/20 bg-black/70 px-2 py-px font-mono text-[clamp(7px,1.15cqw,11px)]"
+              className="mt-1 rounded-full border border-white/20 bg-black/70 px-2 py-px font-mono [font-size:clamp(7px,calc(var(--u)*1.15),11px)]"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -112,7 +112,7 @@ export function CouncilTable() {
               return (
                 <motion.span
                   key={id}
-                  className="h-1 w-[clamp(8px,1.6cqw,16px)] rounded-full"
+                  className="h-1 w-[clamp(8px,calc(var(--u)*1.6),16px)] rounded-full"
                   animate={{ backgroundColor: vote === null ? "#ffffff33" : vote ? "#ffffff" : "#6b7280", scaleY: vote === null ? 1 : 1.6 }}
                   title={AGENTS[id].name}
                 />
@@ -124,7 +124,7 @@ export function CouncilTable() {
         <AnimatePresence mode="wait">
           <motion.div
             key={phase}
-            className="mt-1 rounded-full bg-black/60 px-2 py-px text-[clamp(6px,1cqw,10px)] uppercase tracking-widest text-white/80"
+            className="mt-1 rounded-full bg-black/60 px-2 py-px [font-size:clamp(6px,calc(var(--u)*1),10px)] uppercase tracking-widest text-white/80"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

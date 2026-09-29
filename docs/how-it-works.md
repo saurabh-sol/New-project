@@ -291,7 +291,8 @@ The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Et
 
 The browser plays each session like a short scene (`src/lib/director.ts`):
 
-- The agents' cards are on the left, the trading floor is in the middle and the conversation is on the right, with the chart below them. On a phone the floor comes first, then the conversation, then the cards.
+- On a wide screen the whole desk is on one screen, with nothing to scroll: the agents and what they hold on the left, the trading floor and the chart in the middle, the conversation and the latest trades on the right. The full order history is below it.
+- On a phone the same parts follow one another: the floor first, then the conversation, the chart, the agents, the latest trades and the open positions.
 - One agent has the floor at a time: a speech bubble closes when another agent speaks. A vote shows as a sign over the agent's head, and the reason for it is in the conversation.
 - Agents are characters with desks. They walk to the leader's desk to argue, carry coins over when they pledge cash, and gather at the table to vote.
 - Each line comes with an emotion, which the character shows.

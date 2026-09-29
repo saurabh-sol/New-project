@@ -65,7 +65,7 @@ function Row({ pos, price, round, now }: { pos: Position; price: number; round: 
 }
 
 /** What the desk holds right now, marked to live prices. */
-export function Positions() {
+export function Positions({ className }: { className?: string }) {
   const portfolio = useArena((s) => s.portfolio);
   const round = useArena((s) => s.round);
   const prices = usePrices();
@@ -76,12 +76,12 @@ export function Positions() {
   }, []);
 
   return (
-    <section className="panel p-4">
-      <div className="mb-3 flex items-baseline justify-between">
+    <section className={cn("panel flex min-w-0 flex-col p-4 xl:p-3", className)}>
+      <div className="mb-3 flex shrink-0 items-baseline justify-between xl:mb-2">
         <h2 className="panel-title">OPEN POSITIONS</h2>
         <span className="font-mono text-[11px] text-white/40">cash ${poolCash(portfolio).toFixed(2)}</span>
       </div>
-      <ul className="space-y-1.5">
+      <ul className="min-h-0 space-y-1.5 overflow-y-auto [scrollbar-width:thin]">
         <AnimatePresence initial={false}>
           {portfolio.positions.map((pos) => (
             <Row key={pos.token} pos={pos} price={prices[pos.token] ?? pos.entryPrice} round={round} now={now} />

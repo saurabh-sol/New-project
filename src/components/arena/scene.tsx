@@ -129,14 +129,14 @@ function MarketBoard() {
 
   return (
     <div className="absolute left-[35.2%] top-[2.6%] flex h-[15%] w-[29.6%] flex-col overflow-hidden px-[1.2%] py-[0.6%] font-mono">
-      <div className="flex items-center justify-between text-[clamp(5px,0.85cqw,9px)] tracking-[0.25em] text-white/45">
+      <div className="flex items-center justify-between [font-size:clamp(5px,calc(var(--u)*0.85),9px)] tracking-[0.25em] text-white/45">
         <span>MARKETS</span>
         <span className="flex items-center gap-1">
           <span className={cn("size-[0.5em] rounded-full", status === "live" ? "animate-pulse bg-green-400" : "bg-white/30")} />
           {status === "live" ? "LIVE" : "OFFLINE"}
         </span>
       </div>
-      <div className="grid flex-1 grid-cols-3 content-center gap-x-[4%] gap-y-[6%] text-[clamp(5px,1cqw,11px)] leading-none">
+      <div className="grid flex-1 grid-cols-3 content-center gap-x-[4%] gap-y-[6%] [font-size:clamp(5px,calc(var(--u)*1),11px)] leading-none">
         {shown.map((t) => {
           const q = quotes[t];
           return (
@@ -230,7 +230,7 @@ interface PropSpot {
   x: number;
   /** Where the prop touches the floor, which also sets what it stands in front of. */
   y: number;
-  /** Width in % of the arena's width. */
+  /** Width in units of the floor: hundredths of its width, or of what its width would be if it were not so wide. */
   w: number;
   art: React.ReactNode;
 }
@@ -253,7 +253,7 @@ export function Scene() {
         <div
           key={`${p.x}-${p.y}`}
           className="absolute -translate-x-1/2 -translate-y-full"
-          style={{ left: `${p.x}%`, top: `${p.y}%`, width: `${p.w}cqw`, zIndex: Math.round(p.y * 10) }}
+          style={{ left: `${p.x}%`, top: `${p.y}%`, width: `calc(var(--u) * ${p.w})`, zIndex: Math.round(p.y * 10) }}
         >
           {p.art}
         </div>

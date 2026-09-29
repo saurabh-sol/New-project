@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { ModeBadge } from "@/components/arena/mode-badge";
 import { ConnectButton } from "@/components/wallet/connect-button";
 import { cn } from "@/lib/utils";
@@ -17,10 +18,23 @@ const NAV = [
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const ref = useRef<HTMLElement>(null);
+
+  // The floor page fills what is left of the screen under the header, so it has to know the header's height.
+  useEffect(() => {
+    const header = ref.current;
+    if (!header) return;
+    const tell = () => document.documentElement.style.setProperty("--header-h", `${header.offsetHeight}px`);
+    tell();
+    const watch = new ResizeObserver(tell);
+    watch.observe(header);
+    return () => watch.disconnect();
+  }, []);
+
   return (
-    <header className="sticky top-0 z-[3000] border-b border-white/5 bg-black/80 backdrop-blur-xl">
+    <header ref={ref} className="sticky top-0 z-[3000] border-b border-white/5 bg-black/80 backdrop-blur-xl">
       {/* On a phone the pages get a row of their own, so none is hidden behind the wallet button. */}
-      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6 sm:py-3">
+      <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6 sm:py-3">
         <Link href="/" className="flex shrink-0 items-center gap-3">
           <Logo />
           <span className="flex flex-col leading-none">

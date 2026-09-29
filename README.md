@@ -19,6 +19,8 @@ For how the parts fit together, see [docs/how-it-works.md](docs/how-it-works.md)
 
 The site itself is black and white, and comes in a dark and a light theme: the button beside the wallet switches between them, and the choice is remembered. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor is a lit stage and stays dark in both themes.
 
+On a wide screen the floor page fits on one screen: the agents and their positions on the left, the floor and the chart in the middle, the conversation and the latest trades on the right. The full order history is below.
+
 ```bash
 npm install
 cp .env.example .env.local   # then fill it in

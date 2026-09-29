@@ -67,7 +67,7 @@ const REFRESH_MS = 30_000;
 const candleBar = (c: Candle) => ({ time: toChartTime(c.time), open: c.open, high: c.high, low: c.low, close: c.close });
 const volumeBar = (c: Candle) => ({ time: toChartTime(c.time), value: c.volume, color: c.close >= c.open ? `${UP}55` : `${DOWN}55` });
 
-export function PriceChart() {
+export function PriceChart({ className }: { className?: string }) {
   const councilToken = useArena((s) => s.focus);
   const fills = useArena((s) => s.fills);
   const held = useArena((s) => s.portfolio.positions);
@@ -227,8 +227,8 @@ export function PriceChart() {
   const source = crypto ? "Live prices · Binance spot" : isToken(token) || assets[token]?.kind === "stock" ? "Robinhood Stock Token · history from Yahoo Finance" : "Live price · DexScreener · candles from GeckoTerminal";
 
   return (
-    <section className="flex min-w-0 flex-col panel">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/5 px-4 py-3">
+    <section className={cn("panel flex min-w-0 flex-col", className)}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/5 px-4 py-3 xl:gap-y-1 xl:px-3 xl:py-2">
         <div className="flex items-baseline gap-2">
           <h2 className="text-base font-semibold text-white">
             {token}
@@ -266,7 +266,7 @@ export function PriceChart() {
         </div>
       </div>
 
-      <div className="relative min-h-[340px] flex-1">
+      <div className="relative min-h-[340px] flex-1 xl:min-h-0">
         <div ref={boxRef} className="absolute inset-0" />
         {status !== "live" && (
           <div className="absolute inset-0 grid place-items-center bg-black/70 text-sm text-white/50 backdrop-blur-sm">
@@ -283,7 +283,7 @@ export function PriceChart() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-4 py-2 text-[11px] text-white/40">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-4 py-2 text-[11px] text-white/40 xl:px-3 xl:py-1.5">
         <span className="flex items-center gap-1.5">
           <span className={cn("size-1.5 rounded-full", status === "live" ? "animate-pulse bg-white" : "bg-white/30")} />
           {status !== "live" ? "Offline" : source}

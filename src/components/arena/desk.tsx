@@ -128,15 +128,15 @@ export function Desk({ id }: { id: AgentId }) {
       {/* nameplate */}
       <div className="absolute inset-x-[4%] bottom-[2%] flex h-[28%] items-center justify-between gap-1">
         <div className="min-w-0 leading-none">
-          <div className="truncate text-[clamp(7px,1.45cqw,13px)] font-semibold text-white">{agent.name}</div>
-          <div className="mt-[0.2em] truncate font-mono text-[clamp(6px,0.95cqw,9px)] uppercase tracking-wider" style={{ color: agent.color }}>
+          <div className="truncate [font-size:clamp(7px,calc(var(--u)*1.45),13px)] font-semibold text-white">{agent.name}</div>
+          <div className="mt-[0.2em] truncate font-mono [font-size:clamp(6px,calc(var(--u)*0.95),9px)] uppercase tracking-wider" style={{ color: agent.color }}>
             {model}
           </div>
         </div>
         <RollingNumber
           value={pnl}
           format={(n) => fmtSigned(n)}
-          className={cn("font-mono text-[clamp(7px,1.45cqw,13px)] font-bold tabular-nums", up ? "text-green-400" : "text-red-400")}
+          className={cn("font-mono [font-size:clamp(7px,calc(var(--u)*1.45),13px)] font-bold tabular-nums", up ? "text-green-400" : "text-red-400")}
         />
       </div>
     </div>

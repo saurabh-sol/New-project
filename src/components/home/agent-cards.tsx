@@ -43,7 +43,7 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
   return (
     <motion.article
       layout
-      className="panel flex min-w-0 flex-1 flex-col justify-between gap-2 px-3 py-2.5"
+      className="panel flex min-w-0 flex-col justify-center gap-2 px-3 py-2.5 xl:min-h-0 xl:flex-1 xl:gap-1.5 xl:py-2"
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 220, damping: 24 }}
@@ -64,48 +64,46 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
             </span>
           </div>
         </div>
+        {/* the agent's own result */}
+        <div className={cn("shrink-0 text-right font-mono tabular-nums leading-tight", up ? "text-emerald-400" : "text-red-400")}>
+          <div className="text-sm font-semibold">
+            <RollingNumber value={pnl} format={(n) => fmtSigned(n)} />
+          </div>
+          <div className="text-[10px] opacity-75">
+            {pct >= 0 ? "+" : ""}
+            {pct.toFixed(2)}%
+          </div>
+        </div>
       </div>
 
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-white/5 bg-white/5">
-        <div className="bg-black px-2.5 py-1">
-          <dt className="text-[9px] uppercase tracking-widest text-white/40">Result</dt>
-          <dd className={cn("font-mono text-[13px] font-semibold tabular-nums", up ? "text-emerald-400" : "text-red-400")}>
-            <RollingNumber value={pnl} format={(n) => fmtSigned(n)} />
-            <span className="ml-1 text-[10px] font-normal opacity-75">
-              {pct >= 0 ? "+" : ""}
-              {pct.toFixed(2)}%
-            </span>
-          </dd>
-        </div>
-        <div className="bg-black px-2.5 py-1">
-          <dt className="text-[9px] uppercase tracking-widest text-white/40">In trades</dt>
-          <dd className="font-mono text-[13px] font-semibold tabular-nums text-white">${inTrades.toFixed(2)}</dd>
-        </div>
-      </dl>
-
-      {/* The agent's own contract, where its money is held and its trades are on record. */}
-      {desk && (
-        <a href={desk.explorerAddress} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 text-[11px] text-white/50 hover:text-white">
-          <span>
-            On-chain desk <span className="font-mono text-white/80 underline underline-offset-2">{shortAddress(desk.address)} ↗</span>
-          </span>
-          {desk.holds !== null && <span className="font-mono text-white/60">${desk.holds.toFixed(2)}</span>}
-        </a>
-      )}
-
       <div className="flex items-center gap-2.5">
-        <div className="min-w-0 flex-1" title={funding?.nextLevelAt ? `$${Math.max(funding.nextLevelAt - funded, 0).toFixed(0)} more unlocks the next analysis level` : "Top analysis level"}>
-          <div className="truncate text-[11px] text-white/50">
-            {level} · <span className="font-mono text-white/70">${funded.toFixed(0)}</span> funded
+        <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-3 text-[11px]" title={funding?.nextLevelAt ? `${level}. $${Math.max(funding.nextLevelAt - funded, 0).toFixed(0)} more unlocks the next analysis level` : `${level}. Top analysis level`}>
+          <div className="min-w-0">
+            <dt className="text-[9px] uppercase tracking-widest text-white/40">In trades</dt>
+            <dd className="truncate font-mono font-semibold tabular-nums text-white">${inTrades.toFixed(2)}</dd>
           </div>
-          <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10" role="presentation">
+          <div className="min-w-0">
+            <dt className="text-[9px] uppercase tracking-widest text-white/40">Funded</dt>
+            <dd className="truncate font-mono font-semibold tabular-nums text-white">${funded.toFixed(0)}</dd>
+          </div>
+          <div className="col-span-2 mt-1 h-1 overflow-hidden rounded-full bg-white/10" role="presentation">
             <motion.div className="h-full rounded-full bg-white" animate={{ width: `${Math.max(toNext * 100, 3)}%` }} transition={{ type: "spring", stiffness: 80, damping: 18 }} />
           </div>
-        </div>
+        </dl>
         <Link href={`/fund?agent=${id}`} className={cn("shrink-0 px-3 py-1 text-xs", canFund ? "btn-primary" : "btn-ghost")}>
           {canFund ? "Fund" : "Funding"}
         </Link>
       </div>
+
+      {/* The agent's own contract, where its money is held and its trades are on record. */}
+      {desk && (
+        <a href={desk.explorerAddress} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 text-[11px] leading-none text-white/50 hover:text-white">
+          <span className="truncate">
+            On-chain desk <span className="font-mono text-white/80 underline underline-offset-2">{shortAddress(desk.address)} ↗</span>
+          </span>
+          {desk.holds !== null && <span className="shrink-0 font-mono text-white/60">${desk.holds.toFixed(2)}</span>}
+        </a>
+      )}
     </motion.article>
   );
 }
@@ -119,12 +117,13 @@ export function AgentCards({ className }: { className?: string }) {
 
   return (
     <section aria-label="The agents" className={cn("flex min-w-0 flex-col gap-3", className)}>
-      <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-col">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-col xl:gap-2">
         {ranked.map((id, i) => (
           <Card key={id} id={id} rank={i + 1} funding={status?.agents.find((f) => f.agent === id)} canFund={!!status?.chain.enabled} />
         ))}
       </div>
-      <p className="px-1 text-[11px] leading-snug text-white/40">Funding gives an agent more capital and more thinking time. It does not guarantee a better result.</p>
+      {/* On a wide screen this is said in the footer, to leave the room to the desk. */}
+      <p className="px-1 text-[11px] leading-snug text-white/40 xl:hidden">Funding gives an agent more capital and more thinking time. It does not guarantee a better result.</p>
     </section>
   );
 }
