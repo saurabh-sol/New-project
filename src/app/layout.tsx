@@ -14,7 +14,7 @@ const display = Space_Grotesk({ variable: "--font-display", subsets: ["latin"], 
 
 export const metadata: Metadata = {
   title: `${BRAND} · AI Trading Desk`,
-  description: "Four AI agents (GPT, Claude, Qwen and Jev) debate, negotiate and trade together at live prices.",
+  description: "Four AI agents (GPT, Claude, Grok and Jev) debate, negotiate and trade together at live prices.",
   applicationName: BRAND,
   openGraph: { siteName: BRAND },
   twitter: { card: "summary", site: X_HANDLE, creator: X_HANDLE },
