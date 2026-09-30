@@ -11,8 +11,10 @@ export interface FundingTerms {
   /** Route fee on withdrawal: the larger of a flat minimum and a percentage. */
   feeMin: number;
   feePct: number;
-  /** Hours the deposit must stay in before the bonus is paid. 0 pays it straight after the deposit. */
+  /** Hours the deposit must stay in before the bonus can be claimed. 0 means it can be claimed straight after the deposit. */
   bonusLockHours: number;
+  /** Hours before a second wallet can claim a bonus from the same address on the network. 0 means no wait. */
+  bonusCooldownHours: number;
   /** A trade request that comes with at least this much funding binds the agent to take the trade. */
   commitFrom: number;
 }
@@ -29,6 +31,7 @@ export const DEFAULT_TERMS: FundingTerms = {
   feeMin: 1,
   feePct: 2,
   bonusLockHours: 0,
+  bonusCooldownHours: 24,
   commitFrom: 20,
 };
 

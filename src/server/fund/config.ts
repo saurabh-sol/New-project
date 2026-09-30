@@ -22,6 +22,7 @@ export function fundConfig(): FundConfig {
       feeMin: num(env.WITHDRAW_FEE_MIN_USD, DEFAULT_TERMS.feeMin),
       feePct: num(env.WITHDRAW_FEE_PCT, DEFAULT_TERMS.feePct),
       bonusLockHours: num(env.BONUS_LOCK_HOURS, DEFAULT_TERMS.bonusLockHours),
+      bonusCooldownHours: num(env.BONUS_IP_COOLDOWN_HOURS, DEFAULT_TERMS.bonusCooldownHours),
       commitFrom: num(env.REQUEST_COMMIT_FROM_USD, DEFAULT_TERMS.commitFrom),
     },
     bonusDailyBudget: num(env.BONUS_DAILY_BUDGET_USD, 50),

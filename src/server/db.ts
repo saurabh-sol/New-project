@@ -118,6 +118,9 @@ async function migrate(sql: Sql) {
   await sql`alter table fund_intents add column if not exists message_hash text`;
   await sql`alter table fund_events add column if not exists intent text`;
   await sql`alter table fund_intents add column if not exists request jsonb`;
+  await sql`alter table fund_bonuses add column if not exists claim_ip text`;
+  await sql`alter table fund_bonuses add column if not exists claimed_at timestamptz`;
+  await sql`create index if not exists fund_bonuses_claims on fund_bonuses (claim_ip, claimed_at)`;
 }
 
 /** The query function, once the tables exist. */

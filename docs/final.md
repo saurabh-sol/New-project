@@ -349,7 +349,8 @@ Written by `scripts/deploy-desks.mjs`. Trades are recorded on-chain only when al
 | --- | --- | --- |
 | `FUND_MIN_DEPOSIT` | `5` | Smallest deposit, in USD |
 | `FUND_MAX_DEPOSIT` | `500` | Largest deposit per agent, in USD |
-| `BONUS_LOCK_HOURS` | `0` | Hours a first deposit must stay in before its bonus is paid. `0` pays at once |
+| `BONUS_LOCK_HOURS` | `0` | Hours a first deposit must stay in before its bonus can be claimed. `0` lets it be claimed at once |
+| `BONUS_IP_COOLDOWN_HOURS` | `24` | Hours before a second wallet can claim a bonus from the same address on the network. `0` means no wait |
 | `BONUS_DAILY_BUDGET_USD` | `50` | Most bonus money promised per UTC day |
 | `WITHDRAW_FEE_MIN_USD` | `1` | The route fee on withdrawal is the larger of this |
 | `WITHDRAW_FEE_PCT` | `2` | and this percentage |
@@ -899,7 +900,7 @@ A user deposits the funding token: USDG, or a test USDG on the testnet. The agen
 | --- | --- | --- |
 | Deposit size | $5 to $500 per agent | `FUND_MIN_DEPOSIT`, `FUND_MAX_DEPOSIT` |
 | First-deposit bonus, once per wallet | $5 → $1.30, $10 → $2, $25 → $3, $50 and up → $4.50 | `src/lib/funding.ts` |
-| Bonus lock | 7 days. Withdrawing earlier gives it up | `BONUS_LOCK_HOURS` |
+| Bonus lock | none: the funder claims the bonus on the funding page straight after the deposit | `BONUS_LOCK_HOURS` |
 | Bonus budget | $50 per day across all users | `BONUS_DAILY_BUDGET_USD` |
 | Route fee on withdrawal | $1 or 2%, whichever is more | `WITHDRAW_FEE_MIN_USD`, `WITHDRAW_FEE_PCT` |
 

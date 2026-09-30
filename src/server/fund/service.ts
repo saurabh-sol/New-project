@@ -66,14 +66,46 @@ function agentView(p: Portfolio, prices: Prices): AgentFunding[] {
   });
 }
 
-const toBonus = (r: Row): FundBonus => ({
-  usd: num(r.usd),
-  depositUsd: num(r.deposit_usd),
-  agent: r.agent as AgentId,
-  unlockAt: new Date(r.unlock_at as string).getTime(),
-  status: r.status as FundBonus["status"],
-  signature: (r.signature as string | null) ?? null,
-});
+const toBonus = (r: Row): FundBonus => {
+  const unlockAt = new Date(r.unlock_at as string).getTime();
+  return {
+    usd: num(r.usd),
+    depositUsd: num(r.deposit_usd),
+    agent: r.agent as AgentId,
+    unlockAt,
+    status: r.status as FundBonus["status"],
+    signature: (r.signature as string | null) ?? null,
+    // A withdrawal before the lock ends gives the bonus up, so one still locked here was kept in all the while.
+    claimable: r.status === "locked" && unlockAt <= Date.now(),
+    waitUntil: null,
+  };
+};
+
+/**
+ * One bonus is claimed from an address on the network per cooldown, whichever wallet asks.
+ * Returns when `ip` may claim again, if another wallet claimed from it inside the cooldown, and null if it may claim now.
+ */
+async function coolingUntil(address: string, ip: string, hours: number): Promise<number | null> {
+  if (hours <= 0) return null;
+  const sql = await db();
+  const [row] = await sql`
+    select max(claimed_at) as at from fund_bonuses
+    where claim_ip = ${ip} and wallet <> ${address} and status in ('paying', 'paid') and claimed_at > now() - make_interval(secs => ${hours * 3600})`;
+  return row?.at ? new Date(row.at as string).getTime() + hours * 3_600_000 : null;
+}
+
+/** The wallet's bonus as it stands, or null if it never earned one. `ip` is where the wallet is asking from, if it is asking. */
+async function bonusOf(address: string, ip?: string): Promise<FundBonus | null> {
+  const sql = await db();
+  // With no lock, a bonus promised under an earlier lock can be claimed now.
+  if (fundConfig().terms.bonusLockHours === 0) await sql`update fund_bonuses set unlock_at = now() where wallet = ${address} and status = 'locked' and unlock_at > now()`;
+  const [row] = await sql`select * from fund_bonuses where wallet = ${address}`;
+  if (!row) return null;
+  const bonus = toBonus(row);
+  if (ip && bonus.status === "locked") bonus.waitUntil = await coolingUntil(address, ip, fundConfig().terms.bonusCooldownHours);
+  return bonus;
+}
+
 
 const toEvent = (r: Row): FundEvent => ({
   id: num(r.id),
@@ -86,7 +118,8 @@ const toEvent = (r: Row): FundEvent => ({
   ts: new Date(r.created_at as string).getTime(),
 });
 
-export async function fundStatus(wallet: unknown): Promise<FundStatus> {
+/** `ip` is where the request came from. The wallet's bonus is shown as that address on the network may claim it. */
+export async function fundStatus(wallet: unknown, ip?: string): Promise<FundStatus> {
   const cfg = fundConfig();
   const { state } = await readVersioned();
   const [prices, chain] = await Promise.all([deskPrices(state).catch(() => ({}) as Prices), network().status()]);
@@ -96,11 +129,11 @@ export async function fundStatus(wallet: unknown): Promise<FundStatus> {
   if (!found || !chain.enabled) return base;
 
   const { address } = found;
-  await settle(found.chain, address).catch((e) => console.error("[fund] settle failed:", e));
+  await resolvePayments(found.chain, address).catch((e) => console.error("[fund] settle failed:", e));
   const sql = await db();
-  const [positions, bonuses, events, balance, requests] = await Promise.all([
+  const [positions, bonus, events, balance, requests] = await Promise.all([
     sql`select * from fund_positions where wallet = ${address} and shares > ${DUST}`,
-    sql`select * from fund_bonuses where wallet = ${address}`,
+    bonusOf(address, ip),
     sql`select * from fund_events where wallet = ${address} order by id desc limit 12`,
     found.chain.balance(address),
     requestsFor(address),
@@ -116,8 +149,8 @@ export async function fundStatus(wallet: unknown): Promise<FundStatus> {
         const value = cents(num(r.shares) * navs[agent]);
         return { agent, shares: num(r.shares), principal: num(r.principal), value, pnl: cents(value - num(r.principal)) };
       }),
-      bonus: bonuses[0] ? toBonus(bonuses[0]) : null,
-      bonusAvailable: bonuses.length === 0,
+      bonus,
+      bonusAvailable: bonus === null,
       events: events.map(toEvent),
       requests,
     },
@@ -232,7 +265,7 @@ export async function confirmDeposit(
   if (event.intent !== intentId) return fail("That transfer was already used for an earlier deposit.");
   // The agent's new cash is put behind it on-chain too, without holding up the answer.
   void settleOnChain(true);
-  const bonus = await grantBonus(chain, fundConfig(), address, agent, usd);
+  const bonus = await grantBonus(fundConfig(), address, agent, usd);
   // The deposit stands whether or not its request could be queued.
   const request = await openRequest(intent).catch((e) => (console.error("[fund] could not queue the trade request:", e), null));
   return { ok: true, signature, usd, shares: num(event.shares), nav: num(event.nav), bonus, request };
@@ -240,8 +273,8 @@ export async function confirmDeposit(
 
 // --- bonus ---
 
-/** Promises the first-deposit bonus, if this wallet has never had one and today's budget allows. */
-async function grantBonus(chain: Chain, cfg: FundConfig, address: string, agent: AgentId, deposit: number): Promise<FundBonus | null> {
+/** Promises the first-deposit bonus, if this wallet has never had one and today's budget allows. It is paid when the wallet claims it. */
+async function grantBonus(cfg: FundConfig, address: string, agent: AgentId, deposit: number): Promise<FundBonus | null> {
   const sql = await db();
   const usd = bonusFor(cfg.terms, deposit);
   if (usd > 0) {
@@ -252,30 +285,72 @@ async function grantBonus(chain: Chain, cfg: FundConfig, address: string, agent:
       where (select coalesce(sum(usd), 0) from fund_bonuses where created_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc') + ${usd} <= ${cfg.bonusDailyBudget}
       on conflict (wallet) do nothing`;
   }
-  await payBonus(chain, address).catch((e) => console.error("[fund] bonus payment failed:", e));
-  const [row] = await sql`select * from fund_bonuses where wallet = ${address}`;
-  return row ? toBonus(row) : null;
+  return bonusOf(address);
 }
 
-/** Pays the bonus once its lock has passed, provided the deposit that earned it is still in. With no lock, a bonus promised under an earlier lock is due now. */
-async function payBonus(chain: Chain, address: string): Promise<void> {
+/**
+ * Sends a bonus whose lock has passed, to a wallet asking from `ip`. "short" means the treasury holds less than the bonus.
+ * The claim and the address it came from are written in one statement, which also refuses it if another
+ * wallet claimed from that address inside the cooldown: two wallets asking at once can't both get through.
+ */
+async function payBonus(chain: Chain, address: string, ip: string, cooldownHours: number): Promise<"paid" | "short" | "none"> {
   const sql = await db();
-  if (fundConfig().terms.bonusLockHours === 0) await sql`update fund_bonuses set unlock_at = now() where wallet = ${address} and status = 'locked' and unlock_at > now()`;
-  const [bonus] = await sql`select * from fund_bonuses where wallet = ${address} and status = 'locked' and unlock_at <= now()`;
-  if (!bonus) return;
-  const [pos] = await sql`select principal from fund_positions where wallet = ${address} and agent = ${bonus.agent}`;
-  if (num(pos?.principal) < num(bonus.deposit_usd) - 0.01) return;
+  // This server's clock, as `claimable` is reckoned by it.
+  const [bonus] = await sql`select * from fund_bonuses where wallet = ${address} and status = 'locked' and unlock_at <= ${new Date().toISOString()}`;
+  if (!bonus) return "none";
 
-  await chain.withTreasury(async () => {
-    if ((await chain.treasuryBalance()) < num(bonus.usd)) return;
+  return chain.withTreasury(async () => {
+    if ((await chain.treasuryBalance()) < num(bonus.usd)) return "short";
     const signed = await chain.signPayment(address, num(bonus.usd));
     const claimed = await sql`
-      update fund_bonuses set status = 'paying', signature = ${signed.id}, last_valid_block_height = ${signed.expiry}
-      where wallet = ${address} and status = 'locked' returning wallet`;
-    if (claimed.length === 0) return;
+      update fund_bonuses set status = 'paying', signature = ${signed.id}, last_valid_block_height = ${signed.expiry}, claim_ip = ${ip}, claimed_at = now()
+      where wallet = ${address} and status = 'locked'
+        and not exists (
+          select 1 from fund_bonuses other
+          where other.claim_ip = ${ip} and other.wallet <> ${address} and other.status in ('paying', 'paid')
+            and other.claimed_at > now() - make_interval(secs => ${cooldownHours * 3600})
+        )
+      returning wallet`;
+    if (claimed.length === 0) return "none";
     await signed.send();
     await sql`update fund_bonuses set status = 'paid' where wallet = ${address} and status = 'paying'`;
+    return "paid";
   });
+}
+
+/**
+ * Pays a wallet its first-deposit bonus, when the wallet asks for it. The bonus can only go to
+ * the wallet that earned it, so the request needs no signature. `ip` is where the request came
+ * from: a second wallet asking from the same address waits out the cooldown.
+ */
+export async function claimBonus(wallet: unknown, ip: string): Promise<FundResult<{ bonus: FundBonus }>> {
+  const on = await ready(wallet);
+  if (!on.ok) return on;
+  const { chain, address } = on;
+  const cooldown = fundConfig().terms.bonusCooldownHours;
+  const cooling = (until: number) => fail(`A bonus was already claimed from this network by another wallet. Yours can be claimed from ${new Date(until).toUTCString()}.`);
+
+  await resolvePayments(chain, address);
+  const bonus = await bonusOf(address, ip);
+  if (!bonus) return fail("This wallet has no bonus to claim. A bonus comes with a wallet's first deposit.");
+  if (bonus.status === "paid") return { ok: true, bonus };
+  if (bonus.status === "forfeited") return fail("This bonus was given up by withdrawing before it unlocked.");
+  if (bonus.status === "paying") return fail("Your bonus is on its way. Look again in a minute.");
+  if (!bonus.claimable) return fail(`Your bonus is still locked. It can be claimed from ${new Date(bonus.unlockAt).toUTCString()}.`);
+  if (bonus.waitUntil) return cooling(bonus.waitUntil);
+
+  try {
+    if ((await payBonus(chain, address, ip, cooldown)) === "short") return fail("The bonus can't be paid right now. Nothing was sent; try again later.");
+  } catch (e) {
+    // The payment may or may not have landed. The chain is asked before the wallet is told anything.
+    console.error("[fund] bonus payment did not confirm:", e);
+    await resolvePayments(chain, address).catch(() => {});
+  }
+  const after = await bonusOf(address, ip);
+  if (after && (after.status === "paid" || after.status === "paying")) return { ok: true, bonus: after };
+  // Another wallet at the same address got in first.
+  if (after?.waitUntil) return cooling(after.waitUntil);
+  return fail("The payment didn't go through. Nothing was sent; you can claim again.");
 }
 
 // --- withdraw ---
@@ -308,7 +383,7 @@ export async function withdraw(
   const nonce = message.match(/^Nonce: (.+)$/m)?.[1] ?? "";
 
   const sql = await db();
-  await settle(chain, address);
+  await resolvePayments(chain, address);
   if ((await sql`select 1 from fund_events where nonce = ${nonce}`).length) return fail("This withdrawal request was already used. Start again.");
 
   // The treasury is held from signing to sending, so payments leave in the order they were signed.
@@ -434,14 +509,9 @@ async function resolvePayments(chain: Chain, address: string): Promise<void> {
   if (paying) {
     const outcome = await chain.fate(paying.signature as string, num(paying.last_valid_block_height), age(paying));
     if (outcome === "landed") await sql`update fund_bonuses set status = 'paid' where wallet = ${address} and status = 'paying'`;
-    if (outcome === "dead") await sql`update fund_bonuses set status = 'locked', signature = null where wallet = ${address} and status = 'paying'`;
+    // A claim that was never paid does not count against the address it came from.
+    if (outcome === "dead") await sql`update fund_bonuses set status = 'locked', signature = null, claim_ip = null, claimed_at = null where wallet = ${address} and status = 'paying'`;
   }
-}
-
-/** Brings a wallet's records up to date: settles undecided payments, then pays a bonus that has come due. */
-async function settle(chain: Chain, address: string): Promise<void> {
-  await resolvePayments(chain, address);
-  await payBonus(chain, address).catch((e) => console.error("[fund] bonus payment failed:", e));
 }
 
 // --- faucet ---

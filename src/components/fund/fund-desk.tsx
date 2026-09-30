@@ -147,9 +147,23 @@ export function FundDesk() {
         done.bonus?.status === "paid"
           ? ` Your ${money(done.bonus.usd)} bonus was sent to your wallet.`
           : done.bonus?.status === "locked"
-            ? ` Your ${money(done.bonus.usd)} bonus unlocks on ${new Date(done.bonus.unlockAt).toLocaleString()}.`
+            ? done.bonus.claimable
+              ? ` Your ${money(done.bonus.usd)} bonus is ready: claim it below.`
+              : ` Your ${money(done.bonus.usd)} bonus unlocks on ${new Date(done.bonus.unlockAt).toLocaleString()}.`
             : "";
       return { tone: "good", text: `${money(done.usd)} is now working with ${AGENTS[agent].name}.${asked}${bonus}`, signature: done.signature };
+    });
+
+  const claim = () =>
+    run("claim", async () => {
+      if (!address) throw new Error("Connect a wallet first.");
+      const r = await post<{ bonus: FundBonus }>("/api/fund/claim", { wallet: address });
+      if (!r.ok) throw new Error(r.error);
+      return {
+        tone: "good",
+        text: r.bonus.status === "paid" ? `Your ${money(r.bonus.usd)} bonus was sent to your wallet.` : `Your ${money(r.bonus.usd)} bonus was submitted and is waiting for confirmation.`,
+        signature: r.bonus.signature ?? undefined,
+      };
     });
 
   const withdraw = (from: AgentId, percent: number) =>
@@ -358,9 +372,9 @@ export function FundDesk() {
 
       {/* 3. your funding */}
       <section className="panel p-5 sm:p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="panel-title">Your funding</h2>
-          {wallet?.bonus && <BonusLine bonus={wallet.bonus} />}
+          {wallet?.bonus && <BonusLine bonus={wallet.bonus} busy={busy} onClaim={claim} />}
         </div>
         {!address ? (
           <p className="py-8 text-center text-sm text-white/40">Connect a wallet to see and withdraw your funding.</p>
@@ -496,8 +510,8 @@ function Estimate({ terms, usd, first }: { terms: FundingTerms; usd: number; fir
         </div>
         {flat.bonus > 0 && (
           <div className="flex justify-between text-xs">
-            <dt className="text-white/40">Paid</dt>
-            <dd className="text-white/55">{terms.bonusLockHours === 0 ? "straight after your deposit" : `after ${formatHours(terms.bonusLockHours)}, if the deposit is still in`}</dd>
+            <dt className="text-white/40">You claim it</dt>
+            <dd className="text-white/55">{terms.bonusLockHours === 0 ? "straight after your deposit" : `after ${formatHours(terms.bonusLockHours)}, if the deposit stayed in`}</dd>
           </div>
         )}
         <div className="flex justify-between">
@@ -525,7 +539,14 @@ function Estimate({ terms, usd, first }: { terms: FundingTerms; usd: number; fir
 
 const formatHours = (h: number) => (h % 24 === 0 ? `${h / 24} day${h === 24 ? "" : "s"}` : `${h} hour${h === 1 ? "" : "s"}`);
 
-function BonusLine({ bonus }: { bonus: FundBonus }) {
+function BonusLine({ bonus, busy, onClaim }: { bonus: FundBonus; busy: string | null; onClaim: () => void }) {
+  if (bonus.status === "locked" && bonus.claimable && bonus.waitUntil === null) {
+    return (
+      <button onClick={onClaim} disabled={busy !== null} className="btn-primary px-4 py-1.5 text-sm">
+        {busy === "claim" ? "Sending your bonus…" : `Claim your ${money(bonus.usd)} bonus`}
+      </button>
+    );
+  }
   const text =
     bonus.status === "paid"
       ? `Bonus of ${money(bonus.usd)} paid`
@@ -533,7 +554,9 @@ function BonusLine({ bonus }: { bonus: FundBonus }) {
         ? `Bonus of ${money(bonus.usd)} is being sent`
         : bonus.status === "forfeited"
           ? `Bonus of ${money(bonus.usd)} given up by withdrawing early`
-          : `Bonus of ${money(bonus.usd)} unlocks ${new Date(bonus.unlockAt).toLocaleString()}`;
+          : !bonus.claimable
+            ? `Bonus of ${money(bonus.usd)} unlocks ${new Date(bonus.unlockAt).toLocaleString()}`
+            : `Bonus of ${money(bonus.usd)} can be claimed from ${new Date(bonus.waitUntil!).toLocaleString()}`;
   return (
     <span className={cn("rounded-full px-3 py-1 text-xs", bonus.status === "forfeited" ? "bg-white/5 text-white/45" : "bg-white/10 text-white/80")}>{text}</span>
   );
@@ -649,7 +672,10 @@ function Terms({ terms, symbol }: { terms: FundingTerms; symbol: string }) {
           </li>
           <li>
             <strong className="font-medium text-white/85">Bonus.</strong> One per wallet, on your first deposit, sized by that deposit.{" "}
-            {terms.bonusLockHours === 0 ? "It is paid straight away." : `It is paid after ${formatHours(terms.bonusLockHours)}. Withdraw before then and you give it up.`}
+            {terms.bonusLockHours === 0
+              ? "You claim it on this page, straight after the deposit."
+              : `You claim it on this page after ${formatHours(terms.bonusLockHours)}. Withdraw before then and you give it up.`}
+            {terms.bonusCooldownHours > 0 && ` One bonus can be claimed from a network every ${terms.bonusCooldownHours} hour${terms.bonusCooldownHours === 1 ? "" : "s"}, whichever wallet claims it.`}
           </li>
           <li>
             <strong className="font-medium text-white/85">Route fee.</strong> Each withdrawal costs {money(terms.feeMin)} or {terms.feePct}%, whichever is

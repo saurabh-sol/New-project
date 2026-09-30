@@ -4,7 +4,12 @@ import type { Claim } from "./ledger";
 
 export const fail = (status: number, error: string, extra?: object) => Response.json({ ok: false, error, ...extra }, { status });
 
-export const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+/**
+ * The address the request came from. The host's edge names it in a header of its own, which a visitor
+ * can't set; the first entry of `x-forwarded-for` is the fallback, and that one a visitor can write.
+ */
+export const clientIp = (req: Request) =>
+  req.headers.get("cf-connecting-ip")?.trim() || req.headers.get("true-client-ip")?.trim() || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
 
 /** The parts of a claim that are safe to show the claimant. */
 export const publicClaim = (c: Claim): ClaimRecord => ({

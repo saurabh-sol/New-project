@@ -208,7 +208,8 @@ A user deposits tokens, which the agent gets as extra capital. The user holds sh
 | --- | --- | --- |
 | Deposit size | $5 to $500 per agent | `FUND_MIN_DEPOSIT`, `FUND_MAX_DEPOSIT` |
 | First-deposit bonus, once per wallet | $5 → $1.30, $10 → $2, $25 → $3, $50+ → $4.50 | `src/lib/funding.ts` |
-| Bonus lock | none: the bonus is paid straight after the deposit | `BONUS_LOCK_HOURS` |
+| Bonus lock | none: the funder claims the bonus on the funding page straight after the deposit | `BONUS_LOCK_HOURS` |
+| Bonus claims from one network | one every 24 hours, whichever wallet claims | `BONUS_IP_COOLDOWN_HOURS` |
 | Bonus budget | $50 per day | `BONUS_DAILY_BUDGET_USD` |
 | Route fee on withdrawal | $1 or 2%, whichever is more | `WITHDRAW_FEE_MIN_USD`, `WITHDRAW_FEE_PCT` |
 

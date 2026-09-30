@@ -33,7 +33,12 @@ export interface FundBonus {
   unlockAt: number;
   status: "locked" | "paying" | "paid" | "forfeited";
   signature: string | null;
+  /** Whether its lock has passed, so that the wallet may claim it. */
+  claimable: boolean;
+  /** Set when another wallet claimed a bonus from the asker's address on the network: when this one can be claimed from there. */
+  waitUntil: number | null;
 }
+
 
 export interface FundEvent {
   id: number;

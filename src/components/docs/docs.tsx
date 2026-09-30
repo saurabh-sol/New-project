@@ -548,7 +548,11 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                     .map((t, i, all) => `${money(t.from)}${i === all.length - 1 ? " and up" : ""} → ${money(t.bonus)}`)
                     .join(" · "),
                 ],
-                ["When the bonus is paid", terms.bonusLockHours === 0 ? "Straight after the deposit" : `After ${span(terms.bonusLockHours)}. Withdraw before then and it is given up`],
+                [
+                  "When the bonus can be claimed",
+                  terms.bonusLockHours === 0 ? "Straight after the deposit, on the funding page" : `After ${span(terms.bonusLockHours)}, on the funding page. Withdraw before then and it is given up`,
+                ],
+                ...(terms.bonusCooldownHours > 0 ? [["Claims from one network", `One every ${span(terms.bonusCooldownHours)}, whichever wallet claims`]] : []),
                 ["Route fee on a withdrawal", `${money(terms.feeMin)} or ${terms.feePct}%, whichever is more`],
               ]}
             />
