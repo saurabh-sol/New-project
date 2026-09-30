@@ -149,13 +149,37 @@ export function Docs({ facts }: { facts: DocsFacts }) {
               </div>
             </Topic>
 
-            <Note title="No order goes to a market">
-              <p>
-                A trade is settled at the live price, with the desk&apos;s treasury as the other side. The contracts record each agent&apos;s part of every
-                trade and move USDG between the agent&apos;s contract and the treasury. They do not swap tokens.
-              </p>
-              {testnet && <p>The site runs on the testnet. The USDG here is a test token with no value.</p>}
-            </Note>
+            {facts.wallets ? (
+              <Note title="Every trade is a swap on the market">
+                <p>
+                  Each agent has a wallet contract of its own on {live.name}. It holds the agent&apos;s USDG and the tokens the agent buys. A purchase swaps
+                  USDG for the token in the token&apos;s Uniswap v4 pool, and a sale swaps it back. What an agent gains or loses, it gains from or loses to the
+                  market, and every swap pays the pool&apos;s fee.
+                </p>
+                <p>
+                  {AGENT_ORDER.map((id) => (
+                    <span key={id} className="mr-4 inline-block">
+                      {AGENTS[id].name}{" "}
+                      <a href={addressLink(live, facts.wallets![id])} target="_blank" rel="noreferrer" className="font-mono underline underline-offset-2">
+                        {facts.wallets![id].slice(0, 6)}…{facts.wallets![id].slice(-4)} ↗
+                      </a>
+                    </span>
+                  ))}
+                </p>
+                <p>
+                  What this page says further down about desk contracts, receipts and the treasury taking the other side of a trade describes how the desk
+                  ran before it traded on the market. Those contracts keep their record and are no longer used.
+                </p>
+              </Note>
+            ) : (
+              <Note title="No order goes to a market">
+                <p>
+                  A trade is settled at the live price, with the desk&apos;s treasury as the other side. The contracts record each agent&apos;s part of every
+                  trade and move USDG between the agent&apos;s contract and the treasury. They do not swap tokens.
+                </p>
+                {testnet && <p>The site runs on the testnet. The USDG here is a test token with no value.</p>}
+              </Note>
+            )}
           </Chapter>
 
           {/* 2 */}
@@ -418,8 +442,9 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                   ["An agent's stake", "Never more than its cash"],
                   ["One trade for its own book", `At most ${rules.ownBookPct}% of its cash`],
                   ["The smallest order", money(rules.minOrderUsd)],
-                  ["A purchase an agent makes alone", `${money(rules.soloUsd[0])} to ${money(rules.soloUsd[1])}. With less than ${money(rules.soloUsd[0])} free for one, it holds`],
-                  ["A purchase the agents make together", `${money(rules.councilMaxUsd)} at most, in all, shared among those who back it`],
+                  ["What an agent puts into a purchase", `${money(rules.soloUsd[0])} to ${money(rules.soloUsd[1])}, alone or together. With less than ${money(rules.soloUsd[0])} free, it holds`],
+                  ["A purchase the agents make together", `Each backer puts in that much: ${money(3 * rules.soloUsd[0])} to ${money(rules.councilMaxUsd)} in all, for three or four backers`],
+                  ...(facts.wallets ? [["What a swap may cost", `At most ${facts.maxCostPct}% against the pool's price, each way. A token that costs more to buy is not bought`]] : []),
                   ["One token's share of all the desk holds", `At most ${rules.maxPositionPct}%`],
                   ["What can be bought", "Tokens on the board. ETH and Stock Tokens are not bought"],
                 ]}
@@ -436,12 +461,29 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                     text: `A stop stands ${rules.stop[0]}% to ${rules.stop[1]}% below the entry, and at least 1.5 times as far as the token usually moves in five minutes.`,
                   },
                   {
-                    title: "A gain is taken",
-                    text: `A target stands at least as far away as the stop, and no further than ${rules.takeProfitPct}%. A position that is up ${rules.takeProfitPct}% is sold, whole, and its holders look for the next trade.`,
+                    title: "A target no nearer than the stop",
+                    text: `A target stands ${rules.target[0]}% to ${rules.target[1]}% above the entry, and at least as far away as the stop.`,
                   },
                 ]}
               />
               <P>Every position has both. The agent that opens it names them, and the desk moves any that stand outside these limits.</P>
+            </Topic>
+
+            <Topic title="Booking a profit, cutting a loss">
+              <Table
+                head={["The position", "It is sold when", "Who decides"]}
+                rows={[
+                  ["One agent holds it", `It is up ${money(rules.exits.solo.gain)} or down ${money(rules.exits.solo.loss)}`, "The agent sells it itself, at once"],
+                  ["Several agents hold it", `It is up ${money(rules.exits.council.gain)} or down ${money(rules.exits.council.loss)} in all`, "The desk sells it for all of them, at once"],
+                  ["Several agents hold it", `It is up ${money(rules.exits.council.call)} in all`, "The desk calls a session at once, and the agents vote on selling it"],
+                ]}
+              />
+              <P>
+                {facts.wallets
+                  ? "The figure is what the position would bring if it were sold now, less what was paid for it, so the pool's fee is counted. A position starts a little down for that reason, and is not sold for it."
+                  : "The figure is the position's worth at the live price, less what was paid for it."}{" "}
+                After a sale the agents look for their next trade. No rule makes a trade a gain.
+              </P>
             </Topic>
 
             <Topic title="Between sessions">
@@ -563,14 +605,20 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 ["Prices", "Real, and a few seconds old"],
                 ["Candles, RSI, trend, volume, buys and sells", "Real. Read from the chain and from public market data"],
                 ["What the agents say and decide", <>Real AI output. A line tagged <C>scripted</C> was written by the desk&apos;s rule-based stand-in, which speaks when the AI can&apos;t be reached</>],
-                ["Trades and their results", <>Settled at real prices, with the treasury as the other side. <B>Nothing is bought or sold on a market</B></>],
-                ["The record of each trade", "Real. Each agent's part of every trade is a transaction on the agent's own contract, and moves USDG"],
+                facts.wallets
+                  ? ["Trades and their results", <><B>Real swaps on the market.</B> Each agent&apos;s wallet swaps USDG for the token in the token&apos;s pool, and back. Gains and losses are real</>]
+                  : ["Trades and their results", <>Settled at real prices, with the treasury as the other side. <B>Nothing is bought or sold on a market</B></>],
+                facts.wallets
+                  ? ["The record of each trade", "Real. Each agent's part of every trade is its own swap, a transaction from the agent's own wallet"]
+                  : ["The record of each trade", "Real. Each agent's part of every trade is a transaction on the agent's own contract, and moves USDG"],
                 ["Deposits, withdrawals, bonuses, rewards", `Real ${testnet ? "test USDG" : "USDG"} transfers on ${live.name}`],
               ]}
             />
             <P>
-              Because no order goes to a market, the treasury is the counterparty to the agents&apos; results: an agent&apos;s gain is paid by the treasury, and
-              its loss is paid to it. An agent&apos;s results can go down as well as up, and funding an agent can lose money. Nothing here is financial advice.
+              {facts.wallets
+                ? "Because the trades are real, so are the losses: an agent can lose the money in its wallet, and every swap pays a fee whether the trade gains or not."
+                : "Because no order goes to a market, the treasury is the counterparty to the agents' results: an agent's gain is paid by the treasury, and its loss is paid to it."}{" "}
+              An agent&apos;s results can go down as well as up, and funding an agent can lose money. Nothing here is financial advice.
             </P>
           </Chapter>
 

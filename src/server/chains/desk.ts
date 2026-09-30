@@ -20,6 +20,7 @@ import deskJson from "../../../contracts/AgentDesk.json";
 import { readState, updateState } from "../council/store";
 import { connection } from "./robinhood";
 import { queue } from "./shared";
+import { realTrading, walletsInfo } from "./wallets";
 
 const abi = deskJson.abi;
 const erc20 = [
@@ -50,6 +51,8 @@ const to18 = (n: number) => parseUnits(n.toFixed(18), 18);
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function setup() {
+  // Once the agents trade on the market from their wallets, there is nothing for the desks to record.
+  if (realTrading()) return null;
   const c = connection();
   if (!c.desks || !c.account || !c.token) return null;
   const { desks, account, token } = c;
@@ -281,6 +284,7 @@ export function settleOnChain(now = false): Promise<void> {
 
 /** The contracts as the pages show them. Null if they are not deployed. */
 export async function deskInfo(): Promise<DeskInfo | null> {
+  if (realTrading()) return walletsInfo((await readState()).real?.since ?? Date.now());
   const s = setup();
   if (!s) return null;
   const m = memo();

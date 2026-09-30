@@ -50,6 +50,15 @@ services:
         sync: false
       - key: DESK_FROM_BLOCK
         sync: false
+      # The agents' wallets. With all four set, every trade is a swap on the market.
+      - key: WALLET_QUANT
+        sync: false
+      - key: WALLET_DEGEN
+        sync: false
+      - key: WALLET_GUARDIAN
+        sync: false
+      - key: WALLET_ORACLE
+        sync: false
       - key: ADMIN_USERNAME
         sync: false
       - key: ADMIN_PASSWORD_HASH

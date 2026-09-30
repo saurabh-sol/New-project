@@ -33,14 +33,35 @@ export const COMMITTED_HOLD_ROUNDS = 12;
 /** The most of its cash an agent may put into one trade for its own book. */
 export const OWN_BOOK_SHARE = 0.6;
 /**
- * What an agent puts into a purchase of its own, in whole USDG: half to six tenths of its
- * starting cash, so $10 to $12 of $20. With less than the smaller figure free, it makes none.
+ * What an agent puts into any one purchase, in whole USDG: a fifth to a quarter of its
+ * starting cash, so $4 to $5 of $20. With less than the smaller figure free, it makes none.
+ * Alone, that is the whole purchase. Together, each backer puts in that much.
  */
-export const SOLO_USD = [Math.round(START_CASH * 0.5), Math.round(START_CASH * 0.6)] as const;
-/** The most the agents put into a purchase together, in all: half of one agent's starting cash, so $10 of $20. */
-export const COUNCIL_MAX_USD = Math.round(START_CASH * 0.5);
-/** A position is sold, whole, once it is up by this much, in percent. Its holders then look for the next trade. */
-export const TAKE_PROFIT_PCT = 10;
+export const SOLO_USD = [Math.round(START_CASH * 0.2), Math.round(START_CASH * 0.25)] as const;
+/** The most the agents put into a purchase together, in all: four backers at the larger figure, so $20. Three at the smaller make $12. */
+export const COUNCIL_MAX_USD = 4 * SOLO_USD[1];
+
+/** One agent's $20 is the measure the desk's dollar levels are set against. */
+const UNIT = START_CASH / 20;
+/**
+ * When the desk sells a position for what it has made or lost, in USDG, after what selling costs.
+ * A position one agent holds is sold by that agent. One that several hold is put to a vote once
+ * it is up by `call`, and sold without one at `gain` or at `loss`.
+ */
+export const EXITS = {
+  solo: { gain: 0.5 * UNIT, loss: 0.4 * UNIT },
+  council: { call: 0.5 * UNIT, gain: 1 * UNIT, loss: 1 * UNIT },
+} as const;
+
+export type Exit = "GAIN" | "LOSS" | "CALL";
+
+/** What the desk does with a position that has made `pnl` in all, held by `holders` agents: sell it at a gain, sell it at a loss, call a vote on selling it, or nothing. */
+export function exitFor(holders: number, pnl: number): Exit | null {
+  if (holders <= 1) return pnl >= EXITS.solo.gain ? "GAIN" : pnl <= -EXITS.solo.loss ? "LOSS" : null;
+  if (pnl >= EXITS.council.gain) return "GAIN";
+  if (pnl <= -EXITS.council.loss) return "LOSS";
+  return pnl >= EXITS.council.call ? "CALL" : null;
+}
 
 export type Stakes = Record<AgentId, number>;
 
@@ -131,9 +152,6 @@ export const positionOf = (p: Portfolio, token: string) => p.positions.find((x) 
 
 /** Tokens of the position that are this agent's. */
 export const unitsOf = (pos: Position, agent: AgentId) => pos.units?.[agent] ?? (pos.cost > 0 ? (pos.stake[agent] / pos.cost) * pos.qty : 0);
-
-/** The price at which a position is sold at a gain: its target, or the desk's take-profit if that comes first. */
-export const goalOf = (pos: Position) => Math.min(pos.target, pos.entryPrice * (1 + TAKE_PROFIT_PCT / 100));
 
 /**
  * Shares a purchase the agents make together among its backers: no more than `most` in all, in
@@ -237,12 +255,24 @@ interface BuyOrder {
   reason?: FillReason;
   /** Adding to a position leaves its stop and target where its holders set them. */
   keepTerms?: boolean;
+  /** A purchase made on the market: the tokens each agent's swap brought in, and its transaction. `stakes` is what each paid. */
+  real?: { units: Stakes; txs: Partial<Record<AgentId, string>> };
 }
+
+/** A sale made on the market: the tokens each agent's swap sold, the USDG it brought back, and its transaction. */
+export interface RealSale {
+  units: Stakes;
+  usd: Stakes;
+  txs: Partial<Record<AgentId, string>>;
+}
+
+const firstTx = (txs: Partial<Record<AgentId, string>>) => AGENT_ORDER.map((a) => txs[a]).find(Boolean);
 
 /** Opens a position, or adds to the one already held in that token. */
 export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fill } {
   const usd = round2(sum(o.stakes));
-  const qty = usd / o.price;
+  const bought = (a: AgentId) => (o.real ? o.real.units[a] : o.stakes[a] / o.price);
+  const qty = o.real ? sum(o.real.units) : usd / o.price;
   const held = positionOf(p, o.token);
   const cost = (held?.cost ?? 0) + usd;
   const totalQty = (held?.qty ?? 0) + qty;
@@ -254,7 +284,7 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
     cost,
     entryPrice,
     stake: mapStakes((a) => (held?.stake[a] ?? 0) + o.stakes[a]),
-    units: mapStakes((a) => (held ? unitsOf(held, a) : 0) + o.stakes[a] / o.price),
+    units: mapStakes((a) => (held ? unitsOf(held, a) : 0) + bought(a)),
     stop: held && o.keepTerms ? held.stop : entryPrice * (1 - o.stopPct / 100),
     target: held && o.keepTerms ? held.target : entryPrice * (1 + o.targetPct / 100),
     openedRound: held?.openedRound ?? o.round,
@@ -282,7 +312,8 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
       leader: o.leader,
       realized: null,
       stake: o.stakes,
-      units: mapStakes((a) => o.stakes[a] / o.price),
+      units: mapStakes(bought),
+      ...(o.real ? { txs: o.real.txs, tx: firstTx(o.real.txs) } : {}),
     },
   };
 }
@@ -299,6 +330,8 @@ interface SellOrder {
   id: string;
   /** Sells this agent's tokens only, and leaves the other holders' where they are. */
   only?: AgentId;
+  /** The sale as it was made on the market. The books follow it: who sold how much, and for what. */
+  real?: RealSale;
 }
 
 /**
@@ -312,13 +345,16 @@ export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: 
   if (fraction === 0) return null;
 
   const sells = (a: AgentId) => !o.only || a === o.only;
-  const sold = mapStakes((a) => (sells(a) ? unitsOf(held, a) * fraction : 0));
-  const costOf = mapStakes((a) => (sells(a) ? held.stake[a] * fraction : 0));
+  const real = o.real;
+  // On the market, each seller sold what its swap sold. No more than the books say it held.
+  const sold = mapStakes((a) => (real ? Math.min(real.units[a], unitsOf(held, a)) : sells(a) ? unitsOf(held, a) * fraction : 0));
+  const share = (a: AgentId) => (unitsOf(held, a) > 0 ? sold[a] / unitsOf(held, a) : 0);
+  const costOf = mapStakes((a) => (real ? held.stake[a] * share(a) : sells(a) ? held.stake[a] * fraction : 0));
   const qty = sum(sold);
   if (qty <= 0) return null;
-  const usd = qty * o.price;
+  const payout = mapStakes((a) => (real ? real.usd[a] : sold[a] * o.price));
+  const usd = real ? sum(payout) : qty * o.price;
   const costOut = sum(costOf);
-  const payout = mapStakes((a) => sold[a] * o.price);
 
   const rest = p.positions.filter((x) => x.token !== o.token);
   const left = held.qty - qty;
@@ -354,6 +390,7 @@ export function sell(p: Portfolio, o: SellOrder): { portfolio: Portfolio; fill: 
       stake: mapStakes((a) => round2(payout[a])),
       units: sold,
       fraction,
+      ...(real ? { txs: real.txs, tx: firstTx(real.txs) } : {}),
     },
   };
 }
