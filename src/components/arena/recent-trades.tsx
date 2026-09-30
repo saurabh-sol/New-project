@@ -1,17 +1,20 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { memo, useDeferredValue, useMemo, useState } from "react";
 import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
 import type { Fill } from "@/lib/council";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
 import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { cn, fmtPrice, fmtSigned, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
+import { useFreshTrades } from "./trade-rows";
 import { TradeViewToggle } from "./trade-view-toggle";
 
 const WHY: Record<Fill["reason"], string> = { COUNCIL: "council vote", OWN: "own book", STOP: "stop-loss", TARGET: "profit target", FALLING: "sold into a fall" };
 const short = (name: string) => name.replace("The ", "");
-const time = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** One formatter for the whole list, where toLocaleTimeString would make one per line. */
+let clock: Intl.DateTimeFormat | undefined;
+const time = (ts: number) => (clock ??= new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" })).format(ts);
 
 /** Who was in the trade: the one agent, or the leader and how many joined. */
 function who(f: Fill): string {
@@ -25,15 +28,19 @@ function who(f: Fill): string {
  * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own; their hashes are text, and open nothing.
  * A visitor first sees the sales that booked a gain. The line under the title says how many of the
  * closed trades that is, and "All" shows the rest.
+ *
+ * The lines are plain and memoized; only a trade that comes in while the page is open slides in.
  */
 export function RecentTrades({ className }: { className?: string }) {
   const own = useArena((s) => s.fills);
   const desk = useArena((s) => s.desk);
   const samples = useSampleFills();
-  const fills = withSamples(samples, own);
-  const view = useTradeView();
-  const t = tally(fills);
-  const latest = inView(fills, view).slice(0, 30);
+  const fills = useMemo(() => withSamples(samples, own), [samples, own]);
+  // The toggle shows the choice at once; the list follows when the browser has a moment.
+  const view = useDeferredValue(useTradeView());
+  const t = useMemo(() => tally(fills), [fills]);
+  const latest = useMemo(() => inView(fills, view).slice(0, 30), [fills, view]);
+  const fresh = useFreshTrades(fills);
 
   return (
     <section className={cn("panel flex min-w-0 flex-col", className)}>
@@ -49,55 +56,60 @@ export function RecentTrades({ className }: { className?: string }) {
         {latest.length === 0 && (
           <li className="px-4 py-6 text-center text-xs text-white/30">{view === "gains" && t.orders > 0 ? "No trade has closed at a gain yet." : "No trades yet."}</li>
         )}
-        <AnimatePresence initial={false}>
-          {latest.map((f) => {
-            const txs = f.txs && Object.keys(f.txs).length ? leaderFirst(f.leader).flatMap((a) => (f.txs?.[a] ? [{ agent: a, hash: f.txs[a]! }] : [])) : f.tx ? [{ agent: f.leader, hash: f.tx }] : [];
-            return (
-              <motion.li key={f.id} layout initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="px-4 py-2 text-xs">
-                <div className="flex items-baseline gap-2">
-                  <span className={cn("rounded px-1.5 py-px font-mono text-[10px] font-bold", f.side === "BUY" ? "bg-white/10 text-green-400" : "bg-white/10 text-red-400")}>{f.side}</span>
-                  <span className="truncate font-mono font-semibold text-white">{f.token}</span>
-                  <span className="font-mono text-white/60">${f.usd.toFixed(2)}</span>
-                  <span className={cn("ml-auto shrink-0 font-mono", f.realized === null ? "text-white/30" : f.realized >= 0 ? "text-green-400" : "text-red-400")}>
-                    {f.realized === null ? "open" : fmtSigned(f.realized)}
-                  </span>
-                </div>
-                <div className="mt-0.5 flex items-baseline gap-2 text-[11px] text-white/45">
-                  <span className="font-mono">{time(f.ts)}</span>
-                  <span className="truncate">
-                    {who(f)} · {WHY[f.reason]} · at ${fmtPrice(f.price)}
-                  </span>
-                </div>
-                {isSample(f) ? (
-                  <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
-                    {txs.map((t) => (
-                      <span key={t.agent}>
-                        {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
-                        {shortHash(t.hash)}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  desk && (
-                    <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
-                      {txs.length > 0
-                        ? txs.map((t) => (
-                            <span key={t.agent}>
-                              {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
-                              {shortHash(t.hash)}
-                            </span>
-                          ))
-                        : f.unrecorded || f.ts < desk.since
-                          ? "not recorded on-chain"
-                          : "recording…"}
-                    </div>
-                  )
-                )}
-              </motion.li>
-            );
-          })}
-        </AnimatePresence>
+        {latest.map((f) => (
+          <Line key={f.id} f={f} onChain={!!desk} since={desk?.since} fresh={fresh.has(f.id)} />
+        ))}
       </ul>
     </section>
   );
 }
+
+interface LineProps {
+  f: Fill;
+  /** The desk keeps its trades on contracts. */
+  onChain: boolean;
+  /** When the desk contracts came into use; an older trade is not on them. */
+  since: number | undefined;
+  /** The trade came in while the page was open: it slides in once. */
+  fresh: boolean;
+}
+
+/** One trade. Rendered once, and again only when its own trade changes. */
+const Line = memo(function Line({ f, onChain, since, fresh }: LineProps) {
+  // Decided when the line first appears, and not taken back when the list renders again.
+  const [slide] = useState(fresh);
+  const txs = f.txs && Object.keys(f.txs).length ? leaderFirst(f.leader).flatMap((a) => (f.txs?.[a] ? [{ agent: a, hash: f.txs[a]! }] : [])) : f.tx ? [{ agent: f.leader, hash: f.tx }] : [];
+  const hashes = txs.map((t) => (
+    <span key={t.agent}>
+      {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
+      {shortHash(t.hash)}
+    </span>
+  ));
+  return (
+    <li className={cn("px-4 py-2 text-xs", slide && "item-in")}>
+      <div className="flex items-baseline gap-2">
+        <span className={cn("rounded px-1.5 py-px font-mono text-[10px] font-bold", f.side === "BUY" ? "bg-white/10 text-green-400" : "bg-white/10 text-red-400")}>{f.side}</span>
+        <span className="truncate font-mono font-semibold text-white">{f.token}</span>
+        <span className="font-mono text-white/60">${f.usd.toFixed(2)}</span>
+        <span className={cn("ml-auto shrink-0 font-mono", f.realized === null ? "text-white/30" : f.realized >= 0 ? "text-green-400" : "text-red-400")}>
+          {f.realized === null ? "open" : fmtSigned(f.realized)}
+        </span>
+      </div>
+      <div className="mt-0.5 flex items-baseline gap-2 text-[11px] text-white/45">
+        <span className="font-mono">{time(f.ts)}</span>
+        <span className="truncate">
+          {who(f)} · {WHY[f.reason]} · at ${fmtPrice(f.price)}
+        </span>
+      </div>
+      {isSample(f) ? (
+        <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">{hashes}</div>
+      ) : (
+        onChain && (
+          <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
+            {txs.length > 0 ? hashes : f.unrecorded || (since !== undefined && f.ts < since) ? "not recorded on-chain" : "recording…"}
+          </div>
+        )
+      )}
+    </li>
+  );
+});
