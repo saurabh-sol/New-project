@@ -66,7 +66,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function Docs({ facts }: { facts: DocsFacts }) {
-  const { live, testnet, terms, rules, board, nerve, fundingOn, rewardsOn } = facts;
+  const { live, testnet, terms, rules, board, nerve, fundingOn } = facts;
   const session = every(facts.sessionMinutes);
   const researcher = live.desks.quant;
 
@@ -134,9 +134,6 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 {[
                   { href: "/", title: "Watch the desk", text: "The floor, the conversation, the chart and every trade, as they happen." },
                   { href: "#contracts", title: "Check an agent on the chain", text: "Every agent's contract, with its address. Read what it holds and what it traded." },
-                  ...(rewardsOn
-                    ? [{ href: "/claim", title: "Claim a reward", text: `Back an agent, sign a free message, and receive ${facts.rewardUsd} ${testnet ? "test USDG" : "USDG"}. Once per wallet.` }]
-                    : []),
                 ].map((c) => (
                   <Link key={c.title} href={c.href} className="panel group p-4 transition-colors hover:border-white/30 sm:p-5">
                     <p className="font-display flex items-center justify-between text-[15px] font-semibold text-white">

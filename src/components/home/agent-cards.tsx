@@ -96,12 +96,12 @@ function Card({ id, rank, funding }: { id: AgentId; rank: number; funding: Agent
 
       {/* The agent's own contract, where its money is held and its trades are on record. */}
       {desk && (
-        <a href={desk.explorerAddress} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-2 text-[11px] leading-none text-white/50 hover:text-white">
+        <div className="flex items-center justify-between gap-2 text-[11px] leading-none text-white/50">
           <span className="truncate">
-            On-chain desk <span className="font-mono text-white/80 underline underline-offset-2">{shortAddress(desk.address)} ↗</span>
+            On-chain desk <span className="font-mono text-white/80">{shortAddress(desk.address)}</span>
           </span>
           <span className="shrink-0 font-mono text-white/60">${holds.toFixed(2)}</span>
-        </a>
+        </div>
       )}
     </motion.article>
   );

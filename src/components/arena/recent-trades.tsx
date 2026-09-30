@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
-import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
 import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
@@ -83,10 +82,10 @@ export function RecentTrades({ className }: { className?: string }) {
                     <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
                       {txs.length > 0
                         ? txs.map((t) => (
-                            <a key={t.agent} href={explorerLink(desk, t.hash)} target="_blank" rel="noreferrer" className="pointer-events-auto underline underline-offset-2 hover:text-white">
+                            <span key={t.agent}>
                               {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
-                              {shortHash(t.hash)} ↗
-                            </a>
+                              {shortHash(t.hash)}
+                            </span>
                           ))
                         : f.unrecorded || f.ts < desk.since
                           ? "not recorded on-chain"

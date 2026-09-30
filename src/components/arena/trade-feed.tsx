@@ -66,9 +66,7 @@ export function TradeFeed() {
           {AGENT_ORDER.map((id) => (
             <span key={id}>
               {short(AGENTS[id].name)}{" "}
-              <a href={desk.agents[id].explorerAddress} target="_blank" rel="noreferrer" className="font-mono text-white/80 underline underline-offset-2 hover:text-white">
-                {shortAddress(desk.agents[id].address)} ↗
-              </a>
+              <span className="font-mono text-white/80">{shortAddress(desk.agents[id].address)}</span>
             </span>
           ))}
           <span className="font-mono text-white/70">

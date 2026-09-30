@@ -14,7 +14,6 @@ import { XLink } from "./x-link";
 
 const NAV = [
   { href: "/", label: "Trading floor" },
-  { href: "/claim", label: "Rewards" },
   { href: "/docs", label: "Docs" },
 ];
 
