@@ -270,10 +270,13 @@ The user connects a wallet, backs an agent and signs a free message. The server 
 
 ## Wallets
 
-The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Ethereum-type wallet works. The connect window always lists MetaMask and Robinhood Wallet, then every other wallet installed in the browser.
+The app runs on Robinhood Chain only. Wallets connect through [Privy](https://privy.io), and transfers are sent with viem. Any Ethereum-type wallet works. Privy's window lists MetaMask and Robinhood Wallet first, then every other wallet installed in the browser, then WalletConnect for phone wallets.
 
+- Privy needs the app's ID in `NEXT_PUBLIC_PRIVY_APP_ID`, from <https://dashboard.privy.io>. The ID is public. Without it no wallet can connect, and the Connect button says so.
+- Every address the site is served from must be on the app's list of allowed domains in Privy's dashboard, `http://localhost:3000` included for development. From any other address Privy refuses the sign-in.
+- Connecting signs the wallet in: the wallet shows a free message to sign, which proves the address to Privy. Only wallets are offered, with no email or social sign-in, and Privy makes no wallet of its own.
 - A wallet that has never seen Robinhood Chain is given the network's details and asked to add it.
-- Robinhood Wallet is a phone app. It connects by QR code through WalletConnect, which needs a free project ID from <https://cloud.reown.com> in `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`. Without one, its row links to the download page.
+- Robinhood Wallet is a phone app. It connects by QR code through WalletConnect, which Privy provides.
 - A deposit is a USDG transfer that the wallet sends itself, so the wallet needs a little ETH for the network fee.
 
 ## Showing it on a Raspberry Pi

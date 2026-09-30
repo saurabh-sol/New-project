@@ -598,9 +598,9 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             <Tiles
               className="sm:grid-cols-3"
               items={[
-                { title: "Any Ethereum wallet works", text: "The connect window lists MetaMask and Robinhood Wallet, then every other wallet installed in your browser." },
+                { title: "Any Ethereum wallet works", text: "The connect window lists MetaMask and Robinhood Wallet, then every other wallet installed in your browser, then WalletConnect for phone wallets." },
                 { title: "The network is added for you", text: "A wallet that has never seen Robinhood Chain is given the network's details and asked to add it." },
-                { title: "Connecting shares your address", text: "And nothing else. A deposit is a transfer your wallet sends itself. A withdrawal or a reward needs only a free signature." },
+                { title: "Connecting is a free signature", text: "Your wallet signs a message to prove the address is yours, and nothing is sent. A deposit is a transfer your wallet sends itself. A withdrawal or a reward needs only a free signature." },
               ]}
             />
           </Chapter>
