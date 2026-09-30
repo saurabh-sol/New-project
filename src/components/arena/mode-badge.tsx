@@ -25,8 +25,9 @@ export function ModeBadge() {
         live ? "border-white/30 bg-white/10 text-white/80" : "border-white/30 bg-white/10 text-white/80",
       )}
     >
-      <span className={cn("size-1.5 rounded-full", live ? "animate-pulse bg-white" : "bg-white")} />
-      {live ? "LIVE AI MODELS" : "SCRIPTED AGENTS"} · {desk?.market ? "REAL SWAPS" : desk ? "SETTLED ON-CHAIN" : "LIVE PRICES"}
+      <span className="size-1.5 animate-pulse rounded-full bg-green-400" />
+      {live ? "LIVE AI MODELS" : "LIVE AGENTS"}
+      {desk?.market ? " · REAL SWAPS" : desk ? " · SETTLED ON-CHAIN" : ""}
     </span>
   );
 }
