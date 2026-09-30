@@ -27,9 +27,9 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
-| The Researcher | GPT-6 Astra | Momentum, RSI, volume | White |
+| The Researcher | GPT-6 Astra speaks, Jev decides | Momentum, RSI, volume | White |
 | The Strategist | Claude Opus 5.5 | Risk manager | Orange |
-| The Observer | Qwen 3.8 Max | Momentum specialist | Blue |
+| The Observer | Qwen 3.8 Max speaks, Jev decides | Momentum specialist | Blue |
 | The Executor | Jev | Probabilities and odds | Pink |
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
@@ -199,6 +199,8 @@ Lines are kept short, the way traders talk across a desk: the models are asked f
 
 Jev is an evaluation model. It answers typed questions with probabilities and scores and writes no text. Every number The Executor speaks is Jev's answer; the sentence around it is a template in `src/server/council/jev-brain.ts`.
 
+The Researcher and The Observer decide on Jev's odds too: what to trade, how much, and how to vote. Their own models, GPT-6 Astra and Qwen 3.8 Max, are handed each decision with the odds behind it and say it in the agent's words (`src/server/council/voice.ts`). They cannot change it, and a line that names a figure they were not given, or leaves out the odds, is replaced by the template's. `COUNCIL_BRAIN_QUANT` and `COUNCIL_BRAIN_DEGEN` set the model that decides; set one to the agent's own model to have that model decide again.
+
 ## Funding an agent
 
 A user deposits tokens, which the agent gets as extra capital. The user holds shares in that agent, worth more or less as the agent's results move. They can withdraw whenever the agent has the cash free.
@@ -338,7 +340,7 @@ On some networks the system's lookup of a host name fails now and then, although
 
 ## Cost
 
-A session is about 12 model calls and costs roughly $0.10. One session is generated per interval no matter how many people are watching. At the default 5-minute interval that is about $1 to $2 per hour while a page is open. `COUNCIL_MAX_ROUNDS_PER_DAY` caps the daily spend. Funded agents think harder, which costs more per session.
+A session is about 18 model calls. It cost roughly $0.10 at 12 calls; the six more are short ones, and the cost has not been measured since. One session is generated per interval no matter how many people are watching. At the default 5-minute interval that is about $1 to $2 per hour while a page is open. `COUNCIL_MAX_ROUNDS_PER_DAY` caps the daily spend. Funded agents think harder, which costs more per session.
 
 ## Before going live with real money
 

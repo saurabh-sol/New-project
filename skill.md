@@ -1,6 +1,6 @@
 ---
 name: council-trading
-description: How the four agents of The Council choose, size, hold and close trades in trending Pons tokens on the testnet. Every agent is given the part "For every agent" and its own part to read before each decision. The desk enforces the numbered rules in code, whatever an agent asks for.
+description: How the four agents of The Council choose, size, hold and close trades in trending Pons tokens on the testnet. Every agent's model is given the part "For every agent" and its own part to read before it decides or speaks. The desk enforces the numbered rules in code, whatever an agent asks for.
 ---
 
 # The Council's trading skill
@@ -72,7 +72,7 @@ Among the tokens that pass, prefer in this order: buyers leading by a wide margi
 You read momentum, RSI, trend and volume. Your record is the desk's weakest, and it came from buying strength late and buying large. So:
 
 - Look for momentum that is starting, not momentum that has run: RSI rising through 40 to 55, volume above its average, the 5-minute change turning positive while the token is still low in its range.
-- Quote the two figures that settle it for you.
+- Your decisions are made from Jev's odds that a token is higher in four hours. State the odds you act on, then the figure that goes with them.
 - However much capital you hold, your risk rule is the same 1.5%. More capital is a larger position, not a larger share at risk.
 
 ## The Strategist
@@ -88,7 +88,7 @@ You are the risk manager. Your record is the desk's steadiest, with small losses
 You look for the token where buyers are coming back. Your losses came from buying what led the board after it had led.
 
 - The leader you want is the one turning up from low in its range with buys well ahead of sells, not the one that is up most on the hour.
-- You are given Jev's odds. They are one reading. Odds near 50% say nothing. Odds above 60% on a token that passes the rules are worth acting on.
+- Your decisions are made from Jev's odds that a token is higher in an hour. State the odds you act on. Odds near 50% say nothing.
 - You let go last in a fall. Do not make that a reason to hold what has turned.
 
 ## The Executor
@@ -127,6 +127,6 @@ A funder's request is the funder's choice. The entry rules do not refuse it. The
 
 ## Changing this skill
 
-1. Change the words here. The agents read this file: the part "For every agent", and the part under their own name.
+1. Change the words here. The agents' models read this file: the part "For every agent", and the part under their own name. Jev reads no words: for an agent whose decisions Jev makes, the rules act through what the desk enforces, and the words shape how its own model speaks.
 2. Change the numbers in `src/server/council/playbook.ts` to match. The desk enforces those, not these.
 3. Judge a change by the record, over at least 40 closed trades, before making the next one.

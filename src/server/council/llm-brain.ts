@@ -11,7 +11,7 @@ import { briefing, describeDebate, describePitches, describeProposal, nameOf, us
 import { PLAYBOOK, skillFor } from "./playbook";
 import { repeats } from "./skills";
 
-const PERSONA: Record<AgentId, string> = {
+export const PERSONA: Record<AgentId, string> = {
   quant:
     "You are systematic and precise. You trust momentum, RSI, trend and volume over stories, and you quote the numbers that drive your view.",
   guardian:

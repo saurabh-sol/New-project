@@ -1,25 +1,55 @@
 /**
- * The Executor, backed by Jev. Jev is an evaluation model: it answers typed questions
- * with probabilities and scores and writes no text. Every number The Executor speaks
- * is Jev's answer; the sentence around it is a template.
+ * Agents whose brain is Jev. Jev is an evaluation model: it answers typed questions
+ * with probabilities and scores and writes no text. Every decision made here rests on
+ * Jev's answers, and every number in a line is Jev's; the sentence around it is a template.
+ * The Executor speaks those sentences as they are. An agent with a language model of its
+ * own has it put them into its own words (see voice.ts).
  */
 import { gateway } from "@ai-sdk/gateway";
 import { experimental_evaluate as evaluate, type Experimental_EvaluationQuestion as Question } from "ai";
 import type { Emotion } from "@/lib/council";
 import type { Proposal } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { backers, clamp, mostStake, openTokens, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
+import { backers, buyable, clamp, mostStake, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefingState, describeDebate, describePitches, describeProposal, nameOf, px, type RoundCtx } from "./context";
 import { fundingLevel, pick } from "./skills";
 import { positionOf, userFunding } from "@/lib/council";
 
-const BUY_ABOVE = 0.56;
-const SELL_BELOW = 0.44;
+/**
+ * How an agent reads Jev's answers. The answers are all Jev's. What differs from agent to agent
+ * is the question it decides on and how much it asks of the answer, so that agents with the
+ * same brain are not one agent.
+ */
+interface Temper {
+  /** How many hours ahead the question it decides on looks. */
+  hours: 1 | 4;
+  /** Buys when the odds that the token is higher by then are at least this. */
+  buyAbove: number;
+  /** Sells what it holds when those odds are under this. */
+  sellBelow: number;
+  /** Backs a purchase when its expected value clears this many percent. */
+  minEdgePct: number;
+  /** Share of its cash it names per point of conviction. The desk's risk rule still caps the size. */
+  sizing: number;
+}
+
+const TEMPER: Record<AgentId, Temper> = {
+  oracle: { hours: 1, buyAbove: 0.56, sellBelow: 0.44, minEdgePct: 0.3, sizing: 0.1 },
+  // Momentum across timeframes: decides on the four-hour question, and asks more of it.
+  quant: { hours: 4, buyAbove: 0.58, sellBelow: 0.45, minEdgePct: 0.5, sizing: 0.08 },
+  // Follows the strongest mover: acts on less, sizes larger, lets go last.
+  degen: { hours: 1, buyAbove: 0.54, sellBelow: 0.42, minEdgePct: 0.2, sizing: 0.12 },
+  // The risk manager: asks the most, sizes the least, sells first.
+  guardian: { hours: 1, buyAbove: 0.6, sellBelow: 0.46, minEdgePct: 0.6, sizing: 0.06 },
+};
+
 /** Backs a sale when it thinks the price is more likely to fall than not. */
 const SELL_ABOVE = 0.52;
-/** Backs a purchase when its expected value clears this many percent. */
-const MIN_EDGE_PCT = 0.3;
+
+/** The focuses, of any agent, that are read with the odds of a breakout, and with the odds over the other span. */
+const BREAKOUT_LENSES = ["breakout", "volume", "leader", "expansion"];
+const OTHER_SPAN_LENSES = ["four", "momentum", "trend", "laggard", "exhaustion"];
 
 const REASONING_SCALE = [
   "contradicts the market data",
@@ -30,6 +60,8 @@ const REASONING_SCALE = [
 ];
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
+/** An expected return, as "+1.2%". One that rounds to nothing is "0.0%", not "-0.0%". */
+const edge = (ev: number) => (Math.abs(ev) < 0.05 ? "0.0%" : `${ev > 0 ? "+" : ""}${ev.toFixed(1)}%`);
 const short = (a: AgentId) => nameOf(a).replace("The ", "");
 
 /**
@@ -39,15 +71,15 @@ const short = (a: AgentId) => nameOf(a).replace("The ", "");
 const expectedPct = (p: number, proposal: Proposal) => p * proposal.targetPct - (1 - p) * proposal.stopPct;
 
 /** Jev's probability for the proposal, and whether it is good enough to back. */
-function judge(p: number, proposal: Proposal) {
+function judge(p: number, proposal: Proposal, temper: Temper) {
   if (proposal.action === "SELL") {
     return { backs: p >= SELL_ABOVE, strength: clamp((p - 0.5) * 2, 0, 1), view: `${pct(p)} odds ${proposal.token} is lower in an hour.` };
   }
   const ev = expectedPct(p, proposal);
   return {
-    backs: ev >= MIN_EDGE_PCT,
+    backs: ev >= temper.minEdgePct,
     strength: clamp(ev / 5, 0, 1),
-    view: `${pct(p)} odds of target before stop. Expected ${ev >= 0 ? "+" : ""}${ev.toFixed(1)}%.`,
+    view: `${pct(p)} odds of target before stop. Expected ${edge(ev)}.`,
   };
 }
 
@@ -75,7 +107,7 @@ export async function oddsFromJev(cfg: CouncilConfig, ctx: RoundCtx): Promise<Re
 export function jevBrain(cfg: CouncilConfig): Brain {
   async function ask(agent: AgentId, state: unknown, questions: Record<string, Question>) {
     const { answers } = await evaluate({
-      model: gateway.evaluationModel(cfg.modelIds[agent]),
+      model: gateway.evaluationModel(cfg.brainIds[agent]),
       state: state as Parameters<typeof evaluate>[0]["state"],
       questions,
       // The provider occasionally answers 502. The SDK waits longer between each retry.
@@ -109,20 +141,26 @@ export function jevBrain(cfg: CouncilConfig): Brain {
 
   return {
     async pitch(agent, ctx) {
-      // Every decision rests on the one-hour question. The round's focus adds a second reading for colour.
+      // Every decision rests on one question: is the token higher at the end of the agent's span.
+      // The round's focus adds a second reading for colour.
+      const temper = TEMPER[agent];
       const lens = ctx.lens[agent].id;
       const deep = fundingLevel(userFunding(ctx.portfolio, agent)).level >= 2;
-      const askBreakout = lens === "breakout" || deep;
-      const askFour = lens === "four" || deep;
+      const askBreakout = BREAKOUT_LENSES.includes(lens) || deep;
+      const askOther = OTHER_SPAN_LENSES.includes(lens) || deep;
+      const ahead = (hours: number) => (hours === 1 ? "one hour" : "four hours");
+      const otherHours = temper.hours === 1 ? 4 : 1;
+      /** "in an hour", as the agent's own span. */
+      const span = temper.hours === 1 ? "an hour" : "four hours";
 
       const questions: Record<string, Question> = {};
       for (const s of ctx.stats) {
-        questions[`up_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade higher one hour from now than its current price of ${px(s.price)}?` };
+        questions[`up_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade higher ${ahead(temper.hours)} from now than its current price of ${px(s.price)}?` };
         if (askBreakout) {
           questions[`break_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade above its 1-hour high of ${px(s.high1h)} at any point in the next hour?` };
         }
-        if (askFour) {
-          questions[`four_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade higher four hours from now than its current price of ${px(s.price)}?` };
+        if (askOther) {
+          questions[`other_${s.token}`] = { type: "boolean", instructions: `Will ${s.token} trade higher ${ahead(otherHours)} from now than its current price of ${px(s.price)}?` };
         }
       }
       const a = await ask(agent, briefingState(ctx, agent), questions);
@@ -132,8 +170,8 @@ export function jevBrain(cfg: CouncilConfig): Brain {
 
       /** The second reading for a token, as a short clause. */
       const also = (token: string) => {
-        if (lens === "breakout" && askBreakout) return `, ${pct(a.probability(`break_${token}`))} to break its 1h high`;
-        if (askFour) return `, ${pct(a.probability(`four_${token}`))} over 4h`;
+        if (BREAKOUT_LENSES.includes(lens) && askBreakout) return `, ${pct(a.probability(`break_${token}`))} to break its 1h high`;
+        if (askOther) return `, ${pct(a.probability(`other_${token}`))} over ${otherHours}h`;
         if (askBreakout) return `, ${pct(a.probability(`break_${token}`))} to break its 1h high`;
         return "";
       };
@@ -143,14 +181,14 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         const t = r.asset.key;
         const p = a.probability(`up_${t}`);
         const stake = requestStake(ctx, agent, 0);
-        const read = `${pct(p)} odds ${t} is higher in an hour${also(t)}`;
+        const read = `${pct(p)} odds ${t} is higher in ${span}${also(t)}`;
         return {
           ...base,
           action: "BUY",
           token: t,
           stakeUsd: stake,
           conviction: p >= 0.5 ? conviction(p) : 1,
-          emotion: p >= BUY_ABOVE ? "confident" : p < 0.5 ? "skeptical" : "neutral",
+          emotion: p >= temper.buyAbove ? "confident" : p < 0.5 ? "skeptical" : "neutral",
           say: pick(
             positionOf(ctx.portfolio, t)
               ? [`Adding $${stake} ${t} for a funder. ${read}.`, `Another funder wants ${t}. ${read}. $${stake} more.`, `${t} again, by request. ${read}. Adding $${stake}.`]
@@ -163,14 +201,14 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       if (weighs(agent, ctx)) {
         const t = ctx.request!.asset.key;
         const p = a.probability(`up_${t}`);
-        const read = `${pct(p)} odds ${t} is higher in an hour${also(t)}`;
-        const joins = p >= BUY_ABOVE && cash >= 10;
+        const read = `${pct(p)} odds ${t} is higher in ${span}${also(t)}`;
+        const joins = p >= temper.buyAbove && cash >= 10;
         const c = conviction(p);
         return {
           ...base,
           action: joins ? "BUY" : "HOLD",
           token: t,
-          stakeUsd: joins ? Math.floor(cash * 0.05 * c) : 0,
+          stakeUsd: joins ? Math.floor(cash * (temper.sizing / 2) * c) : 0,
           conviction: c,
           emotion: joins ? "confident" : "skeptical",
           say: joins
@@ -180,8 +218,8 @@ export function jevBrain(cfg: CouncilConfig): Brain {
                   `${read}. I would stay out.`,
                   `${t}: ${read}. Below my bar.`,
                   `On ${t}, ${read}. Not for my cash.`,
-                  `I need ${pct(BUY_ABOVE)} to buy. ${t} gives me ${pct(p)}.`,
-                  `${pct(1 - p)} that ${t} is lower in an hour. No.`,
+                  `I need ${pct(temper.buyAbove)} to buy. ${t} gives me ${pct(p)}.`,
+                  `${pct(1 - p)} that ${t} is lower in ${span}. No.`,
                   `${t} is short of my threshold at ${pct(p)}. Passing.`,
                 ],
                 ctx,
@@ -191,9 +229,9 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       }
 
       const weakest = odds.filter((o) => saleTokens(ctx, agent).includes(o.token)).sort((x, y) => x.p - y.p)[0];
-      if (weakest && weakest.p < SELL_BELOW) {
+      if (weakest && weakest.p < temper.sellBelow) {
         const t = weakest.token;
-        const read = `${pct(weakest.p)} odds ${t} is higher in an hour${also(t)}`;
+        const read = `${pct(weakest.p)} odds ${t} is higher in ${span}${also(t)}`;
         return {
           ...base,
           action: "SELL",
@@ -205,13 +243,13 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       }
 
       // The best odds among tokens that can be bought. An agent that must open a position takes the best there is.
-      const buyable = odds.filter((o) => starterTokens(ctx, agent).includes(o.token)).sort((x, y) => y.p - x.p);
-      if (ctx.mustTrade[agent] && buyable.length) {
-        const top = buyable[0];
+      const starters = odds.filter((o) => starterTokens(ctx, agent).includes(o.token)).sort((x, y) => y.p - x.p);
+      if (ctx.mustTrade[agent] && starters.length) {
+        const top = starters[0];
         const c = conviction(top.p);
-        const stake = Math.round(clamp(cash * 0.1 * c, starterStake(ctx, agent), mostStake(ctx, agent)));
-        const read = `${pct(top.p)} odds ${top.token} is higher in an hour${also(top.token)}`;
-        const thin = top.p < BUY_ABOVE;
+        const stake = Math.round(clamp(cash * temper.sizing * c, starterStake(ctx, agent), mostStake(ctx, agent)));
+        const read = `${pct(top.p)} odds ${top.token} is higher in ${span}${also(top.token)}`;
+        const thin = top.p < temper.buyAbove;
         return {
           ...base,
           action: "BUY",
@@ -225,22 +263,26 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         };
       }
 
-      const best = [...odds].sort((x, y) => y.p - x.p)[0];
-      const t = best.token;
-      const read = `${pct(best.p)} odds ${t} is higher in an hour${also(t)}`;
-      if (best.p >= BUY_ABOVE && cash >= 10 && openTokens(ctx).includes(t)) {
-        const c = conviction(best.p);
+      // The best odds among the tokens the desk lets this agent buy, if they clear its bar.
+      const open = buyable(ctx, agent);
+      const lead = odds.filter((o) => open.includes(o.token)).sort((x, y) => y.p - x.p)[0];
+      if (lead && lead.p >= temper.buyAbove && cash >= 10) {
+        const c = conviction(lead.p);
+        const read = `${pct(lead.p)} odds ${lead.token} is higher in ${span}${also(lead.token)}`;
         return {
           ...base,
           action: "BUY",
-          token: t,
-          stakeUsd: Math.min(Math.floor(cash * 0.1 * c), mostStake(ctx, agent)),
+          token: lead.token,
+          stakeUsd: Math.min(Math.floor(cash * temper.sizing * c), mostStake(ctx, agent)),
           conviction: c,
           emotion: c >= 4 ? "confident" : "neutral",
-          say: pick([`${read}. Best edge on the board. Buying.`, `${t} leads my odds: ${read}. Long.`, `${read}. That clears my bar. Buy.`], ctx, agent),
+          say: pick([`${read}. Best edge open to me. Buying.`, `${lead.token} leads my odds: ${read}. Long.`, `${read}. That clears my bar. Buy.`], ctx, agent),
         };
       }
 
+      const best = [...odds].sort((x, y) => y.p - x.p)[0];
+      const t = best.token;
+      const read = `${pct(best.p)} odds ${t} is higher in ${span}${also(t)}`;
       const runnerUp = [...odds].sort((x, y) => y.p - x.p)[1];
       return {
         ...base,
@@ -251,7 +293,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         say: pick(
           [
             `${read}. Too close to a coin flip. Hold.`,
-            `No edge. ${t} ${pct(best.p)}, ${runnerUp.token} ${pct(runnerUp.p)} for the hour. Hold.`,
+            `No edge. ${t} ${pct(best.p)}${runnerUp ? `, ${runnerUp.token} ${pct(runnerUp.p)}` : ""} over ${span}. Hold.`,
             `Odds are flat. Best is ${t} at ${pct(best.p)}. I wait.`,
             `Staying in cash. Nothing beats ${pct(best.p)} on ${t}.`,
           ], ctx, agent),
@@ -268,7 +310,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
           criteria: REASONING_SCALE,
         },
       });
-      const verdict = judge(a.probability("works"), proposal);
+      const verdict = judge(a.probability("works"), proposal, TEMPER[agent]);
       const grade = (a.score("reasoning") + 1).toFixed(1);
       const to = `@${short(proposal.leader)}`;
       return {
@@ -318,13 +360,13 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       };
       const a = await ask(agent, state, { works: worksQuestion(ctx, proposal) });
       const p = a.probability("works");
-      const verdict = judge(p, proposal);
+      const verdict = judge(p, proposal, TEMPER[agent]);
       const buying = proposal.action === "BUY";
       const stakeUsd = verdict.backs && buying ? Math.floor(ctx.portfolio.cash[agent] * clamp(verdict.strength, 0.1, 0.4)) : 0;
       const support = verdict.backs && (!buying || stakeUsd >= 1);
       const emotion: Emotion = support ? (verdict.strength >= 0.3 ? "confident" : "neutral") : "skeptical";
       const committed = ctx.request?.mode === "commit" && presents(proposal.leader, ctx);
-      const ev = `${expectedPct(p, proposal) >= 0 ? "+" : ""}${expectedPct(p, proposal).toFixed(1)}%`;
+      const ev = edge(expectedPct(p, proposal));
       const t = proposal.token;
       const ways = !buying
         ? support
@@ -351,7 +393,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         support,
         stakeUsd: support ? stakeUsd : 0,
         emotion,
-        reason: buying ? `${pct(p)} odds, expected ${expectedPct(p, proposal).toFixed(1)}%` : `${pct(p)} odds it falls`,
+        reason: buying ? `${pct(p)} odds, expected ${ev}` : `${pct(p)} odds it falls`,
         say: pick(ways, ctx, agent),
       };
     },

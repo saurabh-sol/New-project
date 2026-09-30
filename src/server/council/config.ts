@@ -8,6 +8,15 @@ const DEFAULT_MODELS: Record<AgentId, string> = {
   oracle: "typesafe-ai/jev",
 };
 
+/**
+ * Agents whose decisions are made by the evaluation model, unless a setting says otherwise.
+ * Their own model, the one they are shown with, puts each decision into words.
+ */
+const DEFAULT_BRAINS: Partial<Record<AgentId, string>> = {
+  quant: "typesafe-ai/jev",
+  degen: "typesafe-ai/jev",
+};
+
 const NAMES: Record<string, string> = {
   "openai/gpt-6-astra": "GPT-6 Astra",
   "openai/gpt-6-sol": "GPT-6 Sol",
@@ -37,14 +46,21 @@ const num = (raw: string | undefined, fallback: number) => {
 
 export interface CouncilConfig {
   hasKey: boolean;
+  /** The model each agent speaks with, and is shown with on the site. */
   modelIds: Record<AgentId, string>;
+  /**
+   * The model that makes each agent's decisions. For most it is the agent's own model. Where it is
+   * an evaluation model and the agent's own model writes text, the evaluation model decides what
+   * to trade, how much and how to vote, and the agent's own model says it.
+   */
+  brainIds: Record<AgentId, string>;
   models: Record<AgentId, ModelInfo>;
   intervalMs: number;
   maxRoundsPerDay: number;
   callTimeoutMs: number;
   /**
-   * Agents that are given Jev's odds to weigh before they decide. The model still makes the
-   * decision and writes what the agent says. Jev's odds are one more reading on its desk.
+   * Agents that decide with their own model and are given Jev's odds to weigh before they do.
+   * Jev's odds are one more reading on their desk.
    */
   withOdds: AgentId[];
   /** The evaluation model that gives those odds. */
@@ -59,16 +75,23 @@ export function councilConfig(): CouncilConfig {
     degen: env.COUNCIL_MODEL_DEGEN || DEFAULT_MODELS.degen,
     oracle: env.COUNCIL_MODEL_ORACLE || DEFAULT_MODELS.oracle,
   };
+  const brainIds: Record<AgentId, string> = {
+    quant: env.COUNCIL_BRAIN_QUANT || DEFAULT_BRAINS.quant || modelIds.quant,
+    guardian: env.COUNCIL_BRAIN_GUARDIAN || DEFAULT_BRAINS.guardian || modelIds.guardian,
+    degen: env.COUNCIL_BRAIN_DEGEN || DEFAULT_BRAINS.degen || modelIds.degen,
+    oracle: env.COUNCIL_BRAIN_ORACLE || DEFAULT_BRAINS.oracle || modelIds.oracle,
+  };
   const oddsModel = env.COUNCIL_ODDS_MODEL || DEFAULT_MODELS.oracle;
-  const asked = (env.COUNCIL_ODDS_FOR ?? "degen").split(",").map((a) => a.trim());
-  // An agent that is an evaluation model itself has odds of its own.
-  const withOdds = (Object.keys(modelIds) as AgentId[]).filter((a) => asked.includes(a) && !isEvaluationModel(modelIds[a]));
+  const asked = (env.COUNCIL_ODDS_FOR ?? "").split(",").map((a) => a.trim());
+  // An agent whose brain is an evaluation model has odds of its own.
+  const withOdds = (Object.keys(modelIds) as AgentId[]).filter((a) => asked.includes(a) && !isEvaluationModel(brainIds[a]));
   const nameOf = (id: string) => NAMES[id] ?? prettify(id);
   const info = (a: AgentId): ModelInfo => ({ id: modelIds[a], name: nameOf(modelIds[a]) });
 
   return {
     hasKey: !!(env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN),
     modelIds,
+    brainIds,
     models: { quant: info("quant"), guardian: info("guardian"), degen: info("degen"), oracle: info("oracle") },
     intervalMs: Math.max(num(env.COUNCIL_INTERVAL_SECONDS, 300), 60) * 1000,
     maxRoundsPerDay: num(env.COUNCIL_MAX_ROUNDS_PER_DAY, 100),

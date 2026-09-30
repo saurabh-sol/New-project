@@ -23,6 +23,7 @@ import { liveRequests, type ActiveRequest, type RequestSource } from "../request
 import { assetQuote } from "../market/assets";
 import { assetStats, fetchBoard, fetchPrice, type Board } from "./stats";
 import { updateState, type CouncilState } from "./store";
+import { voicedBrain } from "./voice";
 
 const VOTES_TO_PASS = 3;
 
@@ -83,7 +84,9 @@ function thinker(cfg: CouncilConfig, mode: CouncilMode) {
   const scripted = scriptedBrain();
   const llm = llmBrain(cfg);
   const jev = jevBrain(cfg);
-  const modelFor = (agent: AgentId): Brain => (isEvaluationModel(cfg.modelIds[agent]) ? jev : llm);
+  const voiced = voicedBrain(jev, cfg);
+  // An agent whose brain is the evaluation model decides by it. If it has a model of its own that writes, that model words its lines.
+  const modelFor = (agent: AgentId): Brain => (!isEvaluationModel(cfg.brainIds[agent]) ? llm : isEvaluationModel(cfg.modelIds[agent]) ? jev : voiced);
 
   return async function think<T extends object>(agent: AgentId, call: (brain: Brain) => Promise<T>): Promise<Tagged<T>> {
     if (mode === "live") {
@@ -91,7 +94,7 @@ function thinker(cfg: CouncilConfig, mode: CouncilMode) {
         return { ...(await call(modelFor(agent))), source: "model" };
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        console.error(`[council] ${cfg.modelIds[agent]} failed for ${agent}, using scripted stand-in:`, message);
+        console.error(`[council] ${cfg.brainIds[agent]} failed for ${agent}, using scripted stand-in:`, message);
         // Out of budget is not a passing fault: no model will answer until the budget is raised.
         if (/budget exceeded|insufficient (funds|credit)|payment required/i.test(message)) noteOutOfBudget();
       }
