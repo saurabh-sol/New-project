@@ -18,10 +18,12 @@ import { linesAbout, recentLines, saveRound } from "./memory";
 import { scriptedBrain } from "./scripted-brain";
 import { fundingLevel, pick, pickLens, type Effort, type Skill } from "./skills";
 import { settleOnChain } from "../chains/desk";
+import { notTradable, realTrading } from "../chains/wallets";
 import { liveRequests, type ActiveRequest, type RequestSource } from "../requests/service";
 import { assetQuote } from "../market/assets";
+import { buyTogether, inRealTurn, priceOf, sellTogether } from "./real";
 import { assetStats, fetchBoard, fetchPrice, type Board } from "./stats";
-import { updateState, type CouncilState } from "./store";
+import { readState, updateState, type CouncilState } from "./store";
 import { voicedBrain } from "./voice";
 
 const VOTES_TO_PASS = 3;
@@ -222,8 +224,11 @@ export async function runRound(
     const sellOnly = stats.map((s) => s.token).filter((t) => !onBoard.includes(t) && t !== request?.asset.key);
     const prices: Prices = Object.fromEntries(stats.map((s) => [s.token, s.price]));
 
-    // A Stock Token can't be bought or sold while its market is closed.
-    const closed = stats.filter((s) => s.session === "closed").map((s) => s.token);
+    // A Stock Token can't be bought or sold while its market is closed. Nor, when the desk trades on the market, can a token its wallets can't swap.
+    const closed = stats.filter((s) => s.session === "closed" || notTradable(assets[s.token]) !== null).map((s) => s.token);
+    if (realTrading() && closed.length === stats.length) throw new Error("No token on the board can be traded on the market right now");
+    // The desk called this session itself, to vote on selling a position that is up.
+    const called = !request && opening.sellCall && positionOf(before, opening.sellCall.token) ? opening.sellCall : null;
 
     const lens: Record<AgentId, Skill> = perAgent((a) => pickLens(a, opening.lenses[a] ?? []));
     const effort: Record<AgentId, Effort> = perAgent((a) => fundingLevel(userFunding(before, a)).effort);
@@ -250,7 +255,7 @@ export async function runRound(
       prices,
       sellable: before.positions.filter((p) => canSell(before, p.token, run.id) && !closed.includes(p.token)).map((p) => p.token),
       closed,
-      recent: opening.recent,
+      recent: called ? [...opening.recent, `The desk called this session: ${called.token} is up ${usd(called.pnl)} after what selling costs. The vote is on selling it now and taking that profit.`] : opening.recent,
       said,
       floor,
       lens,
@@ -311,6 +316,12 @@ export async function runRound(
       ? { leader: asking.agent, action: "BUY", token: asking.token, stopPct: asking.stopPct, targetPct: asking.targetPct, sellPct: 100 }
       : chooseProposal(pitches, sellPct, ctx.sellable);
     const bound = !!asking && request?.mode === "commit";
+    if (called) {
+      // The sale is the proposal, whatever was pitched. The agent that answers for the position leads it.
+      const pos = positionOf(before, called.token)!;
+      const pct = (from: number, to: number) => Math.round(Math.abs(to / from - 1) * 1000) / 10;
+      proposal = { leader: pos.leader, action: "SELL", token: called.token, stopPct: pct(pos.entryPrice, pos.stop), targetPct: pct(pos.entryPrice, pos.target), sellPct: 100 };
+    }
     run.push({ stage: "pitches", pitches, proposal });
 
     /**
@@ -326,6 +337,54 @@ export async function runRound(
       const fitted = fitTerms(terms.stopPct, terms.targetPct, stats.find((s) => s.token === p.token)?.atrPct ?? 0);
       let made: Fill | null = null;
       let adding = false;
+      const noted = (f: Fill, portfolio: Portfolio): OwnTrade => {
+        const who = nameOf(p.agent);
+        const note =
+          f.side === "BUY"
+            ? adding
+              ? `${who} added ${usd(f.usd)} of ${f.token} at ${px(f.price)} for its own book.`
+              : `${who} bought ${usd(f.usd)} of ${f.token} at ${px(f.price)} for its own book. Stop ${fitted.stopPct}% below, target ${fitted.targetPct}% above.`
+            : `${who} sold its ${f.token} at ${px(f.price)}. Realized ${signed(f.realized ?? 0, "")} USDG.`;
+        return { agent: p.agent, fill: f, portfolio, note };
+      };
+
+      if (realTrading()) {
+        // On the market the agent's wallet makes the swap first, and the books then follow what it did.
+        return inRealTurn(async () => {
+          const book = (await readState()).portfolio;
+          const held = positionOf(book, p.token);
+          if (p.action === "BUY") {
+            const wanted = zeroStakes();
+            wanted[p.agent] = Math.min(p.stakeUsd, Math.floor(book.cash[p.agent] * OWN_BOOK_SHARE));
+            if (wanted[p.agent] < SOLO_USD[0]) return null;
+            const stakes = fitStakes(book, p.token, wanted, prices);
+            if (stakes[p.agent] <= 0) return null;
+            const bought = await buyTogether(assets[p.token], stakes);
+            if (!(bought.units[p.agent] > 0)) return null;
+            adding = !!held;
+            const saved = await updateState((s) => {
+              const done = buy(s.portfolio, { token: p.token, price: priceOf(bought.stakes, bought.units), stakes: bought.stakes, ...fitted, round: run.id, leader: p.agent, ts, id, reason: "OWN", keepTerms: true, real: { units: bought.units, txs: bought.txs } });
+              made = done.fill;
+              return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill] };
+            });
+            const f = made as Fill | null;
+            return f ? noted(f, saved.portfolio) : null;
+          }
+          if (!held || !canSellOwn(book, p.token, p.agent, run.id)) return null;
+          const fraction = sellPct[p.agent] / 100;
+          const sale = await sellTogether(assets[p.token], [p.agent], fraction);
+          if (!sale) return null;
+          const saved = await updateState((s) => {
+            const done = sell(s.portfolio, { token: p.token, price: priceOf(sale.usd, sale.units), fraction, reason: "OWN", round: run.id, leader: p.agent, ts, id, only: p.agent, real: sale });
+            if (!done) return s;
+            made = done.fill;
+            return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill] };
+          });
+          const f = made as Fill | null;
+          return f ? noted(f, saved.portfolio) : null;
+        });
+      }
+
       const saved = await updateState((s) => {
         made = null;
         const book = s.portfolio;
@@ -349,15 +408,7 @@ export async function runRound(
         return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill] };
       });
       const f = made as Fill | null;
-      if (!f) return null;
-      const who = nameOf(p.agent);
-      const note =
-        f.side === "BUY"
-          ? adding
-            ? `${who} added ${usd(f.usd)} of ${f.token} at ${px(price)} for its own book.`
-            : `${who} bought ${usd(f.usd)} of ${f.token} at ${px(price)} for its own book. Stop ${fitted.stopPct}% below, target ${fitted.targetPct}% above.`
-          : `${who} sold its ${f.token} at ${px(price)}. Realized ${signed(f.realized ?? 0, "")} USDG.`;
-      return { agent: p.agent, fill: f, portfolio: saved.portfolio, note };
+      return f ? noted(f, saved.portfolio) : null;
     }
 
     /** Trades for their own books by every agent that pitched one and is not in `except`. */
@@ -416,12 +467,24 @@ export async function runRound(
 
     // 3. Pledges. A vote is whatever the agent did with its money, so the two can't disagree.
     const buying = final.action === "BUY";
+    /**
+     * What a backer puts into a purchase the agents make together: as much as it puts into one
+     * of its own, no less and no more, if it has that much. With less, it puts in nothing.
+     * A funder's request is joined with whatever the agent names.
+     */
+    const backing = (agent: AgentId, named: number) => {
+      const cash = Math.floor(before.cash[agent]);
+      if (asking) return Math.floor(clamp(named, 0, cash));
+      const stake = Math.min(Math.floor(clamp(named, ...SOLO_USD)), cash);
+      return stake >= SOLO_USD[0] ? stake : 0;
+    };
+    const renamed = (text: string, named: number, got: number) => (Math.floor(named) === got ? text : cleanSay(text.replace(new RegExp(`\\$${Math.floor(named)}(?!\\d|\\.\\d)`, "g"), () => `$${got}`)));
     const pledges: Pledge[] = await Promise.all(
       AGENT_ORDER.filter((a) => a !== leader).map(async (agent) => {
         // An agent that pitched the same trade has already decided. It joins with what it named.
         const mine = pitches.find((x) => x.agent === agent)!;
         if (!asking && mine.action === final.action && mine.token === final.token) {
-          const stake = buying ? Math.floor(clamp(mine.stakeUsd, 0, before.cash[agent])) : 0;
+          const stake = buying ? backing(agent, mine.stakeUsd) : 0;
           const say = buying
             ? pick([`My pick too. In for $${stake}.`, `Same trade I pitched. $${stake} from me.`, `I had ${final.token} as well. Joining with $${stake}.`], ctx, agent)
             : pick([`I pitched the same sale. Agreed.`, `My call too. Sell ${final.token}.`], ctx, agent);
@@ -429,9 +492,12 @@ export async function runRound(
           return { agent, to: leader, emotion: moodFor({ kind: "pledge", support: true }), say, source: mine.source, support: !buying || stake >= 1, stakeUsd: stake, reason: "pitched the same trade" };
         }
         const p = await think(agent, (b) => b.pledge(agent, ctx, final, pitches, exchanges));
-        const stakeUsd = p.support && buying ? Math.floor(clamp(p.stakeUsd, 0, before.cash[agent])) : 0;
+        const stakeUsd = p.support && buying ? backing(agent, p.stakeUsd) : 0;
         const support = p.support && (!buying || stakeUsd >= 1);
-        return heard({ agent, to: leader, emotion: moodFor({ kind: "pledge", support }), say: p.say, source: p.source, support, stakeUsd: support ? stakeUsd : 0, reason: p.reason || (support ? "backs the trade" : "does not back the trade") });
+        // An agent that backs the trade but has too little cash free for its part stays out, and says so.
+        const short = p.support && buying && !support;
+        const say = short ? pick([`I back it, but I have no ${usd(SOLO_USD[0])} free. Out.`, `Good trade. My cash is at work, so I can't join.`, `I would join. Too little free for my part.`], ctx, agent) : renamed(p.say, p.stakeUsd, stakeUsd);
+        return heard({ agent, to: leader, emotion: moodFor({ kind: "pledge", support }), say, source: p.source, support, stakeUsd: support ? stakeUsd : 0, reason: short ? "too little cash free" : p.reason || (support ? "backs the trade" : "does not back the trade") });
       }),
     );
 
@@ -478,21 +544,59 @@ export async function runRound(
     if (!approved) {
       note = tooSmall && (passed || bound) ? "The order was under the desk's minimum size after limits. No trade." : `Proposal rejected ${yes} to ${4 - yes}. No trade this round.`;
     } else {
-      const price = await market.price(final.token, assets).catch(() => prices[final.token]!);
       const ts = Date.now();
       const id = `r${run.id}-${final.token}-${ts}`;
-      const saved = await updateState((s) => {
-        const done = buying
-          ? buy(s.portfolio, { token: final.token, price, stakes, stopPct: final.stopPct, targetPct: final.targetPct, round: run.id, leader, ts, id, committed: bound })
-          : sell(s.portfolio, { token: final.token, price, fraction: final.sellPct / 100, reason: "COUNCIL", round: run.id, leader, ts, id });
-        if (!done) return s;
-        fill = done.fill;
-        return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill], lastRiskCheck: ts };
-      });
-      after = saved.portfolio;
+      let price = prices[final.token]!;
+      /** Why no order was placed, when the market or the desk's own limits refused it. */
+      let refused: string | null = null;
+      if (realTrading()) {
+        // On the market each backer's wallet makes its own swap, and the books then follow what the swaps did.
+        await inRealTurn(async () => {
+          if (buying) {
+            const bought = await buyTogether(assets[final.token], stakes);
+            if (!AGENT_ORDER.some((a) => bought.units[a] > 0)) {
+              refused = bought.why ?? "No swap went through";
+              return;
+            }
+            price = priceOf(bought.stakes, bought.units);
+            const saved = await updateState((s) => {
+              const done = buy(s.portfolio, { token: final.token, price, stakes: bought.stakes, stopPct: final.stopPct, targetPct: final.targetPct, round: run.id, leader, ts, id, committed: bound, real: { units: bought.units, txs: bought.txs } });
+              fill = done.fill;
+              return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill], lastRiskCheck: ts };
+            });
+            after = saved.portfolio;
+            return;
+          }
+          const held = positionOf((await readState()).portfolio, final.token);
+          const sale = held ? await sellTogether(assets[final.token], AGENT_ORDER.filter((a) => held.stake[a] > 0.005), final.sellPct / 100) : null;
+          if (!sale) {
+            refused = "No swap went through";
+            return;
+          }
+          price = priceOf(sale.usd, sale.units);
+          const saved = await updateState((s) => {
+            const done = sell(s.portfolio, { token: final.token, price, fraction: final.sellPct / 100, reason: "COUNCIL", round: run.id, leader, ts, id, real: sale });
+            if (!done) return s;
+            fill = done.fill;
+            return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill], lastRiskCheck: ts };
+          });
+          after = saved.portfolio;
+        });
+      } else {
+        price = await market.price(final.token, assets).catch(() => prices[final.token]!);
+        const saved = await updateState((s) => {
+          const done = buying
+            ? buy(s.portfolio, { token: final.token, price, stakes, stopPct: final.stopPct, targetPct: final.targetPct, round: run.id, leader, ts, id, committed: bound })
+            : sell(s.portfolio, { token: final.token, price, fraction: final.sellPct / 100, reason: "COUNCIL", round: run.id, leader, ts, id });
+          if (!done) return s;
+          fill = done.fill;
+          return { ...s, portfolio: done.portfolio, fills: [...s.fills, done.fill], lastRiskCheck: ts };
+        });
+        after = saved.portfolio;
+      }
       const f = fill as Fill | null;
       note = !f
-        ? "The order could not be placed. No trade."
+        ? `${refused ?? "The order could not be placed"}. No trade.`
         : buying
           ? bound
             ? `${nameOf(leader)} bought ${usd(f.usd)} of ${f.token} at ${px(price)} for its funder, joined by ${joined}. Stop ${final.stopPct}% below, target ${final.targetPct}% above. Held for at least ${COMMITTED_HOLD_ROUNDS} sessions unless one of them is hit.`
@@ -512,7 +616,8 @@ export async function runRound(
       settled = true;
     }
     // Whoever took part in the council's trade has traded. Everyone else trades the idea it pitched.
-    const inCouncilTrade = fill ? AGENT_ORDER.filter((a) => a === leader || (buying && stakes[a] > 0)) : [];
+    const traded = fill as Fill | null;
+    const inCouncilTrade = traded ? AGENT_ORDER.filter((a) => a === leader || (buying && traded.stake[a] > 0)) : [];
     const own = await ownBooks(inCouncilTrade, { agent: leader, stopPct: final.stopPct, targetPct: final.targetPct });
     if (!approved && own.length) note = `The council did not back ${nameOf(leader)}'s proposal, ${yes} to ${4 - yes}, so there is no desk trade. The agents trade their own books.`;
     run.push({ stage: "outcome", fill, portfolio: after, note, own });
@@ -523,6 +628,8 @@ export async function runRound(
     run.push({ stage: "error", message: "The council could not complete this round. It will try again at the next session." });
   } finally {
     run.finish();
+    // A vote the desk called before this session began has now been held, whatever came of it.
+    await updateState((s) => (s.sellCall && s.sellCall.at <= opening.lastRoundAt ? { ...s, sellCall: undefined } : s)).catch(() => {});
     void settleOnChain(true);
     await saveRound(run.id, run.stages, run.failed).catch((e) => console.error("[council] could not save the round:", e));
   }

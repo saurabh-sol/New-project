@@ -4,14 +4,17 @@
  */
 import { AGENT_ORDER } from "@/lib/agents";
 import type { AssetQuote } from "@/lib/assets";
-import { goalOf, sell, type Fill, type Portfolio, type Position } from "@/lib/council";
+import { exitFor, sell, type Fill, type Portfolio, type Position } from "@/lib/council";
 import { isToken } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
+import { realTrading } from "../chains/wallets";
 import { nameOf, px, signed } from "./context";
 import { extremesSince, refreshAssets } from "./stats";
 import type { CouncilState } from "./store";
 
 const MIN_GAP_MS = 20_000;
+/** A vote on selling the same position is not called again sooner than this. */
+const CALL_AGAIN_MS = 10 * 60_000;
 /**
  * Each check looks again at the last minute and a half before the previous one. The candle that
  * was still forming then, and candles that were read from a slightly old copy, get a second look.
@@ -65,12 +68,15 @@ export function falling(agent: AgentId, pos: Position, quote: AssetQuote): strin
  * if one candle touched both, the stop is assumed to have been hit first.
  */
 export async function applyRisk(state: CouncilState, now = Date.now()): Promise<CouncilState> {
+  // On the market, a sale is a swap, and can't be made inside a change to the books. The desk looks over its positions there in its own way.
+  if (realTrading()) return state;
   if (state.portfolio.positions.length === 0 || now - state.lastRiskCheck < MIN_GAP_MS) return state;
 
   let portfolio: Portfolio = state.portfolio;
   const fills: Fill[] = [];
   const recent: string[] = [];
   let unread = false;
+  let call: CouncilState["sellCall"];
 
   const assets = await refreshAssets(state.assets, state.portfolio.positions.map((p) => p.token)).catch(() => state.assets);
   const close = (pos: Position, price: number, reason: "STOP" | "TARGET", ts: number, id: string) => {
@@ -81,11 +87,7 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
     recent.push(`${reason === "STOP" ? "Stop-loss" : "Profit target"} hit on ${pos.token} at ${px(done.fill.price)}: ${signed(done.fill.realized ?? 0, "")} USDG (position led by ${nameOf(pos.leader)}).`);
   };
 
-  for (const held of state.portfolio.positions) {
-    // The desk takes its profit at a set gain. A position opened with a target further away is given that one.
-    const goal = goalOf(held);
-    const pos = goal < held.target ? { ...held, target: goal } : held;
-    if (pos !== held) portfolio = { ...portfolio, positions: portfolio.positions.map((p) => (p.token === held.token ? { ...p, target: goal } : p)) };
+  for (const pos of state.portfolio.positions) {
     const asset = assets[pos.token];
     if (asset && !isToken(pos.token) && asset.kind === "pool") {
       // A quote that could not be refreshed is an old one. Better to look again than to act on it.
@@ -94,8 +96,12 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
         continue;
       }
       const { quote } = asset;
-      if (quote.price <= pos.stop) close(pos, quote.price, "STOP", now, `stop-${pos.token}-${now}`);
-      else if (quote.price >= pos.target) close(pos, quote.price, "TARGET", now, `target-${pos.token}-${now}`);
+      // The desk also books a profit and cuts a loss at set amounts in dollars, and puts a smaller gain of a shared position to a vote.
+      const pnl = pos.qty * quote.price - pos.cost;
+      const exit = exitFor(AGENT_ORDER.filter((a) => pos.stake[a] > 0.005).length, pnl);
+      if (exit === "CALL" && !call && !state.sellCall && now - (state.called?.[pos.token] ?? 0) >= CALL_AGAIN_MS) call = { token: pos.token, at: now, pnl: Math.round(pnl * 100) / 100 };
+      if (quote.price <= pos.stop || exit === "LOSS") close(pos, quote.price, "STOP", now, `stop-${pos.token}-${now}`);
+      else if (quote.price >= pos.target || exit === "GAIN") close(pos, quote.price, "TARGET", now, `target-${pos.token}-${now}`);
       else if (now - pos.openedAt >= SETTLE_MS && state.round >= (pos.lockedUntil ?? 0)) {
         for (const agent of AGENT_ORDER) {
           if (pos.stake[agent] < 0.01) continue;
@@ -126,5 +132,5 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
     close(pos, stopped ? pos.stop : pos.target, stopped ? "STOP" : "TARGET", Math.min((hit.time + 60) * 1000, now), `${stopped ? "stop" : "target"}-${pos.token}-${hit.time}`);
   }
 
-  return { ...state, portfolio, assets, fills: [...state.fills, ...fills], recent: [...state.recent, ...recent], lastRiskCheck: unread ? state.lastRiskCheck : now };
+  return { ...state, portfolio, assets, fills: [...state.fills, ...fills], recent: [...state.recent, ...recent], lastRiskCheck: unread ? state.lastRiskCheck : now, ...(call ? { sellCall: call, called: { ...state.called, [call.token]: now } } : {}) };
 }

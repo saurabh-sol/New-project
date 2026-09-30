@@ -3,7 +3,9 @@ import type { DeskInfo } from "@/lib/chains";
 import type { CouncilMode, CouncilSnapshot, RoundResponse } from "@/lib/council-types";
 import { deskInfo, settleOnChain } from "../chains/desk";
 import { connection } from "../chains/robinhood";
+import { realTrading } from "../chains/wallets";
 import { councilConfig, type CouncilConfig } from "./config";
+import { realRisk } from "./real";
 import { applyRisk } from "./risk";
 import { loadRound } from "./memory";
 import { outOfBudget, RoundRun, runRound } from "./round";
@@ -19,6 +21,9 @@ function modeOf(cfg: CouncilConfig, state: CouncilState): { mode: CouncilMode; n
   if (used >= cfg.maxRoundsPerDay) return { mode: "scripted", note: "Today's AI budget is used up, so the agents are running on scripted rules until tomorrow." };
   return { mode: "live", note: null };
 }
+
+/** Whether the desk has called a session to vote on selling a position, and that session has not been held yet. */
+const calledNow = (s: CouncilState) => !!s.sellCall && s.sellCall.at > s.lastRoundAt;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -46,10 +51,14 @@ function showcase(desk: DeskInfo | null): DeskInfo | null {
 
 export async function snapshot(): Promise<CouncilSnapshot> {
   const cfg = councilConfig();
+  // The first time the desk runs with the agents' wallets, its books are put on their footing before anything is shown.
+  if (realTrading() && !(await readState()).real) await realRisk(true);
   const state = await updateState((s) => applyRisk(s).catch(() => s));
   const { mode, note } = modeOf(cfg, state);
   // A stop or target may just have closed a position. The chain catches up in its own time.
   void settleOnChain();
+  // On the market, the desk looks over its positions and sells what has made or lost enough.
+  void realRisk();
   return {
     desk: showcase(await deskInfo().catch(() => null)),
     mode,
@@ -60,7 +69,7 @@ export async function snapshot(): Promise<CouncilSnapshot> {
     assets: state.assets,
     board: state.board ?? [],
     fills: state.fills,
-    nextRoundAt: state.round === 0 ? Date.now() : state.lastRoundAt + cfg.intervalMs,
+    nextRoundAt: state.round === 0 || calledNow(state) ? Date.now() : state.lastRoundAt + cfg.intervalMs,
     intervalMs: cfg.intervalMs,
     serverTime: Date.now(),
   };
@@ -90,9 +99,12 @@ export async function joinRound(seen: number): Promise<Joined> {
   const current = unseen();
   if (current) return watch(current);
 
+  // On the market, what has made or lost enough is sold before a session begins, so the agents decide on the books as they stand.
+  await realRisk();
   const state = await readState();
   const now = Date.now();
-  const next = state.lastRoundAt + cfg.intervalMs;
+  // A session the desk has called, to vote on a sale, is due at once.
+  const next = calledNow(state) ? now : state.lastRoundAt + cfg.intervalMs;
 
   // The latest session happened elsewhere, or before a restart. Replay it from storage.
   if (state.round > seen) {
@@ -104,7 +116,7 @@ export async function joinRound(seen: number): Promise<Joined> {
 
   // Claim the next session. The save only succeeds for one server.
   const claimed = await updateState(async (s) => {
-    if (s.round > 0 && now < s.lastRoundAt + cfg.intervalMs) return s;
+    if (s.round > 0 && now < s.lastRoundAt + cfg.intervalMs && !calledNow(s)) return s;
     const settled = await applyRisk(s, now).catch(() => s);
     const day = today();
     return { ...settled, round: s.round + 1, lastRoundAt: now, day, roundsToday: (settled.day === day ? settled.roundsToday : 0) + 1 };

@@ -9,6 +9,8 @@
  */
 import type { Asset, AssetQuote, DeskAsset } from "@/lib/assets";
 import { isToken } from "@/lib/market";
+import { connection } from "../chains/robinhood";
+import { realTrading } from "../chains/wallets";
 import { assetQuotes, cleanSymbol, listings, longKey, type Listing } from "./assets";
 import { cached, getJson } from "./http";
 import { graduates, launchedOnPons, PONS_DEXES } from "./pons";
@@ -35,6 +37,12 @@ export const boardLimits = () => ({
   // The agents read three hours of candles. A pool younger than this has too few.
   minAgeHours: num(process.env.BOARD_MIN_AGE_HOURS, 6),
 });
+
+/**
+ * When the desk trades on the market, its board holds only what its wallets can swap: tokens
+ * whose pool is paired with the funding token. Null when it does not, and any pairing will do.
+ */
+const pairedOnly = (): string | null => (realTrading() ? (connection().token?.toLowerCase() ?? null) : null);
 
 /** How far back the factory's record is read for tokens that graduated, in days. */
 const GRADUATED_WITHIN_DAYS = 30;
@@ -178,6 +186,8 @@ export function trendingBoard(known: Record<string, DeskAsset> = {}): Promise<De
       if (pons && (await launchedOnPons(token.address, isFinite(created) ? created : Date.now())) === false && pool.relationships.dex?.data?.id !== PONS_DEXES[1]) continue;
 
       const quoteToken = pool.relationships.quote_token?.data?.id?.split("_")[1];
+      const paired = pairedOnly();
+      if (paired && quoteToken?.toLowerCase() !== paired) continue;
       const asset: Omit<Asset, "key"> = { symbol, name: token.name, address: token.address, kind: "pool", pool: pool.attributes.address, ...(quoteToken ? { quoteToken } : {}), ...(pons ? { launchpad: "pons" as const } : {}) };
       const before = byAddress.get(address);
       // A token that borrows the symbol of a Stock Token, or of another token on the board, gets a longer name.
@@ -200,12 +210,14 @@ async function boardFromChain(limits: ReturnType<typeof boardLimits>, known: Rec
   const byAddress = new Map(Object.values(known).map((a) => [a.address.toLowerCase(), a]));
   const board: DeskAsset[] = [];
   const taken = new Set<string>();
+  const paired = pairedOnly();
   for (const l of all) {
     if (board.length >= limits.size) break;
     const symbol = l.symbol.replace(/^\$/, "");
     if (MONEY.has(symbol.toUpperCase())) continue;
     const ageHours = l.createdAt ? (Date.now() - l.createdAt) / 3_600_000 : Infinity;
     if ((l.quote.liquidityUsd ?? 0) < limits.minLiquidityUsd || l.quote.volume24hUsd < limits.minVolumeUsd || ageHours < limits.minAgeHours) continue;
+    if (paired && l.quoteToken?.toLowerCase() !== paired) continue;
 
     const asset: Omit<Asset, "key"> = { symbol, name: l.name, address: l.token, kind: "pool", pool: l.pool, ...(l.quoteToken ? { quoteToken: l.quoteToken } : {}), launchpad: "pons" };
     const plain = cleanSymbol(symbol);

@@ -62,6 +62,11 @@ export interface DeskInfo {
   solvent: boolean | null;
   /** When the contracts took over. Trades from before then are not on them. */
   since: number;
+  /**
+   * Set when the contracts are the agents' wallets and every trade is a swap on the market.
+   * Left out when they are desks that record trades settled against the treasury.
+   */
+  market?: boolean;
 }
 
 export const explorerLink = (chain: Pick<ChainStatus, "explorerTx">, id: string) => chain.explorerTx.replace("{id}", id);

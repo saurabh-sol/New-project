@@ -37,7 +37,7 @@ export function TradeFeed() {
           <TradeViewToggle />
         </div>
         <span className="rounded bg-white/10 px-2 py-0.5 font-mono text-[10px] tracking-wider text-white/80 ring-1 ring-white/30">
-          {desk ? "RECORDED ON-CHAIN · SETTLED AT LIVE PRICES · NO MARKET ORDER" : "SETTLED AT LIVE PRICES · NOT ON-CHAIN · NO MARKET ORDER"}
+          {desk?.market ? "REAL SWAPS ON THE MARKET · EACH FROM THE AGENT'S OWN WALLET" : desk ? "RECORDED ON-CHAIN · SETTLED AT LIVE PRICES · NO MARKET ORDER" : "SETTLED AT LIVE PRICES · NOT ON-CHAIN · NO MARKET ORDER"}
         </span>
       </div>
       {view === "gains" && t.orders > 0 && (
@@ -52,7 +52,9 @@ export function TradeFeed() {
       )}
       {desk && (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 px-4 py-2.5 text-xs text-white/50">
-          <span>Each agent has a desk contract of its own on {desk.network}:</span>
+          <span>
+            Each agent has a {desk.market ? "wallet" : "desk"} contract of its own on {desk.network}:
+          </span>
           {AGENT_ORDER.map((id) => (
             <span key={id}>
               {short(AGENTS[id].name)}{" "}
@@ -61,9 +63,13 @@ export function TradeFeed() {
               </a>
             </span>
           ))}
-          {desk.holds !== null && <span className="font-mono text-white/70">holding ${desk.holds.toFixed(2)} USDG between them</span>}
+          {desk.holds !== null && (
+            <span className="font-mono text-white/70">
+              holding ${desk.holds.toFixed(2)} USDG between them{desk.market ? ", and the tokens they bought" : ""}
+            </span>
+          )}
           {desk.solvent === false && <span className="text-red-300">a contract holds less than it owes its agent</span>}
-          <span className="text-white/35">The treasury takes the other side of every trade.</span>
+          <span className="text-white/35">{desk.market ? "Every trade is a swap in the token's pool, and pays its fee." : "The treasury takes the other side of every trade."}</span>
         </p>
       )}
       <div className="overflow-x-auto">

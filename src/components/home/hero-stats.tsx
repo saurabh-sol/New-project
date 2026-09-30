@@ -51,6 +51,7 @@ function Stat({ label, children, note, featured }: { label: string; children: Re
 export function HeroStats({ className }: { className?: string }) {
   const ready = useArena((s) => s.ready);
   const portfolio = useArena((s) => s.portfolio);
+  const market = useArena((s) => s.desk?.market);
   const round = useArena((s) => s.round);
   const phase = useArena((s) => s.phase);
   const committed = useArena((s) => s.committed);
@@ -69,7 +70,7 @@ export function HeroStats({ className }: { className?: string }) {
       <Stat label="Pool equity" featured note={`on $${capital.toFixed(2)} of capital`}>
         {ready ? <RollingNumber value={equity} format={(n) => `$${n.toFixed(2)}`} className="tabular-nums" /> : "…"}
       </Stat>
-      <Stat label="Council result" note="settled at live prices">
+      <Stat label="Council result" note={market ? "real swaps, at live prices" : "settled at live prices"}>
         <span className={cn("tabular-nums", up ? "text-emerald-400" : "text-red-400")}>
           <RollingNumber value={pnl} format={(n) => fmtSigned(n)} />
           <span className="ml-1.5 text-xs font-semibold opacity-80 sm:ml-2 sm:text-base xl:text-xs">

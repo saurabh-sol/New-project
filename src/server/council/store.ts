@@ -35,6 +35,12 @@ export interface CouncilState {
   lastRiskCheck: number;
   /** The desk contract that records trades, and when it took over. Trades from before then are not on-chain. */
   desk?: { address: string; since: number };
+  /** Set once the desk trades on the market, from the agents' wallets. Trades from before then were settled against the treasury. */
+  real?: { since: number };
+  /** A position the agents hold together that is up enough to put its sale to a vote. The next session is called at once, and votes on it. */
+  sellCall?: { token: AssetKey; at: number; pnl: number };
+  /** When a vote on selling each position was last called, so the same one is not called over and over. */
+  called?: Record<AssetKey, number>;
   /** UTC date of `roundsToday`, e.g. "2026-09-28". */
   day: string;
   roundsToday: number;

@@ -1,4 +1,4 @@
-import { EMOTIONS, MIN_ORDER_USD, OWN_BOOK_SHARE, SOLO_USD, TAKE_PROFIT_PCT, type Emotion } from "@/lib/council";
+import { EMOTIONS, MIN_ORDER_USD, OWN_BOOK_SHARE, SOLO_USD, type Emotion } from "@/lib/council";
 import type { Exchange, Line, Pitch, Pledge, Proposal } from "@/lib/council-types";
 import type { AssetKey } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
@@ -51,13 +51,12 @@ const STOP_CLEARANCE = 1.5;
 
 /**
  * The stop and target the desk will accept for a purchase of a token that usually moves
- * `atrPct` percent in five minutes: the stop clear of the noise, the target no nearer than the
- * stop, and no further than the gain at which the desk takes its profit.
+ * `atrPct` percent in five minutes: the stop clear of the noise, the target no nearer than the stop.
  */
 export function fitTerms(stopPct: number, targetPct: number, atrPct: number): { stopPct: number; targetPct: number } {
   const floor = Math.ceil(clamp(atrPct * STOP_CLEARANCE, ...STOP_RANGE) * 2) / 2;
   const stop = Math.max(clamp(stopPct, ...STOP_RANGE), floor);
-  return { stopPct: stop, targetPct: Math.min(Math.max(clamp(targetPct, ...TARGET_RANGE), stop), TAKE_PROFIT_PCT) };
+  return { stopPct: stop, targetPct: Math.max(clamp(targetPct, ...TARGET_RANGE), stop) };
 }
 
 /** Desk talk is short. Anything longer is cut at the last full sentence that fits. */
@@ -129,7 +128,7 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
     ...out,
     conviction: Math.round(clamp(out.conviction, 1, 5)),
     stopPct: clamp(out.stopPct, ...STOP_RANGE),
-    targetPct: Math.min(clamp(out.targetPct, ...TARGET_RANGE), TAKE_PROFIT_PCT),
+    targetPct: clamp(out.targetPct, ...TARGET_RANGE),
     sellPct: out.sellPct >= 75 ? 100 : 50,
     say: cleanSay(out.say),
   };

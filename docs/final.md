@@ -473,7 +473,7 @@ The council decides which trades the desk makes together. It does not decide whe
 | Nobody sits in cash | An agent that holds nothing must open a position that session, of at least $20 |
 | The books are spread | Agents opening a first position choose one after another. Each is told what the others took, and picks something else |
 | Selling | The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it |
-| Size | The desk sets it. Where an agent starts with $20: $10 to $12 for a purchase it makes alone, and $10 at most, in all, for one the agents make together. One trade takes at most 60% of an agent's cash |
+| Size | The desk sets it. Where an agent starts with $20, it puts $4 to $5 into any purchase, so three or four agents buy $12 to $20 together. One trade takes at most 60% of an agent's cash |
 
 An agent told to open a position is also told not to invent a reason for it. When the edge is thin, it says so and sizes small.
 
@@ -632,17 +632,19 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 | Smallest order | A tenth of the starting cash: $10 of $100 | `MIN_ORDER_USD` |
 | Largest share of the pool in one token | 40% | `MAX_POSITION_SHARE` |
 | An agent's own trade | at most 60% of its cash | `OWN_BOOK_SHARE` |
-| A purchase an agent makes alone | 50% to 60% of its starting cash: $10 to $12 of $20. With less than the smaller figure free for one, it makes none and holds | `SOLO_USD` |
-| A purchase the council makes together | 50% of one agent's starting cash at most, in all: $10 of $20. Its backers share it in whole dollars, as evenly as their offers allow, the leader first: $3, $3, $2 and $2 for four, $4, $3 and $3 for three. A funder's request is bought as it was asked for | `COUNCIL_MAX_USD`, `shareOut` |
-| What an agent with no position must open | A purchase of its own at the smaller figure: $10 of $20, if it has that much free for one | `starterStake` in `src/server/council/brain.ts` |
-| Taking the profit | A position that is up 10% is sold, whole, and its holders look for the next trade. It applies to positions opened before the rule too | `TAKE_PROFIT_PCT`, `goalOf` |
+| What an agent puts into a purchase | 20% to 25% of its starting cash: $4 to $5 of $20, alone or together. With less than the smaller figure free, it makes none and holds | `SOLO_USD` |
+| A purchase the council makes together | Each backer puts in that much, so three backers buy $12 and four buy up to $20, which is the most. A funder's request is bought as it was asked for | `COUNCIL_MAX_USD` |
+| What an agent with no position must open | A purchase of its own at the smaller figure: $4 of $20, if it has that much free for one | `starterStake` in `src/server/council/brain.ts` |
+| Booking a profit on a position one agent holds | Sold by that agent once it is up $0.50 | `EXITS.solo`, `exitFor` |
+| Cutting a loss on it | Sold once it is down $0.40 | `EXITS.solo` |
+| A position several agents hold | Sold once it is up $1.00 or down $1.00 in all. Once it is up $0.50, the desk calls a session at once and the agents vote on selling it | `EXITS.council`, `sellCall` |
 | Minimum hold before the council may sell | 2 sessions | `MIN_HOLD_ROUNDS` |
 | Minimum hold before an agent may sell its own tokens | 1 session | `MIN_OWN_HOLD_ROUNDS` |
 | Hold on a purchase made for a funder's commitment | 12 sessions | `COMMITTED_HOLD_ROUNDS` |
 | Stop-loss range | 3% to 25% | `STOP_RANGE` in `src/server/council/brain.ts` |
 | Target range | 5% to 60% | `TARGET_RANGE` |
 | Stop must clear the token's usual movement | at least 1.5 times its 5-minute movement | `fitTerms` |
-| Target | never nearer than the stop, and never further than the 10% at which the profit is taken. Where the stop is wider than 10%, the target is 10%, and the trade can lose more than it can gain | `fitTerms` |
+| Target | never nearer than the stop | `fitTerms` |
 | Trades per session | at most one by the council, and one by each agent for its own book | `src/server/council/round.ts` |
 | ETH and Stock Tokens | not bought by the agents' own choice. Those still held can be sold, a Stock Token only while its market is open | `src/server/council/round.ts` |
 
@@ -851,6 +853,39 @@ forge test --use 0.8.24 --optimize --evm-version paris
 ```
 
 `contracts/test/AgentDesk.t.sol` holds 18 tests of an agent's desk. The tests of the old shared desk are beside it.
+
+### Trading on the market
+
+With the four `WALLET_` settings set, the desk trades on the market. The desk contracts above are then no longer used.
+
+| | |
+| --- | --- |
+| The contract | `contracts/AgentWallet.sol`, deployed once for each agent. It holds the agent's USDG and the tokens the agent buys |
+| A purchase | A swap of USDG for the token in the token's Uniswap v4 pool, made by the wallet through the pool manager `0x8366a39cc670b4001a1121b8f6a443a643e40951` |
+| A sale | The swap back, of what the wallet holds |
+| Who may trade | The operator only, which is the treasury. It may only swap. A purchase spends USDG, up to the wallet's cap (a quarter of the agent's starting cash). A sale must bring USDG back |
+| Who may take money out | The owner only, with `withdraw` |
+| What the desk trades | Tokens whose pool is one of Pons's and is paired with USDG. The board holds only those. The desk checks that the pool it swaps in is the very pool its prices come from |
+| Before every swap | The desk asks the chain what the swap would bring, without sending it. A purchase that costs more than `REAL_MAX_COST_PCT` (1.5%) against the pool's price is not made. The swap is then sent for no less than that answer, less `REAL_SLIPPAGE_PCT` (3%) |
+| The books | They follow the swaps: what each agent paid, what it got, and its transaction. An agent's cash is what its wallet holds |
+| Between sessions | Every 15 seconds, for as long as the server runs, the desk asks the chain what each position would bring if it were sold now, and applies the dollar rules in [Rules the desk enforces](#rules-the-desk-enforces). Stop and target prices are not acted on |
+| The first run | What the desk had on record before was never on the market. It is closed in the books, and cash is set to what the wallets hold |
+
+```bash
+node --env-file=.data/mainnet.env scripts/wallets.mjs deploy --env .data/mainnet.env
+node --env-file=.data/mainnet.env scripts/wallets.mjs status
+node --env-file=.data/mainnet.env scripts/wallets.mjs cash-out --to 0x<your wallet>
+```
+
+`deploy` gives each wallet its agent's starting USDG from the treasury and writes the four settings. `cash-out` takes every wallet's USDG back, and the tokens named with `--tokens` as they are. It does not sell them.
+
+**What to know before using it.**
+
+- The money in the wallets can be lost. A loss goes to other traders, and Pons's pools take a fee on every swap.
+- What a round trip costs differs from token to token. Buying $5 and selling it at once cost 2% in two pools and 6% to 13% in two others when it was measured. That is why a purchase that costs too much is refused.
+- A position starts a little down, by that cost. The dollar rules count it, so a gain of $0.50 is a gain after the fee.
+- A server that sleeps watches nothing. On a plan that sleeps, a position is only looked at while someone has a page open.
+- The contract has not been audited. Keep in the wallets only what may be lost.
 
 ---
 

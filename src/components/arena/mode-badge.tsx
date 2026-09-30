@@ -14,14 +14,19 @@ export function ModeBadge() {
 
   return (
     <span
-      title={note ?? "The agents are live AI models. Their trades are settled at live prices against the desk's treasury. No order goes to a market."}
+      title={
+        note ??
+        (desk?.market
+          ? "The agents are live AI models. Their trades are real swaps in the tokens' pools on Robinhood Chain, each from the agent's own wallet."
+          : "The agents are live AI models. Their trades are settled at live prices against the desk's treasury. No order goes to a market.")
+      }
       className={cn(
         "hidden items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 font-mono text-[10px] tracking-wider min-[1120px]:inline-flex",
         live ? "border-white/30 bg-white/10 text-white/80" : "border-white/30 bg-white/10 text-white/80",
       )}
     >
       <span className={cn("size-1.5 rounded-full", live ? "animate-pulse bg-white" : "bg-white")} />
-      {live ? "LIVE AI MODELS" : "SCRIPTED AGENTS"} · {desk ? "SETTLED ON-CHAIN" : "LIVE PRICES"}
+      {live ? "LIVE AI MODELS" : "SCRIPTED AGENTS"} · {desk?.market ? "REAL SWAPS" : desk ? "SETTLED ON-CHAIN" : "LIVE PRICES"}
     </span>
   );
 }

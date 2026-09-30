@@ -138,8 +138,9 @@ Each agent has $100 of the treasury's capital (`NEXT_PUBLIC_START_CASH` changes 
 - **Selling.** The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it.
 - **Selling into a fall.** The agents are told to sell a token they hold when it is falling fast, and between sessions a rule does it for them. See below.
 - One trade takes at most 60% of an agent's cash.
-- **The desk sets the size.** Where an agent starts with $20, it buys $10 to $12 alone, and the agents buy $10 at most together, shared out among those who back the purchase.
-- **A gain of 10% is taken.** The position is sold whole, and its holders look for the next trade. No target stands further away.
+- **The desk sets the size.** Where an agent starts with $20, it puts $4 to $5 into any purchase. Alone, that is the purchase. Together, each backer puts in that much, so three or four agents buy $12 to $20.
+- **A profit is booked and a loss is cut, in dollars.** A position one agent holds is sold once it is up $0.50 or down $0.40. One that several hold is sold once it is up or down $1.00 in all, and once it is up $0.50 the desk calls a session at once to vote on selling it.
+- **With the agents' wallets set, every trade is a real swap.** Each agent has a wallet contract (`contracts/AgentWallet.sol`) that holds its USDG and swaps in the tokens' Uniswap v4 pools. The money in the wallets can then be lost, and every swap pays the pool's fee. See [the documentation](docs/final.md#trading-on-the-market).
 
 Between sessions the agents watch their positions. Stops and targets are checked against the live price.
 
