@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { AGENTS, AGENT_ORDER } from "@/lib/agents";
+import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
@@ -52,7 +52,7 @@ export function RecentTrades({ className }: { className?: string }) {
         )}
         <AnimatePresence initial={false}>
           {latest.map((f) => {
-            const txs = f.txs && Object.keys(f.txs).length ? AGENT_ORDER.flatMap((a) => (f.txs?.[a] ? [{ agent: a, hash: f.txs[a]! }] : [])) : f.tx ? [{ agent: f.leader, hash: f.tx }] : [];
+            const txs = f.txs && Object.keys(f.txs).length ? leaderFirst(f.leader).flatMap((a) => (f.txs?.[a] ? [{ agent: a, hash: f.txs[a]! }] : [])) : f.tx ? [{ agent: f.leader, hash: f.tx }] : [];
             return (
               <motion.li key={f.id} layout initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="px-4 py-2 text-xs">
                 <div className="flex items-baseline gap-2">

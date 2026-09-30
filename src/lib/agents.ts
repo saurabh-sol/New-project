@@ -61,6 +61,9 @@ export const AGENTS: Record<AgentId, AgentProfile> = {
 
 export const AGENT_ORDER: AgentId[] = ["quant", "degen", "guardian", "oracle"];
 
+/** The agents as a trade lists them: the one that led it first, then the others in their usual order. */
+export const leaderFirst = (leader: AgentId): AgentId[] => [leader, ...AGENT_ORDER.filter((a) => a !== leader)];
+
 /** What the agents were called before they were renamed. Older sessions on record still use these names. */
 const FORMER: Record<string, AgentId> = { Quant: "quant", Degen: "degen", Guardian: "guardian", Oracle: "oracle" };
 

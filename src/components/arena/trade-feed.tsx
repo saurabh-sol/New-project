@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { AGENTS, AGENT_ORDER } from "@/lib/agents";
+import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
 import type { Fill } from "@/lib/council";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
 import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
@@ -139,7 +139,7 @@ export function TradeFeed() {
                     {isSample(f) ? (
                       <td className="px-4 py-2.5 text-right font-mono">
                         <span className="flex flex-col items-end gap-0.5">
-                          {AGENT_ORDER.filter((id) => f.txs?.[id]).map((id) => (
+                          {leaderFirst(f.leader).filter((id) => f.txs?.[id]).map((id) => (
                             <span key={id} className="text-white/60">
                               <span className="font-sans text-white/70">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
                             </span>
@@ -151,9 +151,9 @@ export function TradeFeed() {
                     ) : (
                       <td className="px-4 py-2.5 text-right font-mono">
                         {f.txs && Object.keys(f.txs).length > 0 ? (
-                          // One transaction for each agent in the trade, on that agent's contract.
+                          // One transaction for each agent in the trade, on that agent's contract: the leader's first, as in "Led by".
                           <span className="flex flex-col items-end gap-0.5">
-                            {AGENT_ORDER.filter((id) => f.txs?.[id]).map((id) => (
+                            {leaderFirst(f.leader).filter((id) => f.txs?.[id]).map((id) => (
                               <span key={id} className="text-white/60">
                                 <span className="font-sans text-white/70">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
                               </span>
