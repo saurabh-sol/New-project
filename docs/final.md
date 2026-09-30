@@ -1065,6 +1065,12 @@ The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Et
 | `/admin` | The admin's display | The admin only |
 | `/admin/login` | The sign-in for it | Anyone |
 
+### The loading screen
+
+Every page opens on the loading screen: the mark draws itself (the outline of the head, the eyes, then the bolt) over the whole page. It is a short film that repeats, `public/loader/loader.mp4` with `loader.webm` for browsers that can't play the first, shown by `src/components/site/site-loader.tsx` from the root layout.
+
+It stays until the first prices are in, and for at least 1.3 seconds so the mark is drawn once; the price feed gives up 4 seconds after the page's scripts start, so it never waits on prices for longer than that. It is shown once for each time the site is loaded, not again when moving between pages. The film is white on black, and the light theme shows it inverted.
+
 ### The front page
 
 On a screen 1280 pixels wide or more, the whole desk fits on one screen with nothing to scroll:
