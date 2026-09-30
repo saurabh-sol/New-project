@@ -1,18 +1,23 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
-import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
+import { memo, useDeferredValue, useMemo, useState } from "react";
+import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import type { Fill } from "@/lib/council";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
 import { hashesOf, isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { useShowcaseBook } from "@/lib/use-showcase";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
+import { useFreshTrades, useReveal } from "./trade-rows";
 import { TradeViewToggle } from "./trade-view-toggle";
 
 const TRIGGER: Record<Fill["reason"], string> = { COUNCIL: "Council vote", OWN: "Own book", STOP: "Stop-loss", TARGET: "Profit target", FALLING: "Sold into a fall" };
 
 const short = (name: string) => name.replace("The ", "");
+
+/** One formatter for the whole table, where toLocaleTimeString would make one per row. */
+let clock: Intl.DateTimeFormat | undefined;
+const time = (ts: number) => (clock ??= new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" })).format(ts);
 
 /**
  * Every trade the desk has made. With desk contracts, each agent's part of a trade is recorded
@@ -24,16 +29,23 @@ const short = (name: string) => name.replace("The ", "");
  *
  * A visitor first sees the sales that booked a gain, with a line saying how many closed trades
  * and orders that is out of. "All" shows every one.
+ *
+ * The table is long (hundreds of orders), so it is kept cheap: the rows are plain and memoized, only a
+ * trade that comes in while the page is open is animated (a CSS flash), a switch between the views is
+ * rendered as a deferred update in chunks so the toggle answers at once, and the one line that moves
+ * with live prices is a component of its own, so a price tick does not touch the rows.
  */
 export function TradeFeed() {
   const own = useArena((s) => s.fills);
   const desk = useArena((s) => s.desk);
   const samples = useSampleFills();
-  const book = useShowcaseBook();
-  const fills = withSamples(samples, own);
-  const view = useTradeView();
-  const t = tally(fills);
-  const shown = inView(fills, view);
+  const fills = useMemo(() => withSamples(samples, own), [samples, own]);
+  // The toggle shows the choice at once; the table follows when the browser has a moment.
+  const view = useDeferredValue(useTradeView());
+  const t = useMemo(() => tally(fills), [fills]);
+  const shown = useMemo(() => inView(fills, view), [fills, view]);
+  const count = useReveal(shown.length, view);
+  const fresh = useFreshTrades(fills);
   // Every trade has a transaction to show: from the chain, or made from the order (see hashesOf).
   const withTx = fills.length > 0;
   const columns = withTx ? 9 : 8;
@@ -70,9 +82,7 @@ export function TradeFeed() {
               <span className="font-mono text-white/80">{shortAddress(desk.agents[id].address)}</span>
             </span>
           ))}
-          <span className="font-mono text-white/70">
-            holding ${book.equity.toFixed(2)} USDG between them{desk.market ? ", and the tokens they bought" : ""}
-          </span>
+          <Holding market={!!desk.market} />
           {desk.solvent === false && <span className="text-red-300">a contract holds less than it owes its agent</span>}
           <span className="text-white/35">{desk.market ? "Every trade is a swap in the token's pool, and pays its fee." : "The treasury takes the other side of every trade."}</span>
         </p>
@@ -93,83 +103,86 @@ export function TradeFeed() {
             </tr>
           </thead>
           <tbody>
-            <AnimatePresence initial={false}>
-              {shown.length === 0 && (
-                <tr>
-                  <td colSpan={columns} className="px-4 py-6 text-center text-white/30">
-                    {fills.length === 0 ? "No orders yet. The council only trades when three of four agents agree." : "No trade has closed at a gain yet."}
-                  </td>
-                </tr>
-              )}
-              {shown.map((f) => {
-                const a = AGENTS[f.leader];
-                const others = AGENT_ORDER.filter((id) => id !== f.leader && f.stake[id] >= 0.01);
-                return (
-                  <motion.tr
-                    key={f.id}
-                    layout
-                    initial={{ opacity: 0, backgroundColor: "#80808055" }}
-                    animate={{ opacity: 1, backgroundColor: "#80808000" }}
-                    transition={{ duration: 1.6 }}
-                    className="border-t border-white/5"
-                  >
-                    <td className="px-4 py-2.5 font-mono text-white/40">{new Date(f.ts).toLocaleTimeString()}</td>
-                    <td className="px-4 py-2.5">
-                      <span className="flex items-center gap-2">
-                        <span className="size-2 rounded-full bg-white/60" />
-                        <span className="text-white/85">{a.name}</span>
-                      </span>
-                      {/* who else was in the trade */}
-                      {others.length > 0 && <span className="mt-0.5 block pl-4 text-[11px] text-white/55">with {others.map((id) => short(AGENTS[id].name)).join(", ")}</span>}
-                    </td>
-                    <td className={cn("px-4 py-2.5 font-mono font-bold", f.side === "BUY" ? "text-green-400" : "text-red-400")}>{f.side}</td>
-                    <td className="px-4 py-2.5 font-mono text-white">{f.token}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-white/80">${f.usd.toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono text-white/60">${fmtPrice(f.price)}</td>
-                    <td className="px-4 py-2.5 text-white/60">{TRIGGER[f.reason]}</td>
-                    <td
-                      className={cn(
-                        "px-4 py-2.5 text-right font-mono",
-                        f.realized === null ? "text-white/30" : f.realized >= 0 ? "text-green-400" : "text-red-400",
-                      )}
-                    >
-                      {f.realized === null ? "open" : fmtSigned(f.realized)}
-                    </td>
-                    {isSample(f) || !desk ? (
-                      <td className="px-4 py-2.5 text-right font-mono">
-                        <span className="flex flex-col items-end gap-0.5">
-                          {hashesOf(f).map((t) => (
-                            <span key={t.agent} className="text-white/60">
-                              <span className="font-sans text-white/70">{short(AGENTS[t.agent].name)}</span> {shortHash(t.hash)}
-                            </span>
-                          ))}
-                        </span>
-                      </td>
-                    ) : (
-                      <td className="px-4 py-2.5 text-right font-mono">
-                        {f.txs && Object.keys(f.txs).length > 0 ? (
-                          // One transaction for each agent in the trade, on that agent's contract: the leader's first, as in "Led by".
-                          <span className="flex flex-col items-end gap-0.5">
-                            {leaderFirst(f.leader).filter((id) => f.txs?.[id]).map((id) => (
-                              <span key={id} className="text-white/60">
-                                <span className="font-sans text-white/70">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
-                              </span>
-                            ))}
-                          </span>
-                        ) : f.tx ? (
-                          <span className="text-white/60">{shortHash(f.tx)}</span>
-                        ) : (
-                          <span className="text-white/30">{f.unrecorded || f.ts < desk.since ? "not recorded" : "recording…"}</span>
-                        )}
-                      </td>
-                    )}
-                  </motion.tr>
-                );
-              })}
-            </AnimatePresence>
+            {shown.length === 0 && (
+              <tr>
+                <td colSpan={columns} className="px-4 py-6 text-center text-white/30">
+                  {fills.length === 0 ? "No orders yet. The council only trades when three of four agents agree." : "No trade has closed at a gain yet."}
+                </td>
+              </tr>
+            )}
+            {shown.slice(0, count).map((f) => (
+              <Row key={f.id} f={f} onChain={!!desk} since={desk?.since} fresh={fresh.has(f.id)} />
+            ))}
           </tbody>
         </table>
       </div>
     </section>
   );
 }
+
+/** What the agents' contracts hold: the one figure on the panel that moves with every price tick. */
+function Holding({ market }: { market: boolean }) {
+  const book = useShowcaseBook();
+  return (
+    <span className="font-mono text-white/70">
+      holding ${book.equity.toFixed(2)} USDG between them{market ? ", and the tokens they bought" : ""}
+    </span>
+  );
+}
+
+interface RowProps {
+  f: Fill;
+  /** The desk keeps its trades on contracts. */
+  onChain: boolean;
+  /** When the desk contracts came into use; an older trade is not on them. */
+  since: number | undefined;
+  /** The trade came in while the page was open: it flashes once. */
+  fresh: boolean;
+}
+
+/** One order. Rendered once, and again only when its own trade changes. */
+const Row = memo(function Row({ f, onChain, since, fresh }: RowProps) {
+  const a = AGENTS[f.leader];
+  const others = AGENT_ORDER.filter((id) => id !== f.leader && f.stake[id] >= 0.01);
+  // The flash is decided when the row first appears, and not taken back when the list renders again.
+  const [flash] = useState(fresh);
+  // One hash for each agent in the trade, the leader's first, as in "Led by": from the agent's contract, or made from the order.
+  const txs = hashesOf(f);
+  const hashes = txs.length > 0 && (
+    <span className="flex flex-col items-end gap-0.5">
+      {txs.map((t) => (
+        <span key={t.agent} className="text-white/60">
+          <span className="font-sans text-white/70">{short(AGENTS[t.agent].name)}</span> {shortHash(t.hash)}
+        </span>
+      ))}
+    </span>
+  );
+  return (
+    <tr className={cn("border-t border-white/5", flash && "row-in")}>
+      <td className="px-4 py-2.5 font-mono text-white/40">{time(f.ts)}</td>
+      <td className="px-4 py-2.5">
+        <span className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-white/60" />
+          <span className="text-white/85">{a.name}</span>
+        </span>
+        {/* who else was in the trade */}
+        {others.length > 0 && <span className="mt-0.5 block pl-4 text-[11px] text-white/55">with {others.map((id) => short(AGENTS[id].name)).join(", ")}</span>}
+      </td>
+      <td className={cn("px-4 py-2.5 font-mono font-bold", f.side === "BUY" ? "text-green-400" : "text-red-400")}>{f.side}</td>
+      <td className="px-4 py-2.5 font-mono text-white">{f.token}</td>
+      <td className="px-4 py-2.5 text-right font-mono text-white/80">${f.usd.toFixed(2)}</td>
+      <td className="px-4 py-2.5 text-right font-mono text-white/60">${fmtPrice(f.price)}</td>
+      <td className="px-4 py-2.5 text-white/60">{TRIGGER[f.reason]}</td>
+      <td className={cn("px-4 py-2.5 text-right font-mono", f.realized === null ? "text-white/30" : f.realized >= 0 ? "text-green-400" : "text-red-400")}>
+        {f.realized === null ? "open" : fmtSigned(f.realized)}
+      </td>
+      {isSample(f) || !onChain ? (
+        <td className="px-4 py-2.5 text-right font-mono">{hashes}</td>
+      ) : (
+        <td className="px-4 py-2.5 text-right font-mono">
+          {f.txs && Object.keys(f.txs).length > 0 ? hashes : f.tx ? <span className="text-white/60">{shortHash(f.tx)}</span> : <span className="text-white/30">{f.unrecorded || (since !== undefined && f.ts < since) ? "not recorded" : "recording…"}</span>}
+        </td>
+      )}
+    </tr>
+  );
+});
