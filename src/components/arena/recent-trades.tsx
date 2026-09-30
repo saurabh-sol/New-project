@@ -2,7 +2,9 @@
 
 import { memo, useDeferredValue, useMemo, useState } from "react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
+import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
+import { DEPLOYED } from "@/lib/deployments";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
 import { hashesOf, isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { cn, fmtPrice, fmtSigned, shortHash } from "@/lib/utils";
@@ -15,6 +17,12 @@ const short = (name: string) => name.replace("The ", "");
 /** One formatter for the whole list, where toLocaleTimeString would make one per line. */
 let clock: Intl.DateTimeFormat | undefined;
 const time = (ts: number) => (clock ??= new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" })).format(ts);
+
+/** Where a trade recorded on Robinhood Chain can be seen, when the desk's contracts are no longer in the page's state. */
+const MAINNET_TX = `${DEPLOYED.mainnet.explorer}/tx/{id}`;
+
+/** A trade the desk recorded on the chain: its hashes are real, and open on the explorer. A made-up hash opens nothing. */
+const recorded = (f: Fill) => !isSample(f) && ((!!f.txs && Object.keys(f.txs).length > 0) || !!f.tx);
 
 /** Who was in the trade: the one agent, or the leader and how many joined. */
 function who(f: Fill): string {
@@ -58,7 +66,7 @@ export function RecentTrades({ className }: { className?: string }) {
           <li className="px-4 py-6 text-center text-xs text-white/30">{view === "gains" && t.orders > 0 ? "No trade has closed at a gain yet." : "No trades yet."}</li>
         )}
         {latest.map((f) => (
-          <Line key={f.id} f={f} onChain={!!desk} since={desk?.since} fresh={fresh.has(f.id)} />
+          <Line key={f.id} f={f} onChain={!!desk} since={desk?.since} explorerTx={desk?.explorerTx ?? MAINNET_TX} fresh={fresh.has(f.id)} />
         ))}
       </ul>
     </section>
@@ -71,22 +79,33 @@ interface LineProps {
   onChain: boolean;
   /** When the desk contracts came into use; an older trade is not on them. */
   since: number | undefined;
+  /** The explorer's page for a transaction, with "{id}" for the hash. */
+  explorerTx: string;
   /** The trade came in while the page was open: it slides in once. */
   fresh: boolean;
 }
 
 /** One trade. Rendered once, and again only when its own trade changes. */
-const Line = memo(function Line({ f, onChain, since, fresh }: LineProps) {
+const Line = memo(function Line({ f, onChain, since, explorerTx, fresh }: LineProps) {
   // Decided when the line first appears, and not taken back when the list renders again.
   const [slide] = useState(fresh);
   // A hash for each agent in the trade: from the agent's contract, or made from the order.
   const txs = hashesOf(f);
-  const hashes = txs.map((t) => (
-    <span key={t.agent}>
-      {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
-      {shortHash(t.hash)}
-    </span>
-  ));
+  // A trade the desk recorded on the chain links to the explorer, so a visitor can see it there.
+  const linked = recorded(f);
+  const hashes = txs.map((t) =>
+    linked ? (
+      <a key={t.agent} href={explorerLink({ explorerTx }, t.hash)} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-white">
+        {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
+        {shortHash(t.hash)} ↗
+      </a>
+    ) : (
+      <span key={t.agent}>
+        {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
+        {shortHash(t.hash)}
+      </span>
+    ),
+  );
   return (
     <li className={cn("px-4 py-2 text-xs", slide && "item-in")}>
       <div className="flex items-baseline gap-2">
