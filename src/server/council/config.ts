@@ -93,7 +93,8 @@ export function councilConfig(): CouncilConfig {
     modelIds,
     brainIds,
     models: { quant: info("quant"), guardian: info("guardian"), degen: info("degen"), oracle: info("oracle") },
-    intervalMs: Math.max(num(env.COUNCIL_INTERVAL_SECONDS, 300), 60) * 1000,
+    // 0 (the default) means no pause: the next session starts as soon as the last one has ended.
+    intervalMs: Math.max(num(env.COUNCIL_INTERVAL_SECONDS, 0), 0) * 1000,
     maxRoundsPerDay: num(env.COUNCIL_MAX_ROUNDS_PER_DAY, 100),
     callTimeoutMs: num(env.COUNCIL_CALL_TIMEOUT_SECONDS, 45) * 1000,
     withOdds,

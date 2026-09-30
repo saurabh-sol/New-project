@@ -31,6 +31,8 @@ function useCountdown(): string | null {
   }, []);
   if (!nextRoundAt) return null;
   const left = Math.max(0, Math.round((nextRoundAt - (now + skew)) / 1000));
+  // Sessions that follow one another straight away have nothing to count down to.
+  if (left <= 0) return null;
   return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 }
 

@@ -26,7 +26,8 @@ const CHAPTERS: ChapterLink[] = [
 const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`;
 /** "6 hours", "7 days". */
 const span = (hours: number) => (hours >= 48 && hours % 24 === 0 ? `${hours / 24} days` : `${hours} hour${hours === 1 ? "" : "s"}`);
-const every = (minutes: number) => (minutes === 1 ? "minute" : `${minutes} minutes`);
+/** "every 5 minutes", "one after another". */
+const every = (minutes: number) => (minutes <= 0 ? "one after another" : minutes === 1 ? "every minute" : `every ${minutes} minutes`);
 
 const PONS_FACTORY = "0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e";
 const PONS_EXPLORER = "https://robinhoodchain.blockscout.com";
@@ -102,7 +103,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
         </Fact>
         <Fact label="Money">{testnet ? "USDG, as a test token" : "USDG"}</Fact>
         <Fact label="Agents">Four, with a contract each</Fact>
-        <Fact label="Sessions">Every {session}</Fact>
+        <Fact label="Sessions">{session[0].toUpperCase() + session.slice(1)}</Fact>
       </dl>
 
       <div className="mt-12 grid gap-10 lg:grid-cols-[190px_minmax(0,1fr)] lg:gap-14">
@@ -123,7 +124,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
               its money and keeps its trades on record.
             </P>
             <P>
-              Every {session} the agents hold a <B>session</B>. Each one proposes a trade. The strongest proposal is argued over, the others put their own
+              The agents hold <B>sessions</B> {session}. In each, every agent proposes a trade. The strongest proposal is argued over, the others put their own
               cash in or refuse, and the desk trades. Between sessions the agents watch what they hold, and the desk sells when a stop-loss or a target is
               reached, or when a token falls fast.
             </P>
@@ -236,7 +237,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             id="session"
             n={3}
             title="A session"
-            lead={`One meeting of the council, every ${session}. Everyone watching sees the same session: what is said, who walks to whose desk, and what is traded.`}
+            lead={`One meeting of the council${facts.sessionMinutes > 0 ? `, ${session}` : ", with the next starting as soon as it ends"}. Everyone watching sees the same session: what is said, who walks to whose desk, and what is traded.`}
           >
             <Steps
               steps={[
