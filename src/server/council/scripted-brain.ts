@@ -3,7 +3,7 @@
  * daily budget is spent, or when a model call fails. It reads the same real market
  * data as the models and only quotes numbers from it.
  */
-import { positionOf, type Emotion } from "@/lib/council";
+import { MIN_ORDER_USD, positionOf, type Emotion } from "@/lib/council";
 import type { Proposal, TokenStats } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 import { backers, clamp, mostStake, openTokens, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
@@ -171,7 +171,7 @@ export function scriptedBrain(): Brain {
 
       const best = ranked.find((r) => openTokens(ctx).includes(r.s.token)) ?? ranked[0];
       const cash = ctx.portfolio.cash[agent];
-      if (best.e > BUY_ABOVE[agent] && cash >= 10 && openTokens(ctx).includes(best.s.token)) {
+      if (best.e > BUY_ABOVE[agent] && cash >= MIN_ORDER_USD && openTokens(ctx).includes(best.s.token)) {
         const c = Math.round(clamp(1 + best.e * 5, 1, 5));
         return {
           ...base,
@@ -222,7 +222,7 @@ export function scriptedBrain(): Brain {
       const buying = proposal.action === "BUY";
       const stakeUsd = support && buying ? Math.floor(ctx.portfolio.cash[agent] * SIZE[agent] * 0.6) : 0;
       const emotion: Emotion = support ? "confident" : agent === "guardian" ? "worried" : "skeptical";
-      if (support && buying && stakeUsd < 5) {
+      if (support && buying && stakeUsd < MIN_ORDER_USD / 2) {
         return { support: false, stakeUsd: 0, emotion: "neutral", reason: "no cash free to commit", say: "No cash free. I can't back it." };
       }
       return {

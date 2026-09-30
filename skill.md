@@ -111,7 +111,7 @@ The numbers that bind are in `src/server/council/playbook.ts` and `src/server/co
 | No adding to a losing position | always | Each agent, for the tokens it holds |
 | Rest after a losing sale | 3 rounds | Each agent, for the token it sold |
 | Risk on one token | 1.5% of what the agent is worth, what it already holds of the token included | Every purchase, a co-investment included |
-| Smallest position | $10 | Every purchase |
+| Smallest position | $10 of an agent's $100: a tenth of its starting cash | Every purchase |
 | Stop | 3% to 25%, and at least 1.5 times the 5-minute volatility | Every purchase |
 | Target | at least twice the stop, up to 60% | Every purchase |
 | Stop follows the price | From a gain equal to the stop's distance, at that distance below the highest price, and never below the entry plus 0.2% | Every position in a pool token |

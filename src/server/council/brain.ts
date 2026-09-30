@@ -193,7 +193,8 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
         p.say = cleanSay(`Desk rule: ${p.token} needs a ${terms.stopPct}% stop. At my risk limit that is under $${MIN_ORDER_USD}. I hold.`);
       }
     }
-    if (p.stakeUsd < 5) p.action = "HOLD";
+    // A purchase for a funder may be smaller than the desk's own, but not a crumb.
+    if (p.stakeUsd < MIN_ORDER_USD / 2) p.action = "HOLD";
   }
   if (p.action !== "BUY") p.stakeUsd = 0;
   return p;

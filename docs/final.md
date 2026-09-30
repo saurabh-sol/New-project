@@ -225,6 +225,7 @@ Copy the three `ADMIN_` lines from that file into `.env.local`, restart, and sig
 | `scripts/setup-testnet.mjs` | Deploys the test USDG and sets `USDG_ADDRESS` | Once, on the testnet |
 | `scripts/deploy-desks.mjs` | Deploys the agents' desk contracts and the share book | Once, and again to replace them |
 | `scripts/retire-desks.mjs` | Closes desk contracts that were replaced and returns their USDG | After the server has started with the new ones |
+| `scripts/cash-out.mjs` | Takes the desk's money out: every agent's USDG back to the treasury, and on to a wallet you name | To withdraw the house's money. See [Take the desk's money out](#take-the-desks-money-out) |
 | `scripts/retire-desk.mjs` | Closes the single contract the agents used to share | Done already. Kept for the record |
 | `scripts/admin-password.mjs` | Makes the admin account's three settings | Once, and again to change the password |
 
@@ -288,6 +289,7 @@ Three rules apply to all of them:
 | `COUNCIL_INTERVAL_SECONDS` | `300` | Seconds between sessions. Never less than 60 |
 | `COUNCIL_MAX_ROUNDS_PER_DAY` | `100` | Most sessions run on AI models per UTC day. After that the agents run on scripted rules until the next day |
 | `COUNCIL_CALL_TIMEOUT_SECONDS` | `45` | How long one model call may take |
+| `NEXT_PUBLIC_START_CASH` | `100` | USDG the house gives each agent to start with, in whole dollars, 10 at least. The smallest order is a tenth of it. Fixed when the site is built, and only takes effect on new books |
 
 Model names are the ones listed at <https://ai-gateway.vercel.sh/v1/models>.
 
@@ -662,13 +664,13 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 
 | Rule | Value | Where |
 | --- | --- | --- |
-| Each agent's starting cash | $100 | `START_CASH` in `src/lib/council.ts` |
+| Each agent's starting cash | $100, or `NEXT_PUBLIC_START_CASH` | `START_CASH` in `src/lib/council.ts` |
 | An agent cannot stake more than its cash | always | `src/lib/council.ts` |
 | The desk can only sell a token it holds | always | `src/lib/council.ts` |
-| Smallest order | $10 | `MIN_ORDER_USD` |
+| Smallest order | A tenth of the starting cash: $10 of $100 | `MIN_ORDER_USD` |
 | Largest share of the pool in one token | 40% | `MAX_POSITION_SHARE` |
 | An agent's own trade | at most 60% of its cash | `OWN_BOOK_SHARE` |
-| What an agent with no position opens | $20, or less if its risk allows less | `STARTER_USD` |
+| What an agent with no position opens | Twice the smallest order: $20 of $100, or less if its risk allows less | `STARTER_USD` |
 | Minimum hold before the council may sell | 2 sessions | `MIN_HOLD_ROUNDS` |
 | Minimum hold before an agent may sell its own tokens | 1 session | `MIN_OWN_HOLD_ROUNDS` |
 | Hold on a purchase made for a funder's commitment | 12 sessions | `COMMITTED_HOLD_ROUNDS` |
@@ -1588,6 +1590,7 @@ The books are one document (`CouncilState` in `src/server/council/store.ts`).
 
 | Part | What it is | How much is kept |
 | --- | --- | --- |
+| `network` | The network the books were made on. A server set to the other network refuses to open them, so test money is never read as real money | |
 | `round` | The number of the latest session | |
 | `portfolio` | Each agent's cash, capital and shares, and the open positions | |
 | `assets` | The tokens the desk knows | Those on the board and those held, and the 20 most recent others |
@@ -1719,13 +1722,18 @@ What it would take:
 
 | Step | What to do |
 | --- | --- |
-| 1. Capital | The treasury needs USDG for the agents' capital: $100 for each agent, so $400, plus a reserve for their gains |
-| 2. Gas | The treasury needs ETH on mainnet for the network fees |
-| 3. Allowance | Run `scripts/deploy-desks.mjs` once more against the mainnet env file, without `--no-approve`, to let the contracts draw USDG from the treasury |
-| 4. Books | Decide whether the desk starts with fresh books. The present books were made on the testnet |
-| 5. Settings | On the host, set `ROBINHOOD_NETWORK` and `NEXT_PUBLIC_ROBINHOOD_NETWORK` to `mainnet`, the mainnet treasury key and the mainnet `DESK_` addresses, and deploy |
-| 6. Funding | Leave `ALLOW_MAINNET_FUNDING` off unless you mean to hold users' money. See [Security and limits](#14-security-and-limits) |
-| 7. Ownership | Hand the contracts to a key that was never shared, with `setOwner` and `setOperator` |
+| 1. Capital | The treasury needs USDG for the agents' capital, plus a reserve for their gains. With the default that is $100 for each agent, so $400. To start smaller, set `NEXT_PUBLIC_START_CASH`: with `20`, $100 covers the four agents ($80) and leaves $20 in the treasury as the reserve |
+| 2. Gas | The treasury needs ETH on mainnet for the network fees. A full cycle of funding, trades and taking the money out costs about 0.0001 ETH |
+| 3. Allowance | Run `scripts/deploy-desks.mjs` once more against the mainnet env file, without `--no-approve`, to let the contracts draw USDG from the treasury. The script asks for `ALLOW_MAINNET_FUNDING=true` in its own shell. Do not set that on the host for this |
+| 4. Books | Start new books in an empty database. The server refuses to open the testnet's books on mainnet: their test deposits would otherwise count as real USDG |
+| 5. Settings | On the host, set `ROBINHOOD_NETWORK` and `NEXT_PUBLIC_ROBINHOOD_NETWORK` to `mainnet`, the new `DATABASE_URL`, the mainnet treasury key and the mainnet `DESK_` addresses, turn `FAUCET_ENABLED` off, and deploy |
+| 6. Rewards | Set `DAILY_CLAIM_CAP=0`. The claim page is not covered by `ALLOW_MAINNET_FUNDING`, and would pay real USDG once the treasury holds some |
+| 7. Funding | Leave `ALLOW_MAINNET_FUNDING` off unless you mean to hold users' money. See [Security and limits](#14-security-and-limits) |
+| 8. Ownership | Hand the contracts to a key that was never shared, with `setOwner`, `setOperator` and `setTreasury` |
+
+With the house's money only, nothing is won or lost overall. An agent's gain is paid by the treasury and its loss is paid to the treasury, and both are yours, so the desks and the treasury always hold between them what was put in. Only network fees leave. The money can be taken out at any time: see [Take the desk's money out](#take-the-desks-money-out).
+
+This was rehearsed on a local copy of mainnet with the real contracts and the real USDG: $100 in, $20 to each desk, a gain, a loss, a position left open, and $100.000000 back in a wallet.
 
 Do not do this before reading [Security and limits](#14-security-and-limits).
 
@@ -1813,6 +1821,26 @@ Set the three `ADMIN_` values from the file on the host and deploy. Every browse
 | USDG | The agents' gains, withdrawals, bonuses, rewards | On the testnet the treasury can mint test USDG. On mainnet, send it USDG |
 
 The treasury's address and balances are on the admin's display.
+
+#### Take the desk's money out
+
+```bash
+node --env-file=.env.local scripts/cash-out.mjs --dry-run
+node --env-file=.env.local scripts/cash-out.mjs --to 0x<your wallet>
+```
+
+Run it with the settings of the network the money is on. The first line sends nothing and says what each step would move. The second does it:
+
+1. It takes back each contract's leave to draw USDG from the treasury, so a server that is still running can't put the money in again.
+2. On each desk it closes every position at what it cost, and releases the agent's cash to the treasury.
+3. It sends the treasury's USDG to the wallet named. Without `--to` the USDG stays in the treasury. `--keep 20` leaves that much there.
+
+| Know this | |
+| --- | --- |
+| Stop the server first if you can | It signs with the same key. Two signers can take each other's place in the treasury's queue. The script tries each step again if that happens |
+| The books are not touched | They still show the agents' money and positions. A server left running can move nothing, and logs that it can't fund the desks |
+| What comes out | Everything that went in. Gains and losses were only ever settled between the desks and the treasury. With users' funding on, part of it is owed to the funders, and this script is not the way to pay them |
+| To trade again | Send the USDG back to the treasury, run `scripts/deploy-desks.mjs` to give the contracts their leave again, and start the server on new books |
 
 #### Replace the desk contracts
 

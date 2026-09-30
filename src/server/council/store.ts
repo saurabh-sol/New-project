@@ -8,12 +8,16 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { DeskAsset } from "@/lib/assets";
+import type { Network } from "@/lib/chains";
 import { newPortfolio, normalizePortfolio, type Fill, type Portfolio } from "@/lib/council";
 import type { AssetKey } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
+import { networkOf } from "../chains/robinhood";
 import { db, hasDb } from "../db";
 
 export interface CouncilState {
+  /** The network these books were made on. Books are never carried from one network to the other. */
+  network: Network;
   round: number;
   portfolio: Portfolio;
   /** Tokens the desk knows: those on its board, those it holds, and those funders asked for. By the name the desk uses for each. */
@@ -51,6 +55,7 @@ const MAX_ATTEMPTS = 8;
 export const today = () => new Date().toISOString().slice(0, 10);
 
 const fresh = (): CouncilState => ({
+  network: networkOf(),
   round: 0,
   portfolio: newPortfolio(),
   assets: {},
@@ -64,7 +69,12 @@ const fresh = (): CouncilState => ({
 });
 
 const hydrate = (raw: Partial<CouncilState>): CouncilState => {
-  const base = { ...fresh(), ...raw };
+  // Books saved before the network was noted were made on the testnet.
+  const base = { ...fresh(), ...raw, network: raw.network ?? "testnet" };
+  // Test money must never be read as real money, nor the other way round.
+  if (base.network !== networkOf()) {
+    throw new Error(`These books were made on Robinhood Chain ${base.network}, and the server is set to ${networkOf()}. Point DATABASE_URL at the ${networkOf()} books, or at an empty database to start new ones.`);
+  }
   return { ...base, portfolio: normalizePortfolio(base.portfolio) };
 };
 

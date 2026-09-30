@@ -11,10 +11,14 @@ import type { AgentId } from "./types";
 export const EMOTIONS = ["neutral", "confident", "excited", "skeptical", "worried", "annoyed", "happy", "sad"] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
-/** USDG the house gives each agent to start with. */
-export const START_CASH = 100;
-/** Smallest order the desk will place. */
-export const MIN_ORDER_USD = 10;
+const startCash = Number(process.env.NEXT_PUBLIC_START_CASH);
+/**
+ * USDG the house gives each agent to start with: 100, or NEXT_PUBLIC_START_CASH for a desk that
+ * starts smaller or larger. The pages count with it too, so it is fixed when the site is built.
+ */
+export const START_CASH = startCash >= 10 ? Math.floor(startCash) : 100;
+/** Smallest order the desk will place: a tenth of an agent's starting cash. */
+export const MIN_ORDER_USD = Math.max(1, Math.round(START_CASH / 10));
 /** No single token may exceed this share of the pool. */
 export const MAX_POSITION_SHARE = 0.4;
 /** A position must be held this many rounds before the council may sell it. */
@@ -29,7 +33,7 @@ export const COMMITTED_HOLD_ROUNDS = 12;
 /** The most of its cash an agent may put into one trade for its own book. */
 export const OWN_BOOK_SHARE = 0.6;
 /** What an agent with no position puts on at least, when the desk tells it to open one. */
-export const STARTER_USD = 20;
+export const STARTER_USD = 2 * MIN_ORDER_USD;
 
 export type Stakes = Record<AgentId, number>;
 

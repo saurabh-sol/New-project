@@ -14,7 +14,7 @@ import { backers, buyable, clamp, mostStake, presents, requestStake, saleTokens,
 import type { CouncilConfig } from "./config";
 import { briefingState, describeDebate, describePitches, describeProposal, nameOf, px, type RoundCtx } from "./context";
 import { fundingLevel, pick } from "./skills";
-import { positionOf, userFunding } from "@/lib/council";
+import { MIN_ORDER_USD, positionOf, userFunding } from "@/lib/council";
 
 /**
  * How an agent reads Jev's answers. The answers are all Jev's. What differs from agent to agent
@@ -202,7 +202,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         const t = ctx.request!.asset.key;
         const p = a.probability(`up_${t}`);
         const read = `${pct(p)} odds ${t} is higher in ${span}${also(t)}`;
-        const joins = p >= temper.buyAbove && cash >= 10;
+        const joins = p >= temper.buyAbove && cash >= MIN_ORDER_USD;
         const c = conviction(p);
         return {
           ...base,
@@ -266,7 +266,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       // The best odds among the tokens the desk lets this agent buy, if they clear its bar.
       const open = buyable(ctx, agent);
       const lead = odds.filter((o) => open.includes(o.token)).sort((x, y) => y.p - x.p)[0];
-      if (lead && lead.p >= temper.buyAbove && cash >= 10) {
+      if (lead && lead.p >= temper.buyAbove && cash >= MIN_ORDER_USD) {
         const c = conviction(lead.p);
         const read = `${pct(lead.p)} odds ${lead.token} is higher in ${span}${also(lead.token)}`;
         return {

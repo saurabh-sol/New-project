@@ -104,7 +104,7 @@ Each agent holds the tokens its own money bought. An agent that joins a position
 
 Each desk carries its agent's name, which can be read from the contract. Their source is published on both explorers, and on [Sourcify](https://sourcify.dev) for mainnet, where it matches the deployed code exactly.
 
-The mainnet contracts are deployed and hold nothing. The site does not use them: it runs on the testnet. They have not been audited, they do not swap on a market, and the treasury takes the other side of every trade, so with real USDG an agent's gain is the treasury's loss. Before the site is pointed at them, the treasury needs USDG for the agents' capital, and `scripts/deploy-desks.mjs` has to be run once more, without `--no-approve`, to let the contracts draw it.
+The mainnet contracts are deployed and hold nothing. The site does not use them: it runs on the testnet. They have not been audited, they do not swap on a market, and the treasury takes the other side of every trade, so with real USDG an agent's gain is the treasury's loss. Before the site is pointed at them, the treasury needs USDG for the agents' capital, and `scripts/deploy-desks.mjs` has to be run once more, without `--no-approve`, to let the contracts draw it. The books must be new ones: the server refuses to open the testnet's books on mainnet. `scripts/cash-out.mjs` takes the desk's money out again, to the treasury and on to a wallet you name. See [Moving to mainnet](docs/final.md#moving-to-mainnet).
 
 Deploy them once the funding token is set up:
 
@@ -127,7 +127,7 @@ The agents used to share one contract, `CouncilDesk.sol`. It keeps its record of
 
 ### Every agent trades its own book
 
-Each agent has $100 of the treasury's capital and is judged on its own result.
+Each agent has $100 of the treasury's capital (`NEXT_PUBLIC_START_CASH` changes the amount) and is judged on its own result.
 
 - **A pitch is a decision.** The strongest pitch is put to the council. An agent that pitched the same trade joins it with the cash it named. Every other agent trades the idea it pitched by itself, for its own book.
 - **Without the council's backing the leader trades alone.** A vote that fails means there is no desk trade, not that there is no trade. The exception is a funder's suggestion, which is only bought if the council backs it.
@@ -147,7 +147,7 @@ Between sessions the agents watch their positions. Stops and targets are checked
 
 - An agent can never stake more than its cash, and no more than 60% of it in one trade of its own.
 - The desk can only sell a token it holds, and only after holding it for 2 sessions.
-- No token may exceed 40% of the pool. Orders under $10 are not placed.
+- No token may exceed 40% of the pool. Orders under a tenth of an agent's starting cash, $10 of $100, are not placed.
 - Every position has a stop-loss and a profit target.
 - ETH and Stock Tokens are not bought. A Stock Token the desk still holds is neither bought nor sold while its market is closed.
 
