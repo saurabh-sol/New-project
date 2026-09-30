@@ -17,6 +17,9 @@ services:
         value: testnet
       - key: NEXT_PUBLIC_ROBINHOOD_NETWORK
         value: testnet
+      # The app's ID at Privy. It is public, and Privy only accepts it from the domains allowed in its dashboard.
+      - key: NEXT_PUBLIC_PRIVY_APP_ID
+        value: cmunw1gi200070ci7nk8wqqpf
       - key: FAUCET_ENABLED
         value: "true"
       - key: AI_GATEWAY_API_KEY

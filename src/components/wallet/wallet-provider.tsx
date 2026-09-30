@@ -1,12 +1,10 @@
 "use client";
 
-import { AnimatePresence } from "motion/react";
-import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore } from "react";
-import { erc20Abi } from "viem";
-import { useAccount, useConnect, useDisconnect, useSignMessage, useSwitchChain, useWriteContract, type Connector } from "wagmi";
+import { useLogin, useLogout, usePrivy, useWallets, type EIP1193Provider } from "@privy-io/react-auth";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createWalletClient, custom, erc20Abi } from "viem";
 import type { ChainId, DepositProof, PreparedDeposit } from "@/lib/chains";
-import { ConnectWindow, type WalletOption } from "./connect-window";
-import { CHAIN, UNNAMED, WALLETCONNECT } from "./web3-providers";
+import { CHAIN, PRIVY_APP_ID } from "./web3-providers";
 
 interface WalletContext {
   /** "robinhood" once a wallet is connected, null before. */
@@ -31,107 +29,75 @@ export function useWallet(): WalletContext {
   return ctx;
 }
 
-/** MetaMask names itself io.metamask, and its developer build io.metamask.flask. */
-const isMetaMask = (c: Connector) => c.id.startsWith("io.metamask");
-const INSTALL = { MetaMask: "https://metamask.io/download", "Robinhood Wallet": "https://robinhood.com/us/en/web3-wallet/" };
-
-/** A wallet that announced itself to the page, as opposed to a built-in fallback connector. */
-const announced = (c: Connector) => c.type === "injected" && c.id.includes(".");
-
-/** Whether the browser has a wallet at all, announced or not. */
-const hasProvider = () => typeof window !== "undefined" && !!(window as { ethereum?: unknown }).ethereum;
-const never = () => () => {};
 const cancelled = (e: unknown) => /reject|denied|cancel|declin/i.test(e instanceof Error ? e.message : String(e));
+const NOT_CONNECTED = "Connect a wallet first.";
 
-/** The connected wallet on Robinhood Chain, and the window for choosing one. */
-export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [showing, setShowing] = useState(false);
-  const provider = useSyncExternalStore(never, hasProvider, () => false);
+/** The network the wallet itself says it is on. What the app remembers can be out of date. */
+const chainOf = async (provider: EIP1193Provider) => Number(await provider.request({ method: "eth_chainId" }));
 
-  const account = useAccount();
-  const { connectors, connectAsync } = useConnect();
-  const { disconnectAsync } = useDisconnect();
-  const { signMessageAsync } = useSignMessage();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync } = useWriteContract();
+/** The connected wallet on Robinhood Chain. Privy shows the window for choosing one, and signs the wallet in. */
+function PrivyWallet({ children }: { children: React.ReactNode }) {
+  const { ready, authenticated } = usePrivy();
+  const { login } = useLogin();
+  const { logout } = useLogout();
+  const { wallets, ready: walletsReady } = useWallets();
 
-  const connect = useCallback(
-    async (connector: Connector) => {
-      await connectAsync({ connector });
-      // Connecting only needs the address. The move to Robinhood Chain is asked for now, and again before a deposit if it didn't happen.
-      if ((await connector.getChainId().catch(() => CHAIN.id)) !== CHAIN.id) void switchChainAsync({ connector, chainId: CHAIN.id }).catch(() => {});
-    },
-    [connectAsync, switchChainAsync],
-  );
+  // The wallet that signed in. One that is only connected, or an account switched to since, is not taken for it.
+  const wallet = useMemo(() => (ready && authenticated && walletsReady ? (wallets.find((w) => w.linked) ?? null) : null), [ready, authenticated, walletsReady, wallets]);
 
-  // MetaMask and Robinhood Wallet are always offered. Every other installed wallet is listed under them.
-  const { popular, installed } = useMemo(() => {
-    const metamask = connectors.find(isMetaMask);
-    const phone = connectors.find((c) => c.id === WALLETCONNECT);
-    const popular: WalletOption[] = [
-      { key: "metamask", name: "MetaMask", note: "Browser extension", icon: metamask?.icon ?? "/wallets/metamask.svg", connect: metamask ? () => connect(metamask) : undefined, installUrl: INSTALL.MetaMask },
-      {
-        key: "robinhood",
-        name: "Robinhood Wallet",
-        note: phone ? "Phone app, by QR code" : "Phone app",
-        icon: null,
-        connect: phone ? () => connect(phone) : undefined,
-        installUrl: INSTALL["Robinhood Wallet"],
-        installLabel: "Get",
-      },
-    ];
-    const installed = connectors
-      .filter((c) => announced(c) && !isMetaMask(c))
-      .map((c): WalletOption => ({ key: c.id, name: c.name, note: "Installed", icon: c.icon ?? null, connect: () => connect(c) }));
-    // A wallet that is in the browser but announced nothing can still be reached, without its name.
-    const unnamed = connectors.find((c) => c.id === UNNAMED);
-    if (provider && unnamed && !metamask && installed.length === 0) {
-      installed.push({ key: UNNAMED, name: "Browser wallet", note: "Installed", icon: null, connect: () => connect(unnamed) });
+  // A press of Connect is kept until it can be answered: Privy may still be loading when it comes.
+  const asked = useRef(false);
+  const answer = useCallback(() => {
+    if (!asked.current || !ready || !walletsReady) return;
+    if (wallet) asked.current = false;
+    // Signed in, but the wallet has gone (locked, or moved to another account): sign out first. Being signed out brings this back.
+    else if (authenticated) void logout();
+    else {
+      asked.current = false;
+      login();
     }
-    return { popular, installed };
-  }, [connectors, connect, provider]);
+  }, [ready, walletsReady, wallet, authenticated, login, logout]);
+  useEffect(answer, [answer]);
+
+  const open = useCallback(() => {
+    asked.current = true;
+    answer();
+  }, [answer]);
 
   const disconnect = useCallback(async () => {
-    await disconnectAsync().catch(() => {});
-  }, [disconnectAsync]);
-
-  const open = useCallback(() => setShowing(true), []);
-  const close = useCallback(() => setShowing(false), []);
+    try {
+      // Some wallets can't be disconnected by a website, and ignore this.
+      wallet?.disconnect();
+    } catch {}
+    await logout().catch(() => {});
+  }, [wallet, logout]);
 
   const signMessage = useCallback(
     async (text: string) => {
-      if (!account.isConnected) throw new Error("Connect a wallet first.");
-      return signMessageAsync({ message: text });
+      if (!wallet) throw new Error(NOT_CONNECTED);
+      return wallet.sign(text);
     },
-    [account.isConnected, signMessageAsync],
+    [wallet],
   );
 
   const deposit = useCallback(
     async (prepared: PreparedDeposit): Promise<DepositProof> => {
-      const connector = account.connector;
-      if (!account.isConnected || !connector) throw new Error("Connect a wallet first.");
+      if (!wallet) throw new Error(NOT_CONNECTED);
 
-      // Ask the wallet itself which network it is on. What the app remembers can be out of date.
-      if ((await connector.getChainId()) !== prepared.chainId) {
+      if ((await chainOf(await wallet.getEthereumProvider())) !== prepared.chainId) {
         try {
           // A wallet that has never seen Robinhood Chain is given its details and asked to add it.
-          await switchChainAsync({ connector, chainId: prepared.chainId });
+          await wallet.switchChain(prepared.chainId);
         } catch (e) {
           if (cancelled(e)) throw e;
           throw new Error(`Switch your wallet to ${CHAIN.name} and try again.`);
         }
-        if ((await connector.getChainId()) !== prepared.chainId) throw new Error(`Your wallet is still on another network. Switch it to ${CHAIN.name} and try again.`);
+        if ((await chainOf(await wallet.getEthereumProvider())) !== prepared.chainId) throw new Error(`Your wallet is still on another network. Switch it to ${CHAIN.name} and try again.`);
       }
 
       try {
-        const hash = await writeContractAsync({
-          connector,
-          chainId: prepared.chainId,
-          address: prepared.token,
-          abi: erc20Abi,
-          functionName: "transfer",
-          args: [prepared.to, BigInt(prepared.units)],
-        });
+        const client = createWalletClient({ account: wallet.address as `0x${string}`, chain: CHAIN, transport: custom(await wallet.getEthereumProvider()) });
+        const hash = await client.writeContract({ address: prepared.token, abi: erc20Abi, functionName: "transfer", args: [prepared.to, BigInt(prepared.units)] });
         return { kind: "robinhood", hash };
       } catch (e) {
         // Wallet libraries report failures as a page of technical detail. Keep the first line.
@@ -140,19 +106,48 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         throw new Error(text.split("\n")[0]);
       }
     },
-    [account.isConnected, account.connector, switchChainAsync, writeContractAsync],
+    [wallet],
   );
 
   const value = useMemo<WalletContext>(() => {
     const shared = { open, disconnect, signMessage, deposit };
-    if (!account.isConnected || !account.address) return { ...shared, chain: null, address: null, walletName: null, icon: null };
-    return { ...shared, chain: "robinhood", address: account.address, walletName: account.connector?.name ?? "Wallet", icon: account.connector?.icon ?? null };
-  }, [account.isConnected, account.address, account.connector, open, disconnect, signMessage, deposit]);
+    if (!wallet) return { ...shared, chain: null, address: null, walletName: null, icon: null };
+    return { ...shared, chain: "robinhood", address: wallet.address, walletName: wallet.meta.name || "Wallet", icon: typeof wallet.meta.icon === "string" ? wallet.meta.icon : null };
+  }, [wallet, open, disconnect, signMessage, deposit]);
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+/** Stands in when the site has no Privy app ID: no wallet can connect, and pressing Connect says why. */
+function NoWallet({ children }: { children: React.ReactNode }) {
+  const [told, setTold] = useState(false);
+
+  useEffect(() => {
+    if (!told) return;
+    const hide = setTimeout(() => setTold(false), 5000);
+    return () => clearTimeout(hide);
+  }, [told]);
+
+  const value = useMemo<WalletContext>(() => {
+    const refuse = async () => {
+      throw new Error(NOT_CONNECTED);
+    };
+    return { chain: null, address: null, walletName: null, icon: null, open: () => setTold(true), disconnect: async () => {}, signMessage: refuse, deposit: refuse };
+  }, []);
 
   return (
     <Ctx.Provider value={value}>
       {children}
-      <AnimatePresence>{showing && <ConnectWindow popular={popular} installed={installed} onClose={close} />}</AnimatePresence>
+      {told && (
+        <div role="alert" className="panel panel-strong fixed bottom-4 left-1/2 z-[5000] w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 px-4 py-3 text-sm text-white">
+          Wallets can&apos;t connect yet: this site has no Privy app ID.
+        </div>
+      )}
     </Ctx.Provider>
   );
+}
+
+/** The connected wallet, for every page. */
+export function WalletProvider({ children }: { children: React.ReactNode }) {
+  return PRIVY_APP_ID ? <PrivyWallet>{children}</PrivyWallet> : <NoWallet>{children}</NoWallet>;
 }
