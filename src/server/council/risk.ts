@@ -4,7 +4,7 @@
  */
 import { AGENT_ORDER } from "@/lib/agents";
 import type { AssetQuote } from "@/lib/assets";
-import { sell, type Fill, type Portfolio, type Position } from "@/lib/council";
+import { goalOf, sell, type Fill, type Portfolio, type Position } from "@/lib/council";
 import { isToken } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { nameOf, px, signed } from "./context";
@@ -81,7 +81,11 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
     recent.push(`${reason === "STOP" ? "Stop-loss" : "Profit target"} hit on ${pos.token} at ${px(done.fill.price)}: ${signed(done.fill.realized ?? 0, "")} USDG (position led by ${nameOf(pos.leader)}).`);
   };
 
-  for (const pos of state.portfolio.positions) {
+  for (const held of state.portfolio.positions) {
+    // The desk takes its profit at a set gain. A position opened with a target further away is given that one.
+    const goal = goalOf(held);
+    const pos = goal < held.target ? { ...held, target: goal } : held;
+    if (pos !== held) portfolio = { ...portfolio, positions: portfolio.positions.map((p) => (p.token === held.token ? { ...p, target: goal } : p)) };
     const asset = assets[pos.token];
     if (asset && !isToken(pos.token) && asset.kind === "pool") {
       // A quote that could not be refreshed is an old one. Better to look again than to act on it.

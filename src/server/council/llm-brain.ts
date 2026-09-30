@@ -3,7 +3,7 @@ import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS, withPresentNames } from "@/lib/agents";
 import { BRAND } from "@/lib/brand";
-import { COMMITTED_HOLD_ROUNDS, EMOTIONS, MIN_HOLD_ROUNDS, OWN_BOOK_SHARE } from "@/lib/council";
+import { COMMITTED_HOLD_ROUNDS, COUNCIL_MAX_USD, EMOTIONS, MIN_HOLD_ROUNDS, OWN_BOOK_SHARE, SOLO_USD, TAKE_PROFIT_PCT } from "@/lib/council";
 import type { Exchange } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 import { asEmotion, asToken, backers, cleanSay, mostStake, openTokens, presents, requestStake, starterStake, starterTokens, STOP_RANGE, TARGET_RANGE, weighs, type Brain } from "./brain";
@@ -26,14 +26,15 @@ const system = (agent: AgentId, pons: boolean) =>
 
 How the desk works:
 - Each trader runs its own book with its own cash, and is judged on its own result. It can also co-invest in a trade that another trader leads.
-- Your pitch is your decision for your own book. The strongest pitch is put to the council, and traders who back it join with their own cash. A pitch the council does not take up is still traded, by you alone, with the cash you named. One trade may take at most ${Math.round(OWN_BOOK_SHARE * 100)}% of your cash.
+- Your pitch is your decision for your own book. The strongest pitch is put to the council, and traders who back it join with their own cash. A pitch the council does not take up is still traded, by you alone, with the cash you named. A purchase of your own is $${SOLO_USD[0]} to $${SOLO_USD[1]}, and may take at most ${Math.round(OWN_BOOK_SHARE * 100)}% of your cash: with less than $${SOLO_USD[0]} free for one, you hold. A purchase the council makes together is $${COUNCIL_MAX_USD} at most in all, shared out among its backers, so your share of it is smaller than the cash you named.
 - Every trader keeps at least one position open. A trader that holds nothing opens one.
 - The tokens you hold are yours to sell, from the round after you bought them. Selling yours leaves your colleagues' tokens where they are. The council can also vote to sell a position for everyone who holds it, once it has been held for ${MIN_HOLD_ROUNDS} rounds.
 - The desk trades ${pons ? "tokens launched on Pons, the launchpad of Robinhood Chain, that are trending right now, and no others" : "the tokens that are trending on Robinhood Chain right now"}. They are young tokens traded in pools. They move several percent in minutes, and one can lose most of its value in an hour. The desk no longer buys ETH or Stock Tokens. It pays in USDG, a dollar token.
 - The desk trades spot only. It can BUY a token with USDG, SELL a token it already holds, or HOLD.
 - Watch what you hold. If a token you hold is falling fast, sell it: the price dropping over 5 and 15 minutes, more sells than buys, the trend down. Do not wait for the stop-loss, and do not hope.
 - Stop-losses and targets execute automatically. Between rounds the desk also sells a holder's tokens when their price drops sharply within minutes.
-- A stop-loss must stand clear of the token's ordinary movement: at least 1.5 times its volatility per 5 minutes. The desk widens any stop that is closer, and a target is never nearer than the stop.
+- A stop-loss must stand clear of the token's ordinary movement: at least 1.5 times its volatility per 5 minutes. The desk widens any stop that is closer.
+- The desk takes its profit: a position that is up ${TAKE_PROFIT_PCT}% is sold, whole, and no target stands further away. Its holders then look for their next trade.
 - The council makes at most one trade per round, and it needs 3 of 4 votes.
 - A user who funds a trader may ask it to buy a token on Robinhood Chain of their choice. That trader presents the request and the whole desk weighs it. A small request is a suggestion that the desk votes on. A request funded with a larger amount commits that trader to the trade with its own cash: then nobody votes on whether to trade, and the others only decide whether to join. A position bought that way is held for ${COMMITTED_HOLD_ROUNDS} rounds before the council may sell it.
 - Trades are filled at live prices against the desk's treasury. No order goes to a market, so the desk's own buying and selling does not move a price. Do not call the trades paper trades.
@@ -42,7 +43,7 @@ Rules for what you say:
 - Use only the figures in the data you are given. Never invent news, social media sentiment, on-chain flows or any number.
 - If you are given odds from Jev, they are a reading to weigh, not an order. Say so when they are what settles it for you.
 - "say" is one short remark across the desk, the way traders talk: at most 15 words and 100 characters. One point, one or two figures, then stop.
-  Good: "ROO up 12% on 1h, 49 buys to 41 sells. Long $25, stop 10%."
+  Good: "ROO up 12% on 1h, 49 buys to 41 sells. Long $${SOLO_USD[0]}, stop 10%."
   Good: "Down 6% in 15 minutes, sellers lead. I'm selling mine."
   Good: "Stop is inside the noise. Widen it to 12% or I'm out."
   Bad: anything that explains, lists several tokens, or runs to a second sentence of reasoning.
@@ -173,10 +174,10 @@ JSON shape:
       const must = ctx.mustTrade[agent];
       const rule = must
         ? `DESK RULE: you hold no position, and every trader here keeps at least one open. You must BUY this round.
-Pick your best idea among ${starterTokens(ctx).join(", ")} and put between $${starterStake(ctx, agent)} and $${most} behind it.${
+Pick your best idea among ${starterTokens(ctx).join(", ")} and put between $${starterStake(ctx, agent)} and $${Math.min(SOLO_USD[1], most)} behind it.${
             ctx.taken.length ? `\nThe desk spreads its books, and colleagues have already picked ${ctx.taken.join(", ")} this round, so those are not on your list.` : ""
           }
-If the edge is thin, say so plainly and size small. Do not invent an edge to justify the trade.`
+If the edge is thin, say so plainly and take the smaller size. Do not invent an edge to justify the trade.`
         : `Your own tokens that you may SELL this round: ${ctx.mine[agent].length ? ctx.mine[agent].join(", ") : "none"}.
 Positions you may propose that the council sells for all their holders: ${ctx.sellable.length ? ctx.sellable.join(", ") : "none this round"}.
 You may BUY only these tokens: ${openTokens(ctx).join(", ") || "none this round"}.`;
@@ -188,9 +189,9 @@ ${rule}
 JSON shape:
 {"action": ${must ? '"BUY"' : '"BUY" | "SELL" | "HOLD"'},
  "token": one of ${(must ? starterTokens(ctx) : ctx.stats.map((s) => s.token)).join(", ")},
- "stakeUsd": your own cash to commit if BUY, from ${must ? starterStake(ctx, agent) : 0} to ${most},
+ "stakeUsd": your own cash to commit if BUY, from ${Math.min(SOLO_USD[0], most)} to ${Math.min(SOLO_USD[1], most)}, and 0 otherwise,
  "stopPct": stop-loss distance in percent, ${STOP_RANGE[0]} to ${STOP_RANGE[1]},
- "targetPct": profit target distance in percent, ${TARGET_RANGE[0]} to ${TARGET_RANGE[1]},
+ "targetPct": profit target distance in percent, ${TARGET_RANGE[0]} to ${TAKE_PROFIT_PCT},
  "sellPct": 50 or 100, share of the position to sell if SELL,
  "conviction": 1 to 5,
  "emotion": "...",

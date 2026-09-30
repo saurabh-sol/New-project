@@ -418,6 +418,8 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                   ["An agent's stake", "Never more than its cash"],
                   ["One trade for its own book", `At most ${rules.ownBookPct}% of its cash`],
                   ["The smallest order", money(rules.minOrderUsd)],
+                  ["A purchase an agent makes alone", `${money(rules.soloUsd[0])} to ${money(rules.soloUsd[1])}. With less than ${money(rules.soloUsd[0])} free for one, it holds`],
+                  ["A purchase the agents make together", `${money(rules.councilMaxUsd)} at most, in all, shared among those who back it`],
                   ["One token's share of all the desk holds", `At most ${rules.maxPositionPct}%`],
                   ["What can be bought", "Tokens on the board. ETH and Stock Tokens are not bought"],
                 ]}
@@ -434,8 +436,8 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                     text: `A stop stands ${rules.stop[0]}% to ${rules.stop[1]}% below the entry, and at least 1.5 times as far as the token usually moves in five minutes.`,
                   },
                   {
-                    title: "A target no nearer than the stop",
-                    text: `A target stands ${rules.target[0]}% to ${rules.target[1]}% above the entry, and at least as far away as the stop.`,
+                    title: "A gain is taken",
+                    text: `A target stands at least as far away as the stop, and no further than ${rules.takeProfitPct}%. A position that is up ${rules.takeProfitPct}% is sold, whole, and its holders look for the next trade.`,
                   },
                 ]}
               />

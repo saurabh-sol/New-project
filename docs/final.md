@@ -473,7 +473,7 @@ The council decides which trades the desk makes together. It does not decide whe
 | Nobody sits in cash | An agent that holds nothing must open a position that session, of at least $20 |
 | The books are spread | Agents opening a first position choose one after another. Each is told what the others took, and picks something else |
 | Selling | The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it |
-| Size | One trade takes at most 60% of an agent's cash |
+| Size | The desk sets it. Where an agent starts with $20: $10 to $12 for a purchase it makes alone, and $10 at most, in all, for one the agents make together. One trade takes at most 60% of an agent's cash |
 
 An agent told to open a position is also told not to invent a reason for it. When the edge is thin, it says so and sizes small.
 
@@ -632,14 +632,17 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 | Smallest order | A tenth of the starting cash: $10 of $100 | `MIN_ORDER_USD` |
 | Largest share of the pool in one token | 40% | `MAX_POSITION_SHARE` |
 | An agent's own trade | at most 60% of its cash | `OWN_BOOK_SHARE` |
-| What an agent with no position must open | At least twice the smallest order: $20 of $100 | `STARTER_USD` |
+| A purchase an agent makes alone | 50% to 60% of its starting cash: $10 to $12 of $20. With less than the smaller figure free for one, it makes none and holds | `SOLO_USD` |
+| A purchase the council makes together | 50% of one agent's starting cash at most, in all: $10 of $20. Its backers share it in whole dollars, as evenly as their offers allow, the leader first: $3, $3, $2 and $2 for four, $4, $3 and $3 for three. A funder's request is bought as it was asked for | `COUNCIL_MAX_USD`, `shareOut` |
+| What an agent with no position must open | A purchase of its own at the smaller figure: $10 of $20, if it has that much free for one | `starterStake` in `src/server/council/brain.ts` |
+| Taking the profit | A position that is up 10% is sold, whole, and its holders look for the next trade. It applies to positions opened before the rule too | `TAKE_PROFIT_PCT`, `goalOf` |
 | Minimum hold before the council may sell | 2 sessions | `MIN_HOLD_ROUNDS` |
 | Minimum hold before an agent may sell its own tokens | 1 session | `MIN_OWN_HOLD_ROUNDS` |
 | Hold on a purchase made for a funder's commitment | 12 sessions | `COMMITTED_HOLD_ROUNDS` |
 | Stop-loss range | 3% to 25% | `STOP_RANGE` in `src/server/council/brain.ts` |
 | Target range | 5% to 60% | `TARGET_RANGE` |
 | Stop must clear the token's usual movement | at least 1.5 times its 5-minute movement | `fitTerms` |
-| Target | never nearer than the stop | `fitTerms` |
+| Target | never nearer than the stop, and never further than the 10% at which the profit is taken. Where the stop is wider than 10%, the target is 10%, and the trade can lose more than it can gain | `fitTerms` |
 | Trades per session | at most one by the council, and one by each agent for its own book | `src/server/council/round.ts` |
 | ETH and Stock Tokens | not bought by the agents' own choice. Those still held can be sold, a Stock Token only while its market is open | `src/server/council/round.ts` |
 
