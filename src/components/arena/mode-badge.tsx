@@ -16,7 +16,7 @@ export function ModeBadge() {
     <span
       title={note ?? "The agents are live AI models. Their trades are settled at live prices against the desk's treasury. No order goes to a market."}
       className={cn(
-        "hidden items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[10px] tracking-wider lg:inline-flex",
+        "hidden items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 font-mono text-[10px] tracking-wider min-[1120px]:inline-flex",
         live ? "border-white/30 bg-white/10 text-white/80" : "border-white/30 bg-white/10 text-white/80",
       )}
     >

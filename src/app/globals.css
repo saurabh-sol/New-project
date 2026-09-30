@@ -81,6 +81,16 @@ body {
   mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 20%, transparent 75%);
 }
 
+/* The loading film is white on black. On white paper it is shown the other way round. */
+.site-loader video {
+  width: min(12rem, 50vw);
+  height: auto;
+  aspect-ratio: 1;
+}
+:root[data-theme="light"] .site-loader video {
+  filter: invert(1);
+}
+
 /* The surface every card sits on. */
 .panel {
   position: relative;

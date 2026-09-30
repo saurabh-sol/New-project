@@ -14,6 +14,7 @@ const NAV = [
   { href: "/", label: "Trading floor" },
   { href: "/fund", label: "Fund an agent" },
   { href: "/claim", label: "Rewards" },
+  { href: "/docs", label: "Docs" },
 ];
 
 export function SiteHeader() {
@@ -33,8 +34,8 @@ export function SiteHeader() {
 
   return (
     <header ref={ref} className="sticky top-0 z-[3000] border-b border-white/5 bg-black/80 backdrop-blur-xl">
-      {/* On a phone the pages get a row of their own, so none is hidden behind the wallet button. */}
-      <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6 sm:py-3">
+      {/* Until there is room for them beside the name, the pages get a row of their own, so none is hidden behind the wallet button. */}
+      <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6 sm:py-3 min-[860px]:flex-nowrap">
         <Link href="/" className="flex shrink-0 items-center gap-3">
           <Logo />
           <span className="flex flex-col leading-none">
@@ -43,7 +44,7 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <nav className="order-last -mx-1 flex w-full items-center gap-1 overflow-x-auto [scrollbar-width:none] sm:order-none sm:mx-0 sm:w-auto" aria-label="Main">
+        <nav className="order-last -mx-1 flex w-full items-center gap-1 overflow-x-auto [scrollbar-width:none] min-[860px]:order-none min-[860px]:mx-0 min-[860px]:w-auto" aria-label="Main">
           {NAV.map((item) => {
             const active = pathname === item.href;
             return (
@@ -52,7 +53,7 @@ export function SiteHeader() {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex-1 whitespace-nowrap rounded-full px-3 py-1.5 text-center text-[13px] transition-colors sm:flex-none sm:px-3.5 sm:text-sm",
+                  "flex-1 whitespace-nowrap rounded-full px-3 py-1.5 text-center text-[13px] transition-colors sm:text-sm min-[860px]:flex-none min-[860px]:px-3.5",
                   active ? "bg-white/10 text-white" : "text-white/55 hover:text-white",
                 )}
               >
