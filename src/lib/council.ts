@@ -50,10 +50,6 @@ export interface Position {
   leader: AgentId;
   /** First round in which the council may sell it, when it was bought on a commitment to a funder. */
   lockedUntil?: number;
-  /** How far below the price the stop was set when the position was opened, in percent. The stop follows the price up at this distance. */
-  trail?: number;
-  /** The highest price seen since the position was opened. */
-  peak?: number;
 }
 
 export interface Portfolio {
@@ -98,9 +94,6 @@ export interface Fill {
   /** The transaction on each agent's own desk contract, once there is one. `tx` is the first of them. */
   txs?: Partial<Record<AgentId, string>>;
 }
-
-/** A sale at a stop that had followed the price up above the entry. It is on record as a stop, and books a gain. */
-export const trailed = (f: Fill) => f.reason === "STOP" && (f.realized ?? 0) > 0.005;
 
 export const zeroStakes = (): Stakes => ({ quant: 0, degen: 0, guardian: 0, oracle: 0 });
 
@@ -233,9 +226,6 @@ export function buy(p: Portfolio, o: BuyOrder): { portfolio: Portfolio; fill: Fi
     openedAt: held?.openedAt ?? o.ts,
     leader: held?.leader ?? o.leader,
     lockedUntil: o.committed ? o.round + COMMITTED_HOLD_ROUNDS : held?.lockedUntil,
-    trail: held && o.keepTerms ? held.trail : o.stopPct,
-    // New terms start the stop's climb over again, from the new entry.
-    peak: held && o.keepTerms ? held.peak : undefined,
   };
 
   return {

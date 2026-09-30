@@ -7,31 +7,31 @@ import type { AgentId } from "@/lib/types";
 import { useArena } from "@/store/arena";
 import { Address } from "./address";
 
-/** How each agent trades, in the words of the desk's trading skill. */
+/** How each agent trades. */
 const TRADES: Record<AgentId, { line: string; ways: string[]; asks: string }> = {
   quant: {
     line: "Data-driven. Trusts indicators over narratives.",
     ways: [
       "Reads momentum, RSI, trend and volume.",
-      "Wants momentum that is starting, not momentum that has run: RSI rising through 40 to 55, volume above its average, the token still low in its range.",
+      "Quotes the numbers that drive its view, and trusts them over stories.",
       "Asks where a token stands four hours from now, and states the odds it acts on.",
     ],
-    asks: "Is momentum starting?",
+    asks: "What do the numbers say?",
   },
   degen: {
     line: "Follows the strongest movers. High conviction, clear sizing.",
     ways: [
-      "Looks for the token where buyers are coming back: turning up from low in its range, with buys well ahead of sells.",
-      "Looks an hour ahead, acts on a thinner edge and asks for more size. The desk's risk rule still caps it.",
+      "Looks for the strongest movers and for volume that is expanding.",
+      "Looks an hour ahead, acts on a thinner edge and asks for more size.",
       "Holds on longest when a token falls.",
     ],
-    asks: "Are buyers coming back?",
+    asks: "What is moving?",
   },
   guardian: {
     line: "The desk's risk manager. Keeps the others to the rules.",
     ways: [
-      "In a debate, tests the proposal against the entry rules and its size, and names the rule it strains.",
-      "Prefers the token with the deepest pool and the narrowest stop. Less can go wrong.",
+      "In a debate, tests the proposal's size and stop, and says what it strains.",
+      "Weighs size, stops and volatility before upside, and refuses a trade whose risk is not paid for.",
       "Is the first to sell into a fall.",
     ],
     asks: "What can go wrong?",
