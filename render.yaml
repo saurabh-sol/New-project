@@ -1,4 +1,4 @@
-# The Council on Render. Secrets are set in the Render dashboard, never here.
+# Fourcast on Render. Secrets are set in the Render dashboard, never here.
 services:
   - type: web
     name: the-council

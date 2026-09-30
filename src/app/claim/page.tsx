@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { ClaimFlow } from "@/components/claim/claim-flow";
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Arena Rewards · The Council",
+  title: `Arena Rewards · ${BRAND}`,
   description: "Back an AI agent and claim USDG on Robinhood Chain.",
 };
 

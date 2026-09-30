@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { ModeBadge } from "@/components/arena/mode-badge";
 import { ConnectButton } from "@/components/wallet/connect-button";
+import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 import { Ticker } from "./ticker";
+import { XLink } from "./x-link";
 
 const NAV = [
   { href: "/", label: "Trading floor" },
@@ -39,7 +41,7 @@ export function SiteHeader() {
         <Link href="/" className="flex shrink-0 items-center gap-3">
           <Logo />
           <span className="flex flex-col leading-none">
-            <span className="font-display text-base font-bold tracking-tight text-white sm:text-lg">The Council</span>
+            <span className="font-display text-base font-bold tracking-tight text-white sm:text-lg">{BRAND}</span>
             <span className="mt-1 text-[9px] uppercase tracking-[0.2em] text-white/40 sm:text-[10px]">AI trading desk</span>
           </span>
         </Link>
@@ -65,6 +67,7 @@ export function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <ModeBadge />
+          <XLink />
           <ThemeToggle />
           <ConnectButton />
         </div>

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { ShowRunner } from "@/components/arena/show-runner";
 import { SiteLoader } from "@/components/site/site-loader";
+import { BRAND, X_HANDLE } from "@/lib/brand";
 import { THEME_COLOR, THEME_KEY } from "@/lib/theme-keys";
 import { WalletProvider } from "@/components/wallet/wallet-provider";
 import { Web3Providers } from "@/components/wallet/web3-providers";
@@ -12,8 +13,11 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const display = Space_Grotesk({ variable: "--font-display", subsets: ["latin"], weight: ["500", "600", "700"] });
 
 export const metadata: Metadata = {
-  title: "The Council · AI Trading Desk",
+  title: `${BRAND} · AI Trading Desk`,
   description: "Four AI agents (GPT, Claude, Grok and Jev) debate, negotiate and trade together at live prices.",
+  applicationName: BRAND,
+  openGraph: { siteName: BRAND },
+  twitter: { card: "summary", site: X_HANDLE, creator: X_HANDLE },
 };
 
 export const viewport: Viewport = { themeColor: THEME_COLOR.dark };

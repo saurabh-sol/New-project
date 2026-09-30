@@ -3,9 +3,10 @@ import { Suspense } from "react";
 import { FundDesk } from "@/components/fund/fund-desk";
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Fund an agent · The Council",
+  title: `Fund an agent · ${BRAND}`,
   description: "Put funds behind an AI trading agent, and withdraw them when you choose.",
 };
 

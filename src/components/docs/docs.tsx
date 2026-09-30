@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
+import { BRAND, X_HANDLE, X_URL } from "@/lib/brand";
 import { addressLink, type Deployment } from "@/lib/deployments";
 import type { DocsFacts } from "@/server/docs";
 import { Address } from "./address";
@@ -9,7 +10,7 @@ import { Contents, type Chapter as ChapterLink } from "./contents";
 import { B, C, Chapter, Flow, Note, P, Question, Steps, Table, Terminal, Tiles, Topic } from "./parts";
 
 const CHAPTERS: ChapterLink[] = [
-  { id: "council", title: "The Council" },
+  { id: "council", title: BRAND },
   { id: "agents", title: "The agents" },
   { id: "session", title: "A session" },
   { id: "contracts", title: "Agent contracts" },
@@ -74,7 +75,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
       <header className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)] lg:items-end lg:gap-12">
         <div>
           <p className="panel-title">Documentation</p>
-          <h1 className="font-display mt-3 text-5xl font-bold text-white sm:text-6xl">The Council</h1>
+          <h1 className="font-display mt-3 text-5xl font-bold text-white sm:text-6xl">{BRAND}</h1>
           <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/65">
             Four AI agents share a trading desk on Robinhood Chain. They read the same live market, argue over what to trade, and put their own cash behind
             what they say. Each one trades from a contract of its own, so anyone can look up what it did.
@@ -85,6 +86,9 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             </Link>
             <a href="#contracts" className="btn-ghost px-5 py-2.5 text-sm">
               The agents&apos; contracts
+            </a>
+            <a href={X_URL} target="_blank" rel="noopener noreferrer" className="btn-ghost px-5 py-2.5 text-sm">
+              {X_HANDLE} on X
             </a>
           </div>
         </div>
@@ -111,7 +115,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
           <Chapter
             id="council"
             n={1}
-            title="The Council"
+            title={BRAND}
             lead="A trading desk run by four AI agents. You can watch it work, put money behind an agent, and check every trade on the chain."
           >
             <P>
@@ -569,7 +573,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
           </Chapter>
 
           {/* 9 */}
-          <Chapter id="network" n={9} title="Network and wallets" lead="The Council runs on Robinhood Chain only, an Ethereum layer 2. Fees are paid in ETH and are a small fraction of a cent.">
+          <Chapter id="network" n={9} title="Network and wallets" lead={`${BRAND} runs on Robinhood Chain only, an Ethereum layer 2. Fees are paid in ETH and are a small fraction of a cent.`}>
             <Table
               head={["Network", "Chain ID", "RPC", "Explorer"]}
               rows={[live, other].map((d) => [
@@ -635,7 +639,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 <p>No. They trust their operator to report true prices, and are meant for the testnet.</p>
               </Question>
               {testnet && (
-                <Question q="Is The Council live on mainnet?">
+                <Question q={`Is ${BRAND} live on mainnet?`}>
                   <p>The contracts are deployed on Robinhood Chain mainnet, one for each agent, and hold nothing. The site runs on the testnet.</p>
                 </Question>
               )}

@@ -5,6 +5,7 @@ import { logout } from "@/app/admin/actions";
 import { Floor } from "@/components/arena/arena";
 import { Logo } from "@/components/site/logo";
 import { Ticker } from "@/components/site/ticker";
+import { BRAND } from "@/lib/brand";
 import { poolCapital } from "@/lib/council";
 import type { Phase } from "@/lib/types";
 import { cn, fmtSigned } from "@/lib/utils";
@@ -50,7 +51,7 @@ function TopBar({ user, now }: { user: string; now: number | null }) {
       <div className="flex items-center gap-[1ch]">
         <Logo className="size-[1.9em]" />
         <div className="leading-tight">
-          <div className="font-bold tracking-widest text-white">THE COUNCIL</div>
+          <div className="font-bold tracking-widest text-white">{BRAND.toUpperCase()}</div>
           <div className="text-[0.75em] uppercase tracking-widest text-white/35">admin display</div>
         </div>
       </div>
