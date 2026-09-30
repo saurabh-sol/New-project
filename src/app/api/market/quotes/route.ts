@@ -2,13 +2,18 @@ import type { Asset } from "@/lib/assets";
 import { isToken, type AssetKey, type Quote } from "@/lib/market";
 import { readState } from "@/server/council/store";
 import { assetQuotes } from "@/server/market/assets";
-import { cached } from "@/server/market/http";
+import { cachedOrKept } from "@/server/market/http";
 import { listedQuotes } from "@/server/market/quotes";
 import { trendingBoard } from "@/server/market/trending";
 
+/** A quote that can't be had again for the moment is shown as it was, for this long at most. */
+const KEEP_MS = 2 * 60_000;
+
+const shared = globalThis as typeof globalThis & { __quotesKept?: Map<AssetKey, { at: number; quote: Quote }> };
+
 /** What is quoted: the desk's board, and whatever it holds. Read from the books, which change far less often than prices. */
 const watched = () =>
-  cached("quotes:watched", 5_000, async () => {
+  cachedOrKept("quotes:watched", 5_000, KEEP_MS, async () => {
     const state = await readState();
     const held = state.portfolio.positions.map((p) => p.token);
     let board = state.board ?? [];
@@ -33,6 +38,14 @@ export async function GET() {
     const quotes: Record<AssetKey, Quote> = {};
     for (const key of old) if (listed[key]) quotes[key] = listed[key]!;
     for (const [key, q] of Object.entries(pools)) quotes[key] = { price: q.price, change24h: q.change24h, session: q.session, change5m: q.change5m, change1h: q.change1h };
+
+    // The data services refuse a request now and then. A token they left out keeps the quote it had a moment ago.
+    const kept = (shared.__quotesKept ??= new Map());
+    const now = Date.now();
+    for (const [key, last] of kept) if (now - last.at >= KEEP_MS) kept.delete(key);
+    for (const [key, quote] of Object.entries(quotes)) kept.set(key, { at: now, quote });
+    for (const key of [...assets.map((a) => a.key), ...old]) if (!quotes[key] && kept.has(key)) quotes[key] = kept.get(key)!.quote;
+
     if (assets.length > 0 && Object.keys(quotes).length === 0) throw new Error("No market data available");
     return Response.json({ quotes }, { headers: { "cache-control": "no-store" } });
   } catch {

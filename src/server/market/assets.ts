@@ -162,8 +162,12 @@ function symbolOnChain(address: string): Promise<string | null> {
 async function lookupPool(address: string): Promise<AssetPreview> {
   if (same(address, USDG)) return { ok: false, error: "USDG is the money the desk trades with. Name a token for the agent to buy with it." };
 
-  const pairs = (await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/tokens/${address}`)).pairs ?? [];
-  const best = pairs
+  // Null when DexScreener can't be reached. GeckoTerminal may still know the token.
+  const pairs = await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/tokens/${address}`).then(
+    (found) => found.pairs ?? [],
+    () => null,
+  );
+  const best = (pairs ?? [])
     .filter((p) => p.chainId === CHAIN && same(p.baseToken.address, address) && Number(p.priceUsd) > 0)
     .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
 
@@ -173,6 +177,7 @@ async function lookupPool(address: string): Promise<AssetPreview> {
   } else {
     const gecko = await geckoQuote(address);
     if (!gecko) {
+      if (!pairs) throw new Error("DexScreener can't be reached");
       const symbol = await symbolOnChain(address);
       return { ok: false, error: symbol ? `${symbol} is a token on Robinhood Chain, but nobody trades it in a pool yet, so it has no price the agents could trade at.` : "No token that trades on Robinhood Chain was found at that address." };
     }
@@ -196,16 +201,13 @@ export function lookupAsset(input: string): Promise<AssetPreview> {
   if (!looksLikeAddress(query) && !looksLikeSymbol(query)) {
     return Promise.resolve({ ok: false, error: "Enter a token's address on Robinhood Chain, or a Stock Token's symbol such as MSFT." });
   }
+  // An answer is reused for half a minute. Data that can't be reached is not an answer, and is asked for again sooner.
   return cached(`lookup:${query.toLowerCase()}`, 30_000, async (): Promise<AssetPreview> => {
-    try {
-      const stock = await lookupStock(query);
-      if (stock) return stock;
-      if (!looksLikeAddress(query)) return { ok: false, error: `There is no Stock Token called ${query.toUpperCase()}. Try its contract address.` };
-      return await lookupPool(query);
-    } catch {
-      return { ok: false, error: "Token data is unavailable right now. Try again in a moment." };
-    }
-  });
+    const stock = await lookupStock(query);
+    if (stock) return stock;
+    if (!looksLikeAddress(query)) return { ok: false, error: `There is no Stock Token called ${query.toUpperCase()}. Try its contract address.` };
+    return lookupPool(query);
+  }).catch((): AssetPreview => ({ ok: false, error: "Token data is unavailable right now. Try again in a moment.", unavailable: true }));
 }
 
 export function assetQuote(asset: Asset): Promise<AssetQuote> {
@@ -292,7 +294,8 @@ const BATCH = 30;
  */
 export async function assetQuotes(assets: Asset[]): Promise<Record<string, AssetQuote>> {
   const out: Record<string, AssetQuote> = {};
-  const together = assets.filter((a) => a.kind === "pool" && a.pool && !a.feed);
+  // A token marked for GeckoTerminal is asked of DexScreener as well: a token is marked when DexScreener could not be reached, too.
+  const together = assets.filter((a) => a.kind === "pool" && a.pool);
   const alone = assets.filter((a) => !together.includes(a));
 
   const batches: Asset[][] = [];
@@ -301,10 +304,19 @@ export async function assetQuotes(assets: Asset[]): Promise<Record<string, Asset
     ...batches.map(async (batch) => {
       const pools = batch.map((a) => a.pool!.toLowerCase()).sort();
       const pairs = await cached(`quotes:${pools.join(",")}`, 4_000, async () => (await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/pairs/${CHAIN}/${pools.join(",")}`)).pairs ?? []).catch(() => [] as Pair[]);
+      const left: Asset[] = [];
       for (const a of batch) {
         const pair = pairs.find((p) => same(p.pairAddress, a.pool!));
-        if (pair && Number(pair.priceUsd) > 0) out[a.key] = poolQuote(pair);
+        // A marked token may be the other token of its pool, which the pool's price is not the price of.
+        if (pair && Number(pair.priceUsd) > 0 && (!a.feed || same(pair.baseToken.address, a.address))) out[a.key] = poolQuote(pair);
+        else if (a.feed) left.push(a);
       }
+      await Promise.all(
+        left.map(async (a) => {
+          const quote = await assetQuote(a).catch(() => null);
+          if (quote) out[a.key] = quote;
+        }),
+      );
     }),
     ...alone.map(async (a) => {
       const quote = await assetQuote(a).catch(() => null);

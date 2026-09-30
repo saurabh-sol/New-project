@@ -8,8 +8,9 @@
  * Pons's factory contract puts every launch and every graduation on record. That record is
  * what says a token came from Pons, whatever the token calls itself.
  */
-import { createPublicClient, http, parseAbiItem, type Hex } from "viem";
+import { createPublicClient, parseAbiItem, type Hex } from "viem";
 import { robinhood } from "viem/chains";
+import { mainnetTransport } from "./chain";
 import { cached } from "./http";
 
 /** PonsV2LaunchFactory on Robinhood Chain. */
@@ -30,7 +31,7 @@ const shared = globalThis as typeof globalThis & { __pons?: Map<string, boolean>
 const known = () => (shared.__pons ??= new Map());
 
 let client: ReturnType<typeof createPublicClient> | undefined;
-const chain = () => (client ??= createPublicClient({ chain: robinhood, transport: http(process.env.ROBINHOOD_MAINNET_RPC_URL || undefined, { retryCount: 2, timeout: 12_000 }) }));
+const chain = () => (client ??= createPublicClient({ chain: robinhood, transport: mainnetTransport(12_000) }));
 
 /** Where the chain is now, and how fast it makes blocks. */
 const pace = () =>

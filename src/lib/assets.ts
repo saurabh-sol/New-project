@@ -85,4 +85,5 @@ export interface TradeRequest {
   ts: number;
 }
 
-export type AssetPreview = { ok: true; asset: Asset; quote: AssetQuote } | { ok: false; error: string };
+/** `unavailable`: the token could not be looked up just now, which says nothing about the token. */
+export type AssetPreview = { ok: true; asset: Asset; quote: AssetQuote } | { ok: false; error: string; unavailable?: true };

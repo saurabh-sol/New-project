@@ -10,9 +10,10 @@
  * latest one to the token's live USD price, so the shape of the chart is the pool's own. What
  * the quote token itself did against the dollar over those hours is not in it.
  */
-import { createPublicClient, http, parseAbi, parseAbiItem, type Hex } from "viem";
+import { createPublicClient, parseAbi, parseAbiItem, type Hex } from "viem";
 import { robinhood } from "viem/chains";
 import { INTERVAL_SECONDS, type Candle, type Interval } from "@/lib/market";
+import { mainnetTransport } from "./chain";
 import { cached } from "./http";
 
 /** Uniswap v4's PoolManager on Robinhood Chain, which every v4 pool lives in. */
@@ -29,7 +30,7 @@ const Q192 = BigInt(2) ** BigInt(192);
 const SCALE = BigInt(10) ** BigInt(30);
 
 let client: ReturnType<typeof createPublicClient> | undefined;
-const chain = () => (client ??= createPublicClient({ chain: robinhood, transport: http(process.env.ROBINHOOD_MAINNET_RPC_URL || undefined, { retryCount: 2, timeout: 15_000 }) }));
+const chain = () => (client ??= createPublicClient({ chain: robinhood, transport: mainnetTransport(15_000) }));
 
 const head = () => cached("chain:head", 5_000, () => chain().getBlock().then((b) => ({ number: Number(b.number), time: Number(b.timestamp) })));
 /** When a block was made. Blocks at round numbers are read once and remembered. */
