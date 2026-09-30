@@ -1,13 +1,9 @@
 "use client";
 
-import "@rainbow-me/rainbowkit/styles.css";
-import { darkTheme, lightTheme, RainbowKitProvider } from "@rainbow-me/rainbowkit";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { PrivyProvider, type PrivyClientConfig } from "@privy-io/react-auth";
+import { useMemo } from "react";
 import { defineChain } from "viem";
-import { createConfig, http, WagmiProvider, type Transport } from "wagmi";
-import { injected, walletConnect } from "wagmi/connectors";
-import { robinhood, robinhoodTestnet } from "wagmi/chains";
+import { robinhood, robinhoodTestnet } from "viem/chains";
 import { useTheme } from "@/lib/theme";
 
 const network = process.env.NEXT_PUBLIC_ROBINHOOD_NETWORK === "mainnet" ? robinhood : robinhoodTestnet;
@@ -19,46 +15,39 @@ const rpcUrl = process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL;
  */
 export const CHAIN = rpcUrl ? defineChain({ ...network, rpcUrls: { default: { http: [rpcUrl] } } }) : network;
 
-// Robinhood Wallet is a phone app. It connects by QR code through WalletConnect, which needs a free project ID.
-export const WALLETCONNECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || null;
-export const WALLETCONNECT = "walletConnect";
-
-/** The connector for a wallet that is in the browser but doesn't announce itself, as older wallets don't. */
-export const UNNAMED = "injected";
-
-// Installed wallets announce themselves to the page, MetaMask included, and each becomes a
-// connector named after the wallet. None is listed here: a connector listed under a wallet's
-// name would take the place of the installed wallet itself.
-const connectors = [
-  injected(),
-  ...(WALLETCONNECT_ID ? [walletConnect({ projectId: WALLETCONNECT_ID, showQrModal: true, metadata: { name: "The Council", description: "AI trading desk", url: "https://localhost", icons: [] } })] : []),
-];
-
-const config = createConfig({
-  chains: [CHAIN],
-  connectors,
-  multiInjectedProviderDiscovery: true,
-  transports: { [CHAIN.id]: http(rpcUrl || undefined) } as Record<typeof CHAIN.id, Transport>,
-  ssr: true,
-});
+/** This app's ID at Privy, which runs the window where a wallet is connected. It is public, and without it no wallet can connect. */
+export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || null;
 
 // Black and white, to match the rest of the site.
-const THEMES = {
-  dark: darkTheme({ accentColor: "#ffffff", accentColorForeground: "#000000", borderRadius: "large", overlayBlur: "small" }),
-  light: lightTheme({ accentColor: "#000000", accentColorForeground: "#ffffff", borderRadius: "large", overlayBlur: "small" }),
-};
+const LOOK = {
+  dark: { theme: "#000000", accentColor: "#ffffff" },
+  light: { theme: "#ffffff", accentColor: "#000000" },
+} as const;
 
-/** RainbowKit and what it depends on, for Ethereum-type wallets on Robinhood Chain. */
+// MetaMask first, then Robinhood Wallet, then every other wallet installed in the browser.
+// Phone wallets connect by QR code through WalletConnect, which Privy provides.
+const WALLETS: NonNullable<PrivyClientConfig["appearance"]>["walletList"] = ["metamask", "robinhood_wallet", "detected_ethereum_wallets", "wallet_connect_qr"];
+
+/** Privy, for Ethereum-type wallets on Robinhood Chain. */
 export function Web3Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
-  const theme = THEMES[useTheme()];
+  const theme = useTheme();
+  const config = useMemo<PrivyClientConfig>(
+    () => ({
+      // The app's own wallets only: no email, no social accounts, no wallet made by Privy.
+      loginMethods: ["wallet"],
+      embeddedWallets: { ethereum: { createOnLogin: "off" }, solana: { createOnLogin: "off" } },
+      // A wallet on another network is asked to move to Robinhood Chain as it connects.
+      defaultChain: CHAIN,
+      supportedChains: [CHAIN],
+      appearance: { ...LOOK[theme], walletChainType: "ethereum-only", walletList: WALLETS, showWalletLoginFirst: true, landingHeader: "Connect a wallet", loginMessage: `The Council runs on ${CHAIN.name}.` },
+    }),
+    [theme],
+  );
+
+  if (!PRIVY_APP_ID) return children;
   return (
-    <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider theme={theme} modalSize="compact" initialChain={CHAIN}>
-          {children}
-        </RainbowKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <PrivyProvider appId={PRIVY_APP_ID} config={config}>
+      {children}
+    </PrivyProvider>
   );
 }

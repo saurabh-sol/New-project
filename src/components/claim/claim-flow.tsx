@@ -126,7 +126,7 @@ export function ClaimFlow() {
             {step === 0 && (
               <Pane key="connect">
                 <h2 className="font-display text-lg font-semibold text-white">Connect your wallet</h2>
-                <p className="mt-1 text-sm text-white/50">Use MetaMask or any wallet that works with Robinhood Chain. Connecting only shares your public address.</p>
+                <p className="mt-1 text-sm text-white/50">Use MetaMask or any wallet that works with Robinhood Chain. You sign a free message to prove the wallet is yours. Nothing is sent.</p>
                 <button onClick={open} className="btn-primary mt-5 w-full py-3.5 text-sm">
                   Connect wallet
                 </button>

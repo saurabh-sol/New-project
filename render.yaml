@@ -20,6 +20,9 @@ services:
       # Each agent starts with $20 of the house's USDG.
       - key: NEXT_PUBLIC_START_CASH
         value: "20"
+      # The app's ID at Privy. It is public, and Privy only accepts it from the domains allowed in its dashboard.
+      - key: NEXT_PUBLIC_PRIVY_APP_ID
+        value: cmunw1gi200070ci7nk8wqqpf
       - key: FAUCET_ENABLED
         value: "false"
       # No rewards are paid on mainnet.
