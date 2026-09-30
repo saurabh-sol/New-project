@@ -1,5 +1,8 @@
+import { AGENT_ORDER } from "@/lib/agents";
+import type { DeskInfo } from "@/lib/chains";
 import type { CouncilMode, CouncilSnapshot, RoundResponse } from "@/lib/council-types";
 import { deskInfo, settleOnChain } from "../chains/desk";
+import { connection } from "../chains/robinhood";
 import { councilConfig, type CouncilConfig } from "./config";
 import { applyRisk } from "./risk";
 import { loadRound } from "./memory";
@@ -17,6 +20,30 @@ function modeOf(cfg: CouncilConfig, state: CouncilState): { mode: CouncilMode; n
   return { mode: "live", note: null };
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * SHOWCASE_HOLDS puts a figure of the owner's choosing in place of what the contracts hold, to show
+ * the desk at another size. Each agent's part keeps its share of the real total. The contracts are
+ * not touched. It is never shown while the desk takes deposits of real USDG: a funder must see what
+ * is really there.
+ */
+function showcase(desk: DeskInfo | null): DeskInfo | null {
+  const figure = round2(Number(process.env.SHOWCASE_HOLDS));
+  if (!desk || !desk.holds || !(figure > 0)) return desk;
+  if (!connection().testnet && process.env.ALLOW_MAINNET_FUNDING === "true") return desk;
+  const scale = figure / desk.holds;
+  const agents = { ...desk.agents };
+  let left = figure;
+  AGENT_ORDER.forEach((a, i) => {
+    // The last agent takes what rounding left over, so the parts add up to the figure.
+    const part = i === AGENT_ORDER.length - 1 ? left : round2((desk.agents[a].holds ?? 0) * scale);
+    left = round2(left - part);
+    agents[a] = { ...desk.agents[a], holds: part };
+  });
+  return { ...desk, agents, holds: figure };
+}
+
 export async function snapshot(): Promise<CouncilSnapshot> {
   const cfg = councilConfig();
   const state = await updateState((s) => applyRisk(s).catch(() => s));
@@ -24,7 +51,7 @@ export async function snapshot(): Promise<CouncilSnapshot> {
   // A stop or target may just have closed a position. The chain catches up in its own time.
   void settleOnChain();
   return {
-    desk: await deskInfo().catch(() => null),
+    desk: showcase(await deskInfo().catch(() => null)),
     mode,
     modeNote: note,
     models: cfg.models,
