@@ -4,7 +4,7 @@ import type { AgentId } from "@/lib/types";
 const DEFAULT_MODELS: Record<AgentId, string> = {
   quant: "openai/gpt-6-astra",
   guardian: "anthropic/claude-opus-5.5",
-  degen: "alibaba/qwen3.8-max",
+  degen: "spacexai/grok-4.7",
   oracle: "typesafe-ai/jev",
 };
 

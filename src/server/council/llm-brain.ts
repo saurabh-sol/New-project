@@ -1,4 +1,4 @@
-/** Agents backed by a language model (GPT, Claude, Qwen), called through Vercel AI Gateway. */
+/** Agents backed by a language model (GPT, Claude, Grok), called through Vercel AI Gateway. */
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS, withPresentNames } from "@/lib/agents";
