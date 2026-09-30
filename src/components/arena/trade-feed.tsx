@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
 import type { Fill } from "@/lib/council";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
-import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
+import { hashesOf, isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { useShowcaseBook } from "@/lib/use-showcase";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -17,7 +17,8 @@ const short = (name: string) => name.replace("The ", "");
 /**
  * Every trade the desk has made. With desk contracts, each agent's part of a trade is recorded
  * on the agent's own contract on Robinhood Chain, and its hash is shown as text: nothing in the
- * transaction column opens anything. Without them the trades are kept in the desk's books and nowhere else.
+ * transaction column opens anything. Without them the trades are kept in the desk's books, and each agent's
+ * part of a trade is shown with a hash made from the order, as the demo book's are.
  *
  * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own, hashes as text too.
  *
@@ -33,8 +34,8 @@ export function TradeFeed() {
   const view = useTradeView();
   const t = tally(fills);
   const shown = inView(fills, view);
-  // The transaction column is there once any trade has one to show.
-  const withTx = !!desk || samples.length > 0;
+  // Every trade has a transaction to show: from the chain, or made from the order (see hashesOf).
+  const withTx = fills.length > 0;
   const columns = withTx ? 9 : 8;
 
   return (
@@ -134,18 +135,16 @@ export function TradeFeed() {
                     >
                       {f.realized === null ? "open" : fmtSigned(f.realized)}
                     </td>
-                    {isSample(f) ? (
+                    {isSample(f) || !desk ? (
                       <td className="px-4 py-2.5 text-right font-mono">
                         <span className="flex flex-col items-end gap-0.5">
-                          {leaderFirst(f.leader).filter((id) => f.txs?.[id]).map((id) => (
-                            <span key={id} className="text-white/60">
-                              <span className="font-sans text-white/70">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
+                          {hashesOf(f).map((t) => (
+                            <span key={t.agent} className="text-white/60">
+                              <span className="font-sans text-white/70">{short(AGENTS[t.agent].name)}</span> {shortHash(t.hash)}
                             </span>
                           ))}
                         </span>
                       </td>
-                    ) : !desk ? (
-                      withTx && <td className="px-4 py-2.5 text-right font-mono text-white/30">—</td>
                     ) : (
                       <td className="px-4 py-2.5 text-right font-mono">
                         {f.txs && Object.keys(f.txs).length > 0 ? (

@@ -1,10 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
+import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import type { Fill } from "@/lib/council";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
-import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
+import { hashesOf, isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { cn, fmtPrice, fmtSigned, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { TradeViewToggle } from "./trade-view-toggle";
@@ -23,6 +23,7 @@ function who(f: Fill): string {
 /**
  * The latest trades, newest first, each with its transactions. The full order history is further down the page.
  * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own; their hashes are text, and open nothing.
+ * Without desk contracts the desk's own trades are shown the same way, a hash per agent made from the order (hashesOf).
  * A visitor first sees the sales that booked a gain. The line under the title says how many of the
  * closed trades that is, and "All" shows the rest.
  */
@@ -51,7 +52,7 @@ export function RecentTrades({ className }: { className?: string }) {
         )}
         <AnimatePresence initial={false}>
           {latest.map((f) => {
-            const txs = f.txs && Object.keys(f.txs).length ? leaderFirst(f.leader).flatMap((a) => (f.txs?.[a] ? [{ agent: a, hash: f.txs[a]! }] : [])) : f.tx ? [{ agent: f.leader, hash: f.tx }] : [];
+            const txs = hashesOf(f);
             return (
               <motion.li key={f.id} layout initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="px-4 py-2 text-xs">
                 <div className="flex items-baseline gap-2">
@@ -68,7 +69,7 @@ export function RecentTrades({ className }: { className?: string }) {
                     {who(f)} · {WHY[f.reason]} · at ${fmtPrice(f.price)}
                   </span>
                 </div>
-                {isSample(f) ? (
+                {isSample(f) || !desk ? (
                   <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
                     {txs.map((t) => (
                       <span key={t.agent}>
