@@ -69,7 +69,7 @@ export async function getJson<T>(url: string, patient = false): Promise<T> {
   for (let attempt = 0; attempt <= waits.length; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, waits[attempt - 1]));
     try {
-      const res = await inTurn(new URL(url).host, () => fetch(url, { signal: AbortSignal.timeout(8_000), headers: { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; TheCouncil/1.0)" } }));
+      const res = await inTurn(new URL(url).host, () => fetch(url, { signal: AbortSignal.timeout(8_000), headers: { accept: "application/json", "user-agent": "Mozilla/5.0 (compatible; Fourcast/1.0)" } }));
       if (res.ok) return (await res.json()) as T;
       problem = new Error(`Market data request failed (${res.status}) at ${new URL(url).host}`);
       // Anything but "too many requests" or a server fault will fail the same way again.

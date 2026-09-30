@@ -4,6 +4,7 @@ import { PrivyProvider, type PrivyClientConfig } from "@privy-io/react-auth";
 import { useMemo } from "react";
 import { defineChain } from "viem";
 import { robinhood, robinhoodTestnet } from "viem/chains";
+import { BRAND } from "@/lib/brand";
 import { useTheme } from "@/lib/theme";
 
 const network = process.env.NEXT_PUBLIC_ROBINHOOD_NETWORK === "mainnet" ? robinhood : robinhoodTestnet;
@@ -39,7 +40,7 @@ export function Web3Providers({ children }: { children: React.ReactNode }) {
       // A wallet on another network is asked to move to Robinhood Chain as it connects.
       defaultChain: CHAIN,
       supportedChains: [CHAIN],
-      appearance: { ...LOOK[theme], walletChainType: "ethereum-only", walletList: WALLETS, showWalletLoginFirst: true, landingHeader: "Connect a wallet", loginMessage: `The Council runs on ${CHAIN.name}.` },
+      appearance: { ...LOOK[theme], walletChainType: "ethereum-only", walletList: WALLETS, showWalletLoginFirst: true, landingHeader: "Connect a wallet", loginMessage: `${BRAND} runs on ${CHAIN.name}.` },
     }),
     [theme],
   );

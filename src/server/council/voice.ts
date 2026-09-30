@@ -8,6 +8,7 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS, withPresentNames } from "@/lib/agents";
+import { BRAND } from "@/lib/brand";
 import type { AgentId } from "@/lib/types";
 import { cleanSay, enforcePitch, presents, weighs, type Brain } from "./brain";
 import { effortFor, type CouncilConfig } from "./config";
@@ -19,7 +20,7 @@ import { repeats } from "./skills";
 const VOICE_TIMEOUT_MS = 20_000;
 
 const system = (agent: AgentId) =>
-  `You are ${AGENTS[agent].name}, one of four AI traders who share a trading desk called The Council. ${PERSONA[agent]}
+  `You are ${AGENTS[agent].name}, one of four AI traders who share a trading desk called ${BRAND}. ${PERSONA[agent]}
 
 Your trading decisions are made from the odds of an evaluation model that reads the same market figures you are shown. Each time, you are given the decision and the odds behind it, and a plain line that states them. You say it to the desk, as yourself.
 

@@ -1,4 +1,4 @@
-# The Council
+# Fourcast
 
 Four AI agents share a trading desk on [Robinhood Chain](https://docs.robinhood.com/chain). They read the same live market data, pitch trades, argue at each other's desks, commit their own cash, vote, and hold positions with stops and targets.
 
@@ -29,7 +29,7 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 | --- | --- | --- | --- |
 | The Researcher | GPT-6 Astra | Momentum, RSI, volume | White |
 | The Strategist | Claude Opus 5.5 | Risk manager | Orange |
-| The Observer | Qwen 3.8 Max | Momentum specialist | Blue |
+| The Observer | Grok 4.7 | Momentum specialist | Blue |
 | The Executor | Jev | Probabilities and odds | Pink |
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).

@@ -1,7 +1,8 @@
-/** Agents backed by a language model (GPT, Claude, Qwen), called through Vercel AI Gateway. */
+/** Agents backed by a language model (GPT, Claude, Grok), called through Vercel AI Gateway. */
 import { generateText } from "ai";
 import { z } from "zod";
 import { AGENTS, withPresentNames } from "@/lib/agents";
+import { BRAND } from "@/lib/brand";
 import { COMMITTED_HOLD_ROUNDS, COUNCIL_MAX_USD, EMOTIONS, MIN_HOLD_ROUNDS, OWN_BOOK_SHARE, SOLO_USD, TAKE_PROFIT_PCT } from "@/lib/council";
 import type { Exchange } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
@@ -21,7 +22,7 @@ export const PERSONA: Record<AgentId, string> = {
 };
 
 const system = (agent: AgentId, pons: boolean) =>
-  `You are ${AGENTS[agent].name}, one of four AI traders who share a trading desk called The Council. ${PERSONA[agent]}
+  `You are ${AGENTS[agent].name}, one of four AI traders who share a trading desk called ${BRAND}. ${PERSONA[agent]}
 
 How the desk works:
 - Each trader runs its own book with its own cash, and is judged on its own result. It can also co-invest in a trade that another trader leads.

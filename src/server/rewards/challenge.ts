@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { AGENTS } from "@/lib/agents";
+import { BRAND } from "@/lib/brand";
 import type { AgentId } from "@/lib/types";
 
 const TTL_MS = 5 * 60 * 1000;
@@ -14,7 +15,7 @@ export const isAgentId = (v: unknown): v is AgentId => typeof v === "string" && 
 /** The human-readable text the wallet shows the user, plus a token proving we issued it. */
 export function issueChallenge(wallet: string, agent: AgentId, amount: number) {
   const message = [
-    "The Council: Arena Rewards",
+    `${BRAND}: Arena Rewards`,
     "",
     `Sign to prove you own this wallet and claim ${amount} USDG.`,
     "Signing is free and does not send a transaction.",
@@ -47,7 +48,7 @@ export function checkChallenge(message: string, token: string, wallet: string, a
  */
 export function issueMessage(title: string, summary: string, fields: Record<string, string>) {
   const message = [
-    `The Council: ${title}`,
+    `${BRAND}: ${title}`,
     "",
     summary,
     "Signing is free and does not send a transaction.",
@@ -64,7 +65,7 @@ export function checkMessage(message: string, token: string, title: string, fiel
   const expected = Buffer.from(mac(message));
   const given = Buffer.from(token);
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return "This request is not valid. Start again.";
-  if (!message.startsWith(`The Council: ${title}\n`)) return "This request was issued for a different action.";
+  if (!message.startsWith(`${BRAND}: ${title}\n`)) return "This request was issued for a different action.";
   for (const [k, v] of Object.entries(fields)) if (field(message, k) !== v) return `This request was issued for a different ${k.toLowerCase()}.`;
   const issued = Date.parse(field(message, "Issued") ?? "");
   if (!isFinite(issued) || Date.now() - issued > TTL_MS) return "This request expired. Start again.";

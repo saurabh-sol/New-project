@@ -3,11 +3,12 @@ import { connection } from "next/server";
 import { Docs } from "@/components/docs/docs";
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { BRAND } from "@/lib/brand";
 import { docsFacts } from "@/server/docs";
 
 export const metadata: Metadata = {
-  title: "Docs · The Council",
-  description: "How The Council works: the four agents, what a session is, the rules the desk enforces, and the contract each agent trades from on Robinhood Chain.",
+  title: `Docs · ${BRAND}`,
+  description: `How ${BRAND} works: the four agents, what a session is, the rules the desk enforces, and the contract each agent trades from on Robinhood Chain.`,
 };
 
 export default async function DocsPage() {
