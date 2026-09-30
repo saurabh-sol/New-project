@@ -10,10 +10,9 @@ import { Transcript } from "@/components/arena/transcript";
 import { Logo } from "@/components/site/logo";
 import { Ticker } from "@/components/site/ticker";
 import { BRAND } from "@/lib/brand";
-import { poolCapital } from "@/lib/council";
 import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
-import { usePoolEquity } from "@/store/selectors";
+import { SHOWCASE_EQUITY, SHOWCASE_PNL } from "@/lib/showcase";
 
 const HIDE_CURSOR_AFTER_MS = 3000;
 
@@ -23,9 +22,9 @@ const HIDE_CURSOR_AFTER_MS = 3000;
  */
 export function Kiosk() {
   const mode = useArena((s) => s.mode);
-  const portfolio = useArena((s) => s.portfolio);
-  const equity = usePoolEquity();
-  const pnl = equity - poolCapital(portfolio);
+  // The demo book's figures (src/lib/showcase.ts).
+  const equity = SHOWCASE_EQUITY;
+  const pnl = SHOWCASE_PNL;
   const [idle, setIdle] = useState(false);
 
   useEffect(() => {
@@ -59,7 +58,9 @@ export function Kiosk() {
           <PhaseTimeline />
         </div>
         <div className="text-right leading-none">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-white/40">Pool equity</div>
+          <div className="flex items-center justify-end gap-1.5 text-[10px] uppercase tracking-[0.2em] text-white/40">
+            Pool equity <span className="rounded-sm bg-white/10 px-1 py-px text-[8px] tracking-[0.18em] text-white/50">DEMO</span>
+          </div>
           <RollingNumber value={equity} format={(n) => `$${n.toFixed(2)}`} className="font-display text-2xl font-bold tabular-nums text-white" />
         </div>
         <div className="text-right leading-none">

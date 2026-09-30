@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
+import { SHOWCASE_EQUITY } from "@/lib/showcase";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -63,11 +64,9 @@ export function TradeFeed() {
               </a>
             </span>
           ))}
-          {desk.holds !== null && (
-            <span className="font-mono text-white/70">
-              holding ${desk.holds.toFixed(2)} USDG between them{desk.market ? ", and the tokens they bought" : ""}
-            </span>
-          )}
+          <span className="font-mono text-white/70">
+            holding ${SHOWCASE_EQUITY.toFixed(2)} USDG between them{desk.market ? ", and the tokens they bought" : ""}
+          </span>
           {desk.solvent === false && <span className="text-red-300">a contract holds less than it owes its agent</span>}
           <span className="text-white/35">{desk.market ? "Every trade is a swap in the token's pool, and pays its fee." : "The treasury takes the other side of every trade."}</span>
         </p>

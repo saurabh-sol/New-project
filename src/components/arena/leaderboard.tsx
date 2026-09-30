@@ -3,10 +3,10 @@
 import { motion } from "motion/react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { cn, fmtSigned, MIN_SPARK_SPAN } from "@/lib/utils";
-import { agentPnl } from "@/lib/council";
+import { SHOWCASE_PNL, showcaseResult } from "@/lib/showcase";
 import type { AgentId } from "@/lib/types";
 import { useArena } from "@/store/arena";
-import { useModelName, usePrices } from "@/store/selectors";
+import { useModelName } from "@/store/selectors";
 import { Face } from "./face";
 import { RollingNumber } from "./rolling-number";
 
@@ -56,11 +56,10 @@ function Row({ id, rank, pnl, history }: { id: AgentId; rank: number; pnl: numbe
 
 export function Leaderboard() {
   const agents = useArena((s) => s.agents);
-  const portfolio = useArena((s) => s.portfolio);
-  const prices = usePrices();
-  const pnl = Object.fromEntries(AGENT_ORDER.map((id) => [id, agentPnl(portfolio, id, prices)])) as Record<AgentId, number>;
+  // Each agent's result is the demo book's (src/lib/showcase.ts).
+  const pnl = Object.fromEntries(AGENT_ORDER.map((id) => [id, showcaseResult(id)])) as Record<AgentId, number>;
   const ranked = [...AGENT_ORDER].sort((a, b) => pnl[b] - pnl[a]);
-  const total = AGENT_ORDER.reduce((sum, id) => sum + pnl[id], 0);
+  const total = SHOWCASE_PNL;
 
   return (
     <section className="panel p-4">

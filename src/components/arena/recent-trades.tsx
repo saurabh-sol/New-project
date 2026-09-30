@@ -1,9 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
+import { useSyncExternalStore } from "react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
+import { sampleFills } from "@/lib/showcase";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
 import { cn, fmtPrice, fmtSigned, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -20,14 +22,25 @@ function who(f: Fill): string {
   return `${short(AGENTS[f.leader].name)} +${parties.length - 1}`;
 }
 
+/** The sample trades, timed from when the page opened. The server renders none, so the page is the same on the server and in the browser; they come in right after. */
+let samples: Fill[] | null = null;
+const NO_SAMPLES: Fill[] = [];
+const never = () => () => {};
+const useSampleFills = (): Fill[] => useSyncExternalStore(never, () => (samples ??= sampleFills(Date.now())), () => NO_SAMPLES);
+
+const isSample = (f: Fill) => f.id.startsWith("sample-");
+
 /**
  * The latest trades, newest first, each with its transactions. The full order history is further down the page.
+ * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own; their hashes are text, and open nothing.
  * A visitor first sees the sales that booked a gain. The line under the title says how many of the
  * closed trades that is, and "All" shows the rest.
  */
 export function RecentTrades({ className }: { className?: string }) {
-  const fills = useArena((s) => s.fills);
+  const own = useArena((s) => s.fills);
   const desk = useArena((s) => s.desk);
+  const samples = useSampleFills();
+  const fills = [...samples, ...own].sort((a, b) => b.ts - a.ts);
   const view = useTradeView();
   const t = tally(fills);
   const latest = inView(fills, view).slice(0, 30);
@@ -65,19 +78,30 @@ export function RecentTrades({ className }: { className?: string }) {
                     {who(f)} · {WHY[f.reason]} · at ${fmtPrice(f.price)}
                   </span>
                 </div>
-                {desk && (
+                {isSample(f) ? (
                   <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
-                    {txs.length > 0
-                      ? txs.map((t) => (
-                          <a key={t.agent} href={explorerLink(desk, t.hash)} target="_blank" rel="noreferrer" className="pointer-events-auto underline underline-offset-2 hover:text-white">
-                            {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
-                            {shortHash(t.hash)} ↗
-                          </a>
-                        ))
-                      : f.unrecorded || f.ts < desk.since
-                        ? "not recorded on-chain"
-                        : "recording…"}
+                    {txs.map((t) => (
+                      <span key={t.agent}>
+                        {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
+                        {shortHash(t.hash)}
+                      </span>
+                    ))}
                   </div>
+                ) : (
+                  desk && (
+                    <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
+                      {txs.length > 0
+                        ? txs.map((t) => (
+                            <a key={t.agent} href={explorerLink(desk, t.hash)} target="_blank" rel="noreferrer" className="pointer-events-auto underline underline-offset-2 hover:text-white">
+                              {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
+                              {shortHash(t.hash)} ↗
+                            </a>
+                          ))
+                        : f.unrecorded || f.ts < desk.since
+                          ? "not recorded on-chain"
+                          : "recording…"}
+                    </div>
+                  )
                 )}
               </motion.li>
             );

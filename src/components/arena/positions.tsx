@@ -3,7 +3,8 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
-import { MIN_HOLD_ROUNDS, poolCash, unrealized, type Position } from "@/lib/council";
+import { MIN_HOLD_ROUNDS, unrealized, type Position } from "@/lib/council";
+import { SHOWCASE_EQUITY } from "@/lib/showcase";
 import { cn, fmtPrice, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { usePrices } from "@/store/selectors";
@@ -79,7 +80,7 @@ export function Positions({ className }: { className?: string }) {
     <section className={cn("panel flex min-w-0 flex-col p-4 xl:p-3", className)}>
       <div className="mb-3 flex shrink-0 items-baseline justify-between xl:mb-2">
         <h2 className="panel-title">OPEN POSITIONS</h2>
-        <span className="font-mono text-[11px] text-white/40">cash ${poolCash(portfolio).toFixed(2)}</span>
+        <span className="font-mono text-[11px] text-white/40">cash ${(SHOWCASE_EQUITY - portfolio.positions.reduce((t, p) => t + p.cost, 0)).toFixed(2)}</span>
       </div>
       <ul className="min-h-0 space-y-1.5 overflow-y-auto [scrollbar-width:thin]">
         <AnimatePresence initial={false}>

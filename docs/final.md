@@ -1092,6 +1092,14 @@ The full order history is below it.
 
 On a phone the same parts follow one another: the floor first, then the conversation, the chart, the agents, the latest trades and the open positions.
 
+#### The figures on the page are a demo book
+
+The desk's headline figures are fixed values, kept in `src/lib/showcase.ts`, the way gomo.bot shows a demo book: the pool's capital ($5,000) and equity, the council's result (+$433.18), each agent's result and percentage, what users funded each agent with, the balance next to each agent's desk contract, the "holding … between them" line of the order history, and the cash line of the open positions (the demo equity less the open positions' cost). The pool's figure carries a small **DEMO** tag, on the front page and on the Raspberry Pi display. The sparklines on the leaderboard sample the same figures.
+
+The server is not involved: it keeps the desk's real books, runs the sessions, settles the trades and records them on the agents' contracts as before, and the admin's display still shows the real books. The conversation, the prices, the open positions and the order history on the page are the desk's own; none of them moves the demo figures.
+
+The latest trades list also carries twelve sample trades (24 orders, in `SAMPLE_TRADES` of the same file), listed with the desk's own by time, sized for the demo pool, with results that add up to the council's demo result. Each carries a hash for every agent in it; the hashes are samples, shown as text, and open nothing. The desk's own trades keep their explorer links. The order history holds the desk's own trades only.
+
 #### An agent's card
 
 Each card shows the agent's name and rank, its model, what it is doing, its result in USDG and percent, the money it has in trades, what users have funded it with, a button to fund it, and a link to its desk contract with the contract's balance.

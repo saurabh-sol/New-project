@@ -7,7 +7,7 @@ import { TABLE } from "@/lib/layout";
 import { fmtPrice } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { useMarket } from "@/store/market";
-import { usePoolEquity } from "@/store/selectors";
+import { SHOWCASE_EQUITY } from "@/lib/showcase";
 import { RollingNumber } from "./rolling-number";
 
 const PHASE_COPY: Record<string, string> = {
@@ -43,7 +43,7 @@ export function CouncilTable() {
   const focus = useArena((s) => s.focus);
   const agents = useArena((s) => s.agents);
   const quote = useMarket((s) => (focus ? s.quotes[focus] : undefined));
-  const equity = usePoolEquity();
+  const equity = SHOWCASE_EQUITY;
   const countdown = useCountdown();
   const status = phase === "monitor" ? (countdown ? `Next session in ${countdown}` : "Watching positions") : phase === "vote" && committed ? "Who joins" : PHASE_COPY[phase];
 

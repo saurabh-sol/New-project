@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { RollingNumber } from "@/components/arena/rolling-number";
-import { AGENT_ORDER } from "@/lib/agents";
-import { poolCapital, userFunding } from "@/lib/council";
+import { SHOWCASE, SHOWCASE_EQUITY, SHOWCASE_FUNDED, SHOWCASE_PNL } from "@/lib/showcase";
 import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
-import { usePoolEquity } from "@/store/selectors";
 
 /** In a session that carries out a funder's commitment nobody votes: the agents join or stay out. */
 const JOINING = "Who joins";
@@ -37,7 +35,7 @@ function useCountdown(): string | null {
   return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 }
 
-function Stat({ label, children, note, featured }: { label: string; children: React.ReactNode; note?: React.ReactNode; featured?: boolean }) {
+function Stat({ label, children, note, featured }: { label: React.ReactNode; children: React.ReactNode; note?: React.ReactNode; featured?: boolean }) {
   return (
     // On a wide screen the figures stand in one slim row, to leave the screen to the floor.
     <div className={cn("panel flex min-w-0 flex-col justify-between gap-2 px-3.5 py-3.5 sm:px-5 sm:py-4 xl:flex-row xl:items-center xl:justify-start xl:gap-3 xl:px-4 xl:py-2", featured && "panel-strong")}>
@@ -49,6 +47,16 @@ function Stat({ label, children, note, featured }: { label: string; children: Re
   );
 }
 
+/** A panel title with the small tag that says the figure is the demo book's. */
+export function DemoTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {children}
+      <span className="rounded-sm bg-white/10 px-1 py-px text-[8px] tracking-[0.18em] text-white/50">DEMO</span>
+    </span>
+  );
+}
+
 /** The desk's headline numbers. */
 export function HeroStats({ className }: { className?: string }) {
   const ready = useArena((s) => s.ready);
@@ -57,19 +65,20 @@ export function HeroStats({ className }: { className?: string }) {
   const round = useArena((s) => s.round);
   const phase = useArena((s) => s.phase);
   const committed = useArena((s) => s.committed);
-  const equity = usePoolEquity();
   const countdown = useCountdown();
 
-  const capital = poolCapital(portfolio);
-  const pnl = equity - capital;
-  const pct = capital > 0 ? (pnl / capital) * 100 : 0;
-  const funded = AGENT_ORDER.reduce((t, a) => t + userFunding(portfolio, a), 0);
+  // The desk's figures are the demo book in src/lib/showcase.ts. The trades on the page do not move them.
+  const capital = SHOWCASE.capital;
+  const equity = SHOWCASE_EQUITY;
+  const pnl = SHOWCASE_PNL;
+  const pct = (pnl / capital) * 100;
+  const funded = SHOWCASE_FUNDED;
   const invested = portfolio.positions.reduce((t, p) => t + p.cost, 0);
   const up = pnl > -0.005;
 
   return (
     <section className={cn("grid grid-cols-2 gap-3 lg:grid-cols-4", className)} aria-label="Desk summary">
-      <Stat label="Pool equity" featured note={`on $${capital.toFixed(2)} of capital`}>
+      <Stat label={<DemoTitle>Pool equity</DemoTitle>} featured note={`on $${capital.toFixed(2)} of capital`}>
         {ready ? <RollingNumber value={equity} format={(n) => `$${n.toFixed(2)}`} className="tabular-nums" /> : "…"}
       </Stat>
       <Stat label="Council result" note={market ? "real swaps, at live prices" : "settled at live prices"}>

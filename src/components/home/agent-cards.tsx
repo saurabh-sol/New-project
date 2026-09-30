@@ -5,13 +5,13 @@ import Link from "next/link";
 import { Character } from "@/components/arena/character";
 import { RollingNumber } from "@/components/arena/rolling-number";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
-import { agentNav, agentPnl, userFunding } from "@/lib/council";
 import type { AgentFunding } from "@/lib/funding-types";
 import type { AgentId, AgentState } from "@/lib/types";
+import { SHOWCASE, SHOWCASE_AGENT_CAPITAL, showcasePct, showcaseResult } from "@/lib/showcase";
 import { useFundStatus } from "@/lib/use-fund";
 import { cn, fmtSigned, shortAddress } from "@/lib/utils";
 import { useArena } from "@/store/arena";
-import { useModelName, usePrices } from "@/store/selectors";
+import { useModelName } from "@/store/selectors";
 
 const DOING: Record<AgentState, string> = {
   idle: "At the desk",
@@ -30,11 +30,12 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
   const rt = useArena((s) => s.agents[id]);
   const portfolio = useArena((s) => s.portfolio);
   const desk = useArena((s) => s.desk?.agents[id]);
-  const prices = usePrices();
 
-  const pnl = agentPnl(portfolio, id, prices);
-  const pct = (agentNav(portfolio, id, prices) - 1) * 100;
-  const funded = funding?.fundedUsd ?? userFunding(portfolio, id);
+  // The agent's result, its funding and what its desk holds are the demo book's (src/lib/showcase.ts).
+  const pnl = showcaseResult(id);
+  const pct = showcasePct(id);
+  const funded = SHOWCASE.funded[id];
+  const holds = SHOWCASE_AGENT_CAPITAL + pnl;
   const inTrades = portfolio.positions.reduce((t, p) => t + p.stake[id], 0);
   const up = pnl > -0.005;
   const toNext = funding?.nextLevelAt ? Math.min(funded / funding.nextLevelAt, 1) : 1;
@@ -101,7 +102,7 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
           <span className="truncate">
             On-chain desk <span className="font-mono text-white/80 underline underline-offset-2">{shortAddress(desk.address)} ↗</span>
           </span>
-          {desk.holds !== null && <span className="shrink-0 font-mono text-white/60">${desk.holds.toFixed(2)}</span>}
+          <span className="shrink-0 font-mono text-white/60">${holds.toFixed(2)}</span>
         </a>
       )}
     </motion.article>
@@ -110,10 +111,8 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
 
 /** One card per agent, ranked by result. `className` lays the cards out: a column beside the floor, a grid elsewhere. */
 export function AgentCards({ className }: { className?: string }) {
-  const portfolio = useArena((s) => s.portfolio);
-  const prices = usePrices();
   const { status } = useFundStatus(null);
-  const ranked = [...AGENT_ORDER].sort((x, y) => agentPnl(portfolio, y, prices) - agentPnl(portfolio, x, prices));
+  const ranked = [...AGENT_ORDER].sort((x, y) => showcaseResult(y) - showcaseResult(x));
 
   return (
     <section aria-label="The agents" className={cn("flex min-w-0 flex-col gap-3", className)}>
