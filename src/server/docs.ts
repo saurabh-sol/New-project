@@ -4,7 +4,7 @@
  * contract is replaced or a term is changed.
  */
 import { getAddress, isAddress } from "viem";
-import { COMMITTED_HOLD_ROUNDS, MAX_POSITION_SHARE, MIN_ORDER_USD, OWN_BOOK_SHARE, START_CASH } from "@/lib/council";
+import { COMMITTED_HOLD_ROUNDS, COUNCIL_MAX_USD, MAX_POSITION_SHARE, MIN_ORDER_USD, OWN_BOOK_SHARE, SOLO_USD, START_CASH, TAKE_PROFIT_PCT } from "@/lib/council";
 import { DEPLOYED, type Deployment } from "@/lib/deployments";
 import type { FundingTerms } from "@/lib/funding";
 import type { AgentId } from "@/lib/types";
@@ -38,6 +38,12 @@ export interface DocsFacts {
     ownBookPct: number;
     maxPositionPct: number;
     committedHold: number;
+    /** What an agent puts into a purchase of its own, in USDG: the least and the most. */
+    soloUsd: readonly [number, number];
+    /** The most the agents put into a purchase together, in all. */
+    councilMaxUsd: number;
+    /** The gain, in percent, at which a position is sold. */
+    takeProfitPct: number;
     stop: readonly [number, number];
     target: readonly [number, number];
   };
@@ -76,6 +82,9 @@ export function docsFacts(): DocsFacts {
       ownBookPct: OWN_BOOK_SHARE * 100,
       maxPositionPct: MAX_POSITION_SHARE * 100,
       committedHold: COMMITTED_HOLD_ROUNDS,
+      soloUsd: SOLO_USD,
+      councilMaxUsd: COUNCIL_MAX_USD,
+      takeProfitPct: TAKE_PROFIT_PCT,
       stop: STOP_RANGE,
       target: TARGET_RANGE,
     },

@@ -138,6 +138,8 @@ Each agent has $100 of the treasury's capital (`NEXT_PUBLIC_START_CASH` changes 
 - **Selling.** The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it.
 - **Selling into a fall.** The agents are told to sell a token they hold when it is falling fast, and between sessions a rule does it for them. See below.
 - One trade takes at most 60% of an agent's cash.
+- **The desk sets the size.** Where an agent starts with $20, it buys $10 to $12 alone, and the agents buy $10 at most together, shared out among those who back the purchase.
+- **A gain of 10% is taken.** The position is sold whole, and its holders look for the next trade. No target stands further away.
 
 Between sessions the agents watch their positions. Stops and targets are checked against the live price.
 

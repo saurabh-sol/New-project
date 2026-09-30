@@ -1,8 +1,9 @@
-import { EMOTIONS, MIN_ORDER_USD, OWN_BOOK_SHARE, STARTER_USD, type Emotion } from "@/lib/council";
+import { EMOTIONS, MIN_ORDER_USD, OWN_BOOK_SHARE, SOLO_USD, TAKE_PROFIT_PCT, type Emotion } from "@/lib/council";
 import type { Exchange, Line, Pitch, Pledge, Proposal } from "@/lib/council-types";
 import type { AssetKey } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import type { RoundCtx } from "./context";
+import { pick } from "./skills";
 
 export type PitchOut = Omit<Pitch, "agent" | "source"> & { sellPct: number };
 export type SayOut = { emotion: Emotion; say: string };
@@ -50,12 +51,13 @@ const STOP_CLEARANCE = 1.5;
 
 /**
  * The stop and target the desk will accept for a purchase of a token that usually moves
- * `atrPct` percent in five minutes: the stop clear of the noise, the target no nearer than the stop.
+ * `atrPct` percent in five minutes: the stop clear of the noise, the target no nearer than the
+ * stop, and no further than the gain at which the desk takes its profit.
  */
 export function fitTerms(stopPct: number, targetPct: number, atrPct: number): { stopPct: number; targetPct: number } {
   const floor = Math.ceil(clamp(atrPct * STOP_CLEARANCE, ...STOP_RANGE) * 2) / 2;
   const stop = Math.max(clamp(stopPct, ...STOP_RANGE), floor);
-  return { stopPct: stop, targetPct: Math.max(clamp(targetPct, ...TARGET_RANGE), stop) };
+  return { stopPct: stop, targetPct: Math.min(Math.max(clamp(targetPct, ...TARGET_RANGE), stop), TAKE_PROFIT_PCT) };
 }
 
 /** Desk talk is short. Anything longer is cut at the last full sentence that fits. */
@@ -83,8 +85,8 @@ export const asToken = (v: unknown, ctx: RoundCtx): AssetKey => {
 /** The most an agent may put behind its own pitch this round. */
 export const mostStake = (ctx: RoundCtx, agent: AgentId) => Math.floor(ctx.portfolio.cash[agent] * OWN_BOOK_SHARE);
 
-/** The smallest position an agent with none may open. Less, if it has less. */
-export const starterStake = (ctx: RoundCtx, agent: AgentId) => Math.min(STARTER_USD, mostStake(ctx, agent));
+/** What an agent with no position opens one with: the smaller size of a purchase of its own. Less, if it has less, and then it opens none. */
+export const starterStake = (ctx: RoundCtx, agent: AgentId) => Math.min(SOLO_USD[0], mostStake(ctx, agent));
 
 /** Tokens that can be bought this round. */
 export const openTokens = (ctx: RoundCtx) => ctx.stats.map((s) => s.token).filter((t) => !ctx.closed.includes(t) && !ctx.sellOnly.includes(t));
@@ -127,7 +129,7 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
     ...out,
     conviction: Math.round(clamp(out.conviction, 1, 5)),
     stopPct: clamp(out.stopPct, ...STOP_RANGE),
-    targetPct: clamp(out.targetPct, ...TARGET_RANGE),
+    targetPct: Math.min(clamp(out.targetPct, ...TARGET_RANGE), TAKE_PROFIT_PCT),
     sellPct: out.sellPct >= 75 ? 100 : 50,
     say: cleanSay(out.say),
   };
@@ -144,7 +146,7 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
   // An agent with no position opens one. If it named a token that can be bought, that is the one.
   if (ctx.mustTrade[agent] && p.action !== "BUY") {
     const open = starterTokens(ctx);
-    if (open.length && starterStake(ctx, agent) >= MIN_ORDER_USD) {
+    if (open.length && starterStake(ctx, agent) >= SOLO_USD[0]) {
       p.action = "BUY";
       p.token = open.includes(p.token) ? p.token : open[0];
       p.stakeUsd = starterStake(ctx, agent);
@@ -152,10 +154,34 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
     }
   }
   if (p.action === "BUY") {
-    const most = weighs(agent, ctx) ? cash : mostStake(ctx, agent);
-    p.stakeUsd = Math.floor(clamp(p.stakeUsd, ctx.mustTrade[agent] ? starterStake(ctx, agent) : 0, most));
-    // A purchase for a funder may be smaller than the desk's own, but not a crumb.
-    if (p.stakeUsd < MIN_ORDER_USD / 2) p.action = "HOLD";
+    if (weighs(agent, ctx)) {
+      p.stakeUsd = Math.floor(clamp(p.stakeUsd, 0, cash));
+      // A purchase for a funder may be smaller than the desk's own, but not a crumb.
+      if (p.stakeUsd < MIN_ORDER_USD / 2) p.action = "HOLD";
+    } else {
+      const most = mostStake(ctx, agent);
+      const named = Math.floor(clamp(p.stakeUsd, 0, Number.MAX_SAFE_INTEGER));
+      // A purchase of the desk's own has a set size: no less than the smaller figure, no more than the larger.
+      p.stakeUsd = Math.min(Math.floor(clamp(p.stakeUsd, ...SOLO_USD)), most);
+      // What the agent says names the size it gets.
+      if (p.stakeUsd !== named) p.say = cleanSay(p.say.replace(new RegExp(`\\$${named}(?!\\d|\\.\\d)`, "g"), () => `$${p.stakeUsd}`));
+      if (p.stakeUsd < SOLO_USD[0]) {
+        p.action = "HOLD";
+        // Several agents can be short of cash in one session. Each says so in its own words.
+        p.say = cleanSay(
+          pick(
+            [
+              `Desk rule: a purchase of my own takes $${SOLO_USD[0]}, and I have $${most} free for one. I hold.`,
+              `I have $${most} free, and a purchase of my own takes $${SOLO_USD[0]}. I hold what I have.`,
+              `Not enough free for a purchase of my own: $${most} of the $${SOLO_USD[0]} it takes. Holding.`,
+              `My cash is at work: $${most} free, $${SOLO_USD[0]} needed. No new purchase from me.`,
+            ],
+            ctx,
+            agent,
+          ),
+        );
+      }
+    }
   }
   if (p.action !== "BUY") p.stakeUsd = 0;
   return p;

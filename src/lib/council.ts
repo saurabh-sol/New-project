@@ -32,8 +32,15 @@ export const MIN_OWN_HOLD_ROUNDS = 1;
 export const COMMITTED_HOLD_ROUNDS = 12;
 /** The most of its cash an agent may put into one trade for its own book. */
 export const OWN_BOOK_SHARE = 0.6;
-/** What an agent with no position puts on at least, when the desk tells it to open one. */
-export const STARTER_USD = 2 * MIN_ORDER_USD;
+/**
+ * What an agent puts into a purchase of its own, in whole USDG: half to six tenths of its
+ * starting cash, so $10 to $12 of $20. With less than the smaller figure free, it makes none.
+ */
+export const SOLO_USD = [Math.round(START_CASH * 0.5), Math.round(START_CASH * 0.6)] as const;
+/** The most the agents put into a purchase together, in all: half of one agent's starting cash, so $10 of $20. */
+export const COUNCIL_MAX_USD = Math.round(START_CASH * 0.5);
+/** A position is sold, whole, once it is up by this much, in percent. Its holders then look for the next trade. */
+export const TAKE_PROFIT_PCT = 10;
 
 export type Stakes = Record<AgentId, number>;
 
@@ -124,6 +131,30 @@ export const positionOf = (p: Portfolio, token: string) => p.positions.find((x) 
 
 /** Tokens of the position that are this agent's. */
 export const unitsOf = (pos: Position, agent: AgentId) => pos.units?.[agent] ?? (pos.cost > 0 ? (pos.stake[agent] / pos.cost) * pos.qty : 0);
+
+/** The price at which a position is sold at a gain: its target, or the desk's take-profit if that comes first. */
+export const goalOf = (pos: Position) => Math.min(pos.target, pos.entryPrice * (1 + TAKE_PROFIT_PCT / 100));
+
+/**
+ * Shares a purchase the agents make together among its backers: no more than `most` in all, in
+ * whole USDG, as evenly as what each offered allows. The leader is served first.
+ */
+export function shareOut(offers: Stakes, most: number, leader: AgentId): Stakes {
+  if (sum(offers) <= most) return offers;
+  const order = [leader, ...AGENT_ORDER.filter((a) => a !== leader)];
+  const out = zeroStakes();
+  let left = Math.floor(most);
+  while (left > 0) {
+    const takers = order.filter((a) => out[a] + 1 <= offers[a]);
+    if (!takers.length) break;
+    for (const a of takers) {
+      if (left === 0) break;
+      out[a] += 1;
+      left--;
+    }
+  }
+  return out;
+}
 
 export const positionValue = (pos: Position, price: number) => pos.qty * price;
 export const unrealized = (pos: Position, price: number) => positionValue(pos, price) - pos.cost;
