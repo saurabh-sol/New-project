@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
-import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
 import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
@@ -17,10 +16,10 @@ const short = (name: string) => name.replace("The ", "");
 
 /**
  * Every trade the desk has made. With desk contracts, each agent's part of a trade is recorded
- * on the agent's own contract on Robinhood Chain, and links to its transaction. Without them
- * they are kept in the desk's books and nowhere else.
+ * on the agent's own contract on Robinhood Chain, and its hash is shown as text: nothing in the
+ * transaction column opens anything. Without them the trades are kept in the desk's books and nowhere else.
  *
- * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own; their hashes are text, and open nothing.
+ * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own, hashes as text too.
  *
  * A visitor first sees the sales that booked a gain, with a line saying how many closed trades
  * and orders that is out of. "All" shows every one.
@@ -155,15 +154,13 @@ export function TradeFeed() {
                           // One transaction for each agent in the trade, on that agent's contract.
                           <span className="flex flex-col items-end gap-0.5">
                             {AGENT_ORDER.filter((id) => f.txs?.[id]).map((id) => (
-                              <a key={id} href={explorerLink(desk, f.txs![id]!)} target="_blank" rel="noreferrer" className="text-white/80 underline underline-offset-2 hover:text-white">
-                                <span className="font-sans text-white/70 no-underline">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)} ↗
-                              </a>
+                              <span key={id} className="text-white/60">
+                                <span className="font-sans text-white/70">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
+                              </span>
                             ))}
                           </span>
                         ) : f.tx ? (
-                          <a href={explorerLink(desk, f.tx)} target="_blank" rel="noreferrer" className="text-white/80 underline underline-offset-2 hover:text-white">
-                            {shortHash(f.tx)} ↗
-                          </a>
+                          <span className="text-white/60">{shortHash(f.tx)}</span>
                         ) : (
                           <span className="text-white/30">{f.unrecorded || f.ts < desk.since ? "not recorded" : "recording…"}</span>
                         )}
