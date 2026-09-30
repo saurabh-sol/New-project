@@ -4,14 +4,13 @@
  * contract is replaced or a term is changed.
  */
 import { getAddress, isAddress } from "viem";
-import { COMMITTED_HOLD_ROUNDS, MIN_ORDER_USD, OWN_BOOK_SHARE, START_CASH } from "@/lib/council";
+import { COMMITTED_HOLD_ROUNDS, MAX_POSITION_SHARE, MIN_ORDER_USD, OWN_BOOK_SHARE, START_CASH } from "@/lib/council";
 import { DEPLOYED, type Deployment } from "@/lib/deployments";
 import type { FundingTerms } from "@/lib/funding";
 import type { AgentId } from "@/lib/types";
 import { connection } from "./chains/robinhood";
 import { STOP_RANGE, TARGET_RANGE } from "./council/brain";
 import { councilConfig } from "./council/config";
-import { PLAYBOOK } from "./council/playbook";
 import { NERVE } from "./council/risk";
 import { FUNDING_LEVELS } from "./council/skills";
 import { fundConfig } from "./fund/config";
@@ -37,14 +36,8 @@ export interface DocsFacts {
     startCash: number;
     minOrderUsd: number;
     ownBookPct: number;
+    maxPositionPct: number;
     committedHold: number;
-    maxRangePos: number;
-    maxRsi: number;
-    fewTrades: number;
-    riskPct: number;
-    reward: number;
-    coolRounds: number;
-    lockPct: number;
     stop: readonly [number, number];
     target: readonly [number, number];
   };
@@ -81,8 +74,8 @@ export function docsFacts(): DocsFacts {
       startCash: START_CASH,
       minOrderUsd: MIN_ORDER_USD,
       ownBookPct: OWN_BOOK_SHARE * 100,
+      maxPositionPct: MAX_POSITION_SHARE * 100,
       committedHold: COMMITTED_HOLD_ROUNDS,
-      ...PLAYBOOK,
       stop: STOP_RANGE,
       target: TARGET_RANGE,
     },

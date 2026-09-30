@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { AGENTS, AGENT_ORDER, withPresentNames } from "@/lib/agents";
 import { explorerLink, type DeskInfo } from "@/lib/chains";
-import { trailed, type Fill } from "@/lib/council";
+import type { Fill } from "@/lib/council";
 import { cn, fmtPrice, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { Pane } from "./pane";
@@ -41,7 +41,7 @@ function Line({ f, desk }: { f: Fill; desk: DeskInfo | null }) {
         <span className="text-right text-white/85">${f.usd.toFixed(2)}</span>
         <span className="truncate text-right text-white/50">@{fmtPrice(f.price)}</span>
         <span className="truncate text-white/70">{short(AGENTS[f.leader].name)}</span>
-        <span className="text-white/45">{trailed(f) ? "trail" : TRIGGER[f.reason]}</span>
+        <span className="text-white/45">{TRIGGER[f.reason]}</span>
         <span className={cn("text-right", f.realized === null ? "text-white/25" : f.realized >= 0 ? "text-green-400" : "text-red-400")}>{f.realized === null ? "open" : fmtSigned(f.realized)}</span>
         {chain &&
           (chain.href ? (

@@ -469,10 +469,10 @@ The council decides which trades the desk makes together. It does not decide whe
 | --- | --- |
 | A pitch is a decision | An agent that pitched the same trade as the proposal joins it. Every other agent trades the idea it pitched by itself |
 | Without backing, alone | If the vote fails there is no desk trade, and the leader takes the trade for its own book. A funder's suggestion is the exception: it is bought only if the council backs it |
-| An agent with nothing opens a position | When the entry rules let it buy a token. When they let nothing through, it holds its cash and says so |
+| Nobody sits in cash | An agent that holds nothing must open a position that session, of at least $20 |
 | The books are spread | Agents opening a first position choose one after another. Each is told what the others took, and picks something else |
 | Selling | The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it |
-| Size | If its stop is hit, a purchase may cost an agent 1.5% of what it is worth, and no more. One trade takes at most 60% of its cash |
+| Size | One trade takes at most 60% of an agent's cash |
 
 An agent told to open a position is also told not to invent a reason for it. When the edge is thin, it says so and sizes small.
 
@@ -631,48 +631,18 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 | Smallest order | A tenth of the starting cash: $10 of $100 | `MIN_ORDER_USD` |
 | Largest share of the pool in one token | 40% | `MAX_POSITION_SHARE` |
 | An agent's own trade | at most 60% of its cash | `OWN_BOOK_SHARE` |
-| What an agent with no position opens | Twice the smallest order: $20 of $100, or less if its risk allows less | `STARTER_USD` |
+| What an agent with no position must open | At least twice the smallest order: $20 of $100 | `STARTER_USD` |
 | Minimum hold before the council may sell | 2 sessions | `MIN_HOLD_ROUNDS` |
 | Minimum hold before an agent may sell its own tokens | 1 session | `MIN_OWN_HOLD_ROUNDS` |
 | Hold on a purchase made for a funder's commitment | 12 sessions | `COMMITTED_HOLD_ROUNDS` |
 | Stop-loss range | 3% to 25% | `STOP_RANGE` in `src/server/council/brain.ts` |
 | Target range | 5% to 60% | `TARGET_RANGE` |
 | Stop must clear the token's usual movement | at least 1.5 times its 5-minute movement | `fitTerms` |
-| Target | at least twice as far away as the stop | `fitTerms` |
-| Entry rules, risk on one token, the stop that follows the price | see [The trading skill](#the-trading-skill) | `src/server/council/playbook.ts` |
+| Target | never nearer than the stop | `fitTerms` |
 | Trades per session | at most one by the council, and one by each agent for its own book | `src/server/council/round.ts` |
 | ETH and Stock Tokens | not bought by the agents' own choice. Those still held can be sold, a Stock Token only while its market is open | `src/server/council/round.ts` |
 
 A stop nearer than a token's ordinary movement would be set off by that movement. So whatever stop an agent asks for, the desk moves it out to at least 1.5 times what the token usually moves in five minutes.
-
-### The trading skill
-
-`skill.md`, at the top of the project, is the desk's trading skill: how the agents choose, size, hold and close a trade. Every agent is given its part "For every agent" and the part under its own name to read before each decision. The numbers in it are enforced in code, in `src/server/council/playbook.ts`, whatever an agent asks for.
-
-**No rule makes every trade a gain.** The skill refuses the purchases that lost most often on this desk, keeps each loss small, and keeps a gain once it is made.
-
-| Rule | Value | Applies to |
-| --- | --- | --- |
-| Highest place in the 24-hour range at which a token is bought | below 60% | Every purchase of a pool token, except a funder's request |
-| Highest RSI | below 70 | The same |
-| Sellers may not lead | buys at least equal sells, where 6 or more trades were made in five minutes | The same |
-| No adding to a losing position | always | Each agent, for the tokens it holds |
-| Rest after a losing sale | 3 sessions | Each agent, for the token it sold |
-| Risk on one token | 1.5% of what the agent is worth, what it already holds of the token included | Every purchase, a co-investment included |
-| The stop follows the price | From a gain equal to the stop's distance, at that distance below the highest price seen, and never below the entry plus 0.2% | Every position in a pool token |
-
-What follows from them:
-
-- **Size comes from the stop.** An agent worth $100 may put $18 into a token with an 8% stop, and $10 into one with a 15% stop. A token that needs a wider stop than that is too wild for it, and is not traded.
-- **A position that is up by its stop's distance can no longer lose.** Its stop is raised above the entry and follows the price up. A sale at such a stop is on record with the reason `STOP` and books a gain. The pages call it a trailing stop.
-- **Each agent is told, every session,** what it may buy and at what size, what the rules refuse to everyone, and what is barred to it, each with the reason.
-- **A refused purchase becomes a hold,** and the agent's line says which rule kept it out.
-- **A funder's request is not refused.** It is the funder's choice. The agents still say what they see.
-- **The scripted stand-in follows the same skill.** It ranks the tokens that pass by what the skill prefers, and sells what is its own only when the price, the trend and the flow have all turned.
-
-The rules come from the desk's own record, which `skill.md` sets out. Of its first 41 closed trades, the 20 bought at 60% of the token's daily range or above lost 19 times. That record is one day's, and the rules were chosen by looking at it, so it says what to stop doing and promises nothing.
-
-To change the skill, change the words in `skill.md` and the numbers in `playbook.ts` together, and judge the change over at least 40 closed trades.
 
 ### How money is counted
 
@@ -696,7 +666,6 @@ Agents sit at their desks and watch their positions. Whenever the desk's state i
 
 | What happened | What the desk does | Reason on record |
 | --- | --- | --- |
-| The price has risen by as much as the stop stood below | Raises the stop above the entry, and lets it follow the price up | none: nothing is sold |
 | The price is at or below the stop-loss | Sells the whole position, at the live price | `STOP` |
 | The price is at or above the target | Sells the whole position, at the live price | `TARGET` |
 | The price is falling fast, and sellers lead | Each holder whose nerve it breaks sells its own tokens, at the live price. The others hold | `FALLING` |
@@ -1050,7 +1019,7 @@ The page states the desk's own numbers and does not keep a copy of them. `src/se
 | The contracts' addresses on the network the site runs on | The server's settings: `DESK_QUANT`, `DESK_DEGEN`, `DESK_GUARDIAN`, `DESK_ORACLE`, `DESK_SHARES`, `USDG_ADDRESS`, and the treasury's key |
 | The addresses on the other network, and those shown when a setting is missing | `src/lib/deployments.ts` |
 | Deposit limits, bonus, fees, the request threshold | `fundConfig()` |
-| The entry rules, risk, stops and targets | `PLAYBOOK` in `playbook.ts`, `STOP_RANGE` and `TARGET_RANGE` in `brain.ts` |
+| Stops and targets | `STOP_RANGE` and `TARGET_RANGE` in `brain.ts` |
 | How far a token falls before each agent sells | `NERVE` in `risk.ts` |
 | The board's limits, the session interval, the reward, the faucet | Their own settings |
 
@@ -1252,7 +1221,6 @@ src/
     docs.ts            the facts the documentation page states, read from the settings
     dns-fallback.ts    name lookups that don't give up too early
   store/               the browser's state (floor and prices)
-skill.md               the desk's trading skill, which the agents read
 contracts/             the contracts, their compiled code and their tests
 scripts/               setup, deployment and the admin account
 docs/                  this document
@@ -1793,11 +1761,7 @@ The Executor's model must be an evaluation model such as Jev. A model that write
 
 In Vercel, open AI Gateway, then Budgets, and raise the limit on the key. The desk tries the models again within a quarter of an hour. Nothing has to be deployed.
 
-#### Change how the agents trade
-
-The agents read `skill.md`. The desk enforces the numbers in `src/server/council/playbook.ts`. Change the two together and push. See [The trading skill](#the-trading-skill).
-
-### Change how often sessions run
+#### Change how often sessions run
 
 Set `COUNCIL_INTERVAL_SECONDS` (never less than 60) and `COUNCIL_MAX_ROUNDS_PER_DAY` on the host and deploy.
 

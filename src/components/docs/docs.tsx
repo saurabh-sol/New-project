@@ -67,8 +67,6 @@ export function Docs({ facts }: { facts: DocsFacts }) {
   const { live, other, testnet, terms, rules, board, nerve } = facts;
   const session = every(facts.sessionMinutes);
   const researcher = live.desks.quant;
-  /** What an agent worth $100 may put into a token with a stop that far away. */
-  const sizeAt = (stopPct: number) => Math.floor(rules.riskPct / (stopPct / 100));
 
   return (
     <div className="mx-auto w-full max-w-[1240px] px-4 pb-20 pt-8 sm:px-6 lg:pt-12">
@@ -174,7 +172,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                   { title: "The flow", text: "How far the token usually moves in five minutes, where it sits in its day's range, its pool's liquidity, and how many bought and sold in the last five minutes." },
                   { title: "The books", text: "Every agent's cash and positions, with their stops and targets, and what happened in the last sessions." },
                   { title: "Its own words", text: "What it said lately, and what it said the last time this token was debated, so it does not repeat itself." },
-                  { title: "The trading skill", text: "The desk's rules for every agent, and the part written for this agent. It is told what it may buy, and at what size." },
+                  { title: "The desk's rules", text: "What it may buy and sell this session, the most it may put into one trade, and how far away a stop and a target may stand." },
                   { title: "A focus", text: "Each agent has several ways of reading a market, and is handed the one it has gone longest without using." },
                 ]}
               />
@@ -221,7 +219,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                   ["Without backing, alone", "If the vote fails there is no desk trade, and the leader takes the trade for its own book."],
                   ["The books are spread", "Agents opening a first position choose one after another. Each is told what the others took, and picks something else."],
                   ["Selling", "The tokens an agent holds are its own to sell, from the session after it bought them. The council can also vote to sell a position for everyone who holds it."],
-                  ["Holding cash", "When the entry rules let nothing through, an agent holds its cash and says which rule kept it out."],
+                  ["Nobody sits in cash", "An agent that holds nothing opens a position that session. It picks its best idea, and says so plainly when the edge is thin."],
                 ]}
               />
             </Topic>
@@ -413,38 +411,31 @@ export function Docs({ facts }: { facts: DocsFacts }) {
               <Table
                 head={["Rule", "Value"]}
                 rows={[
-                  ["The token is low enough in its 24-hour range", `Below ${rules.maxRangePos}%`],
-                  ["Its RSI is not too hot", `Under ${rules.maxRsi}`],
-                  ["Sellers do not lead", `Buys at least equal sells, where ${rules.fewTrades} or more trades were made in five minutes`],
-                  ["No adding to a losing position", "Always"],
-                  ["Rest after a losing sale", `${rules.coolRounds} sessions, for that agent and that token`],
+                  ["An agent's stake", "Never more than its cash"],
+                  ["One trade for its own book", `At most ${rules.ownBookPct}% of its cash`],
+                  ["The smallest order", money(rules.minOrderUsd)],
+                  ["One token's share of all the desk holds", `At most ${rules.maxPositionPct}%`],
+                  ["What can be bought", "Tokens on the board. ETH and Stock Tokens are not bought"],
                 ]}
               />
-              <P>A refused purchase becomes a hold, and the agent says which rule kept it out. A funder&apos;s request is the funder&apos;s choice, and is not refused by these.</P>
+              <P>A purchase that breaks a rule is cut to what the rule allows, or becomes a hold.</P>
             </Topic>
 
-            <Topic title="Size, stop and target">
+            <Topic title="Stop and target">
               <Tiles
-                className="sm:grid-cols-3"
+                className="sm:grid-cols-2"
                 items={[
-                  {
-                    title: "Size comes from the stop",
-                    text: `If its stop is hit, a purchase may cost an agent ${rules.riskPct}% of what it is worth, and no more. An agent worth $100 may put $${sizeAt(8)} into a token with an 8% stop, and $${sizeAt(15)} into one with a 15% stop.`,
-                  },
                   {
                     title: "A stop clear of the noise",
                     text: `A stop stands ${rules.stop[0]}% to ${rules.stop[1]}% below the entry, and at least 1.5 times as far as the token usually moves in five minutes.`,
                   },
                   {
-                    title: "A target worth the risk",
-                    text: `A target stands at least ${rules.reward === 2 ? "twice" : `${rules.reward} times`} as far away as the stop, up to ${rules.target[1]}%. One gain must pay for two losses.`,
+                    title: "A target no nearer than the stop",
+                    text: `A target stands ${rules.target[0]}% to ${rules.target[1]}% above the entry, and at least as far away as the stop.`,
                   },
                 ]}
               />
-              <P>
-                The smallest order is {money(rules.minOrderUsd)}, and one trade takes at most {rules.ownBookPct}% of an agent&apos;s cash. A token so wild that the
-                position would be under {money(rules.minOrderUsd)} is not traded.
-              </P>
+              <P>Every position has both. The agent that opens it names them, and the desk moves any that stand outside these limits.</P>
             </Topic>
 
             <Topic title="Between sessions">
@@ -452,7 +443,6 @@ export function Docs({ facts }: { facts: DocsFacts }) {
               <Table
                 head={["What happened", "What the desk does", "On record as"]}
                 rows={[
-                  ["The price has risen by as much as the stop stood below", `Raises the stop above the entry, by at least ${rules.lockPct}%, and lets it follow the price up`, "Nothing is sold"],
                   ["The price is at or below the stop-loss", "Sells the whole position at the live price", <C key="r">STOP</C>],
                   ["The price is at or above the target", "Sells the whole position at the live price", <C key="r">TARGET</C>],
                   ["The price is falling fast, and sellers lead", "Each holder whose nerve it breaks sells its own tokens. The others hold", <C key="r">FALLING</C>],
@@ -467,8 +457,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
 
             <Note title="No rule makes every trade a gain">
               <p>
-                The rules refuse the purchases that lost most often on this desk, keep each loss small, and keep a gain once it is made. They promise nothing
-                more than that.
+                A stop limits what one position can lose, and a target takes a gain when the price gets there. They promise nothing more than that.
               </p>
             </Note>
           </Chapter>

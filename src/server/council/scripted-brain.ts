@@ -8,10 +8,9 @@ import type { Proposal, TokenStats } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 import { backers, clamp, mostStake, openTokens, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
 import { nameOf, signed, type RoundCtx } from "./context";
-import { appeal, turned } from "./playbook";
 import { pick } from "./skills";
 
-const BUY_ABOVE: Record<AgentId, number> = { quant: 0.3, degen: 0.25, guardian: 0.4, oracle: 0.35 };
+const BUY_ABOVE: Record<AgentId, number> = { quant: 0.35, degen: 0.25, guardian: 0.5, oracle: 0.4 };
 const SELL_BELOW: Record<AgentId, number> = { quant: -0.3, degen: -0.4, guardian: -0.15, oracle: -0.3 };
 const SIZE: Record<AgentId, number> = { quant: 0.3, degen: 0.5, guardian: 0.15, oracle: 0.25 };
 const STOP: Record<AgentId, number> = { quant: 8, degen: 12, guardian: 6, oracle: 8 };
@@ -19,26 +18,22 @@ const STOP: Record<AgentId, number> = { quant: 8, degen: 12, guardian: 6, oracle
 const short = (a: AgentId) => nameOf(a).replace("The ", "");
 const unit = (n: number, scale: number) => clamp(n / scale, -1, 1);
 
-/**
- * How much this agent likes a token right now, from -1 (sell) to 1 (buy). It is what the desk's
- * skill prefers, seen through the agent's own temper.
- */
+/** How much this agent likes a token right now, from -1 (sell) to 1 (buy). */
 function edge(agent: AgentId, s: TokenStats): number {
-  const base = appeal(s);
-  const traded = (s.buys5m ?? 0) + (s.sells5m ?? 0);
-  const flow = traded >= 6 ? ((s.buys5m ?? 0) - (s.sells5m ?? 0)) / traded : 0;
+  // A move counts for as much as it stands out from the token's usual movement.
+  const usual = Math.max(1.5, s.atrPct * 3);
+  // More sales than purchases in the last minutes weighs against a token, more purchases for it.
+  const flow = s.buys5m !== undefined && s.sells5m !== undefined && s.buys5m + s.sells5m >= 5 ? ((s.buys5m - s.sells5m) / (s.buys5m + s.sells5m)) * 0.2 : 0;
+  const momentum = unit(s.change1h, usual) * 0.5 + unit(s.rsi14 - 50, 25) * 0.3 + unit((s.volRatio ?? 1) - 1, 1.5) * 0.2 + flow;
   switch (agent) {
     case "quant":
-      // Momentum that is starting: an RSI on its way up through the middle, not one that has arrived.
-      return clamp(base + (s.rsi14 >= 40 && s.rsi14 <= 55 ? 0.1 : 0), -1, 1);
+      return momentum - (s.rsi14 > 72 ? 0.4 : 0);
     case "degen":
-      // Buyers coming back counts for more.
-      return clamp(base + flow * 0.15, -1, 1);
+      return clamp(momentum * 1.3 + unit(s.change24h, 8) * 0.3, -1, 1);
     case "guardian":
-      // A token that moves less can go less wrong.
-      return clamp(base - unit(s.atrPct - 2, 6) * 0.2, -1, 1);
+      return momentum * 0.6 - 0.15 + (s.rsi14 < 32 ? 0.3 : 0);
     case "oracle":
-      return base;
+      return momentum * 0.9;
   }
 }
 
@@ -69,15 +64,11 @@ const refusals = (s: TokenStats) => [
   `I keep my cash. ${s.token} ${signed(s.change24h)} on the day.`,
 ];
 
-/** What the skill looks at in a purchase: where the token sits in its range, and who leads. */
-const entry = (s: TokenStats) =>
-  `${s.token} at ${Math.round(s.rangePos)}% of its range, ${s.buys5m !== undefined && s.sells5m !== undefined && s.buys5m + s.sells5m >= 6 ? `${s.buys5m} buys to ${s.sells5m} sells` : `RSI ${s.rsi14}`}`;
-
 const BUY_LINE: Record<AgentId, (s: TokenStats) => string> = {
-  quant: (s) => `${entry(s)}, RSI ${s.rsi14}. Early, not extended. Long.`,
-  degen: (s) => `Buyers are back in ${entry(s)}, ${volume(s)}. Long.`,
-  guardian: (s) => `${entry(s)}. Moves ${s.atrPct}% per 5m. Acceptable at this size.`,
-  oracle: (s) => `${entry(s)}. The odds pay for the stop. Buy.`,
+  quant: (s) => `${facts(s)}. Momentum and volume agree. Long.`,
+  degen: (s) => `${s.token} leads: ${signed(s.change1h)} 1h, ${volume(s)}. I want size.`,
+  guardian: (s) => `${facts(s)}. Acceptable, small size, tight stop.`,
+  oracle: (s) => `${facts(s)}. Evidence favours the upside. Buy.`,
 };
 
 /** Several ways to say "no trade", each leaning on different figures. */
@@ -138,9 +129,8 @@ export function scriptedBrain(): Brain {
         };
       }
 
-      // It sells what is its own when the reason for holding it is gone, and leaves the rest to its stop.
-      const weak = ranked.filter((r) => saleTokens(ctx, agent).includes(r.s.token) && turned(r.s)).sort((a, b) => a.e - b.e)[0];
-      if (weak) {
+      const weak = ranked.filter((r) => saleTokens(ctx, agent).includes(r.s.token)).sort((a, b) => a.e - b.e)[0];
+      if (weak && weak.e < SELL_BELOW[agent]) {
         return {
           ...base,
           action: "SELL",
@@ -152,7 +142,7 @@ export function scriptedBrain(): Brain {
       }
 
       // An agent that must open a position takes the best of what can be bought.
-      const top = ranked.find((r) => starterTokens(ctx, agent).includes(r.s.token));
+      const top = ranked.find((r) => starterTokens(ctx).includes(r.s.token));
       if (ctx.mustTrade[agent] && top) {
         const strong = top.e > BUY_ABOVE[agent];
         const stake = strong ? Math.round(clamp(ctx.portfolio.cash[agent] * SIZE[agent] * clamp(top.e + 0.4, 0.4, 1), starterStake(ctx, agent), mostStake(ctx, agent))) : starterStake(ctx, agent);
