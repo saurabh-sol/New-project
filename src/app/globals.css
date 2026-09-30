@@ -90,6 +90,22 @@ body {
 :root[data-theme="light"] .site-loader video {
   filter: invert(1);
 }
+/* The name under the mark: each letter rises into place a moment after the one before. */
+.site-loader-name span {
+  display: inline-block;
+  opacity: 0;
+  animation: loader-letter 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes loader-letter {
+  from {
+    opacity: 0;
+    transform: translateY(0.5em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 /* The surface every card sits on. */
 .panel {
@@ -216,5 +232,8 @@ html.lite .no-filter {
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+  .site-loader-name span {
+    animation-delay: 0s !important;
   }
 }
