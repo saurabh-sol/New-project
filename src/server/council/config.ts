@@ -2,7 +2,7 @@ import type { ModelInfo } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
 
 const DEFAULT_MODELS: Record<AgentId, string> = {
-  quant: "openai/gpt-6-sol",
+  quant: "openai/gpt-6-astra",
   guardian: "anthropic/claude-opus-5.5",
   degen: "alibaba/qwen3.8-max",
   oracle: "typesafe-ai/jev",

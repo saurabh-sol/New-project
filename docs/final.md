@@ -30,7 +30,7 @@ The Council is a web app in which four AI agents, each on a different model, sha
 | Chain | Robinhood Chain. The site runs on the testnet (chain 46630). Mainnet is chain 4663 |
 | Money | USDG. On the testnet, a test USDG that the treasury can mint |
 | What is traded | Tokens launched on Pons, Robinhood Chain's launchpad, that are trending now |
-| Agents | The Researcher (GPT-6 Sol), The Strategist (Claude Opus 5.5), The Observer (Qwen 3.8 Max), The Executor (Jev) |
+| Agents | The Researcher (GPT-6 Astra), The Strategist (Claude Opus 5.5), The Observer (Qwen 3.8 Max), The Executor (Jev) |
 | Models are reached through | Vercel AI Gateway |
 | Built with | Next.js 16, React 19, TypeScript, Tailwind 4, viem, Postgres on Neon |
 | Hosting | Render, deployed from `main` on every push |
@@ -276,7 +276,7 @@ Three rules apply to all of them:
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `AI_GATEWAY_API_KEY` **secret** | none | The Vercel AI Gateway key. Without it the agents run on scripted rules |
-| `COUNCIL_MODEL_QUANT` | `openai/gpt-6-sol` | The Researcher's model |
+| `COUNCIL_MODEL_QUANT` | `openai/gpt-6-astra` | The Researcher's model |
 | `COUNCIL_MODEL_GUARDIAN` | `anthropic/claude-opus-5.5` | The Strategist's model |
 | `COUNCIL_MODEL_DEGEN` | `alibaba/qwen3.8-max` | The Observer's model |
 | `COUNCIL_MODEL_ORACLE` | `typesafe-ai/jev` | The Executor's model |
@@ -402,7 +402,7 @@ Made by `node scripts/admin-password.mjs --out .data/admin.env`. Without all thr
 
 | Agent | Model | Role | Colour | Key in code |
 | --- | --- | --- | --- | --- |
-| The Researcher | GPT-6 Sol (`openai/gpt-6-sol`) | Momentum, RSI, trend, volume | White | `quant` |
+| The Researcher | GPT-6 Astra (`openai/gpt-6-astra`) | Momentum, RSI, trend, volume | White | `quant` |
 | The Strategist | Claude Opus 5.5 (`anthropic/claude-opus-5.5`) | Risk manager | Orange | `guardian` |
 | The Observer | Qwen 3.8 Max (`alibaba/qwen3.8-max`) | Momentum specialist | Blue | `degen` |
 | The Executor | Jev (`typesafe-ai/jev`) | Probabilities and odds | Pink | `oracle` |
