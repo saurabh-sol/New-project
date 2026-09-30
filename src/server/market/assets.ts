@@ -162,8 +162,9 @@ function symbolOnChain(address: string): Promise<string | null> {
 async function lookupPool(address: string): Promise<AssetPreview> {
   if (same(address, USDG)) return { ok: false, error: "USDG is the money the desk trades with. Name a token for the agent to buy with it." };
 
-  // Null when DexScreener can't be reached. GeckoTerminal may still know the token.
-  const pairs = await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/tokens/${address}`).then(
+  // A funder is waiting for the answer, so "too many requests" is waited out rather than given up on.
+  // Null when DexScreener can't be reached even so. GeckoTerminal may still know the token.
+  const pairs = await getJson<{ pairs: Pair[] | null }>(`${DEXSCREENER}/tokens/${address}`, true).then(
     (found) => found.pairs ?? [],
     () => null,
   );
