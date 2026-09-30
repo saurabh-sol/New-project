@@ -472,7 +472,7 @@ The council decides which trades the desk makes together. It does not decide whe
 | An agent with nothing opens a position | When the entry rules let it buy a token. When they let nothing through, it holds its cash and says so |
 | The books are spread | Agents opening a first position choose one after another. Each is told what the others took, and picks something else |
 | Selling | The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it |
-| Size | If its stop is hit, a purchase may cost an agent 1.5% of what it is worth, and no more. One trade takes at most 60% of its cash |
+| Size | The desk sets it: $10 to $12 for a purchase an agent makes alone, and $10 at most, in all, for one the agents make together, where an agent starts with $20. If its stop is hit, a purchase may cost an agent 8% of what it is worth, and no more. One trade takes at most 60% of its cash |
 
 An agent told to open a position is also told not to invent a reason for it. When the edge is thin, it says so and sizes small.
 
@@ -628,17 +628,21 @@ The models supply opinions. The code decides what is allowed, whatever a model a
 | Each agent's starting cash | $100, or `NEXT_PUBLIC_START_CASH` | `START_CASH` in `src/lib/council.ts` |
 | An agent cannot stake more than its cash | always | `src/lib/council.ts` |
 | The desk can only sell a token it holds | always | `src/lib/council.ts` |
-| Smallest order | A tenth of the starting cash: $10 of $100 | `MIN_ORDER_USD` |
+| Smallest order | A tenth of the starting cash: $2 of $20 | `MIN_ORDER_USD` |
 | Largest share of the pool in one token | 40% | `MAX_POSITION_SHARE` |
 | An agent's own trade | at most 60% of its cash | `OWN_BOOK_SHARE` |
-| What an agent with no position opens | Twice the smallest order: $20 of $100, or less if its risk allows less | `STARTER_USD` |
+| A purchase an agent makes alone | 50% to 60% of its starting cash: $10 to $12 of $20. With less than the smaller figure free, it makes none | `SOLO_USD` in `src/server/council/playbook.ts` |
+| A purchase the council makes together | 50% of one agent's starting cash at most, in all: $10 of $20. Its backers share it in whole dollars, the leader first | `COUNCIL_USD`, `shareOut` |
+| What an agent with no position opens | A purchase of its own at the smaller figure: $10 of $20 | `starterStake` in `src/server/council/brain.ts` |
+| Taking the profit | A position that is up 10% is sold, whole | `takeProfitPct`, `goalOf` |
 | Minimum hold before the council may sell | 2 sessions | `MIN_HOLD_ROUNDS` |
 | Minimum hold before an agent may sell its own tokens | 1 session | `MIN_OWN_HOLD_ROUNDS` |
 | Hold on a purchase made for a funder's commitment | 12 sessions | `COMMITTED_HOLD_ROUNDS` |
 | Stop-loss range | 3% to 25% | `STOP_RANGE` in `src/server/council/brain.ts` |
 | Target range | 5% to 60% | `TARGET_RANGE` |
 | Stop must clear the token's usual movement | at least 1.5 times its 5-minute movement | `fitTerms` |
-| Target | at least twice as far away as the stop | `fitTerms` |
+| Target | twice as far away as the stop, and no further than 10% | `fitTerms` |
+| A stop in the debate | not widened past what the leader's risk allows for a purchase of its own | `widestStop` |
 | Entry rules, risk on one token, the stop that follows the price | see [The trading skill](#the-trading-skill) | `src/server/council/playbook.ts` |
 | Trades per session | at most one by the council, and one by each agent for its own book | `src/server/council/round.ts` |
 | ETH and Stock Tokens | not bought by the agents' own choice. Those still held can be sold, a Stock Token only while its market is open | `src/server/council/round.ts` |
@@ -649,7 +653,7 @@ A stop nearer than a token's ordinary movement would be set off by that movement
 
 `skill.md`, at the top of the project, is the desk's trading skill: how the agents choose, size, hold and close a trade. Every agent is given its part "For every agent" and the part under its own name to read before each decision. The numbers in it are enforced in code, in `src/server/council/playbook.ts`, whatever an agent asks for.
 
-**No rule makes every trade a gain.** The skill refuses the purchases that lost most often on this desk, keeps each loss small, and keeps a gain once it is made.
+**No rule makes every trade a gain.** The skill refuses the purchases that lost most often on this desk, bounds each loss, and takes a gain once it is made.
 
 | Rule | Value | Applies to |
 | --- | --- | --- |
@@ -658,12 +662,16 @@ A stop nearer than a token's ordinary movement would be set off by that movement
 | Sellers may not lead | buys at least equal sells, where 6 or more trades were made in five minutes | The same |
 | No adding to a losing position | always | Each agent, for the tokens it holds |
 | Rest after a losing sale | 3 sessions | Each agent, for the token it sold |
-| Risk on one token | 1.5% of what the agent is worth, what it already holds of the token included | Every purchase, a co-investment included |
+| Risk on one token | 8% of what the agent is worth, what it already holds of the token included | Every purchase, a co-investment included |
+| A purchase an agent makes alone | 50% to 60% of its starting cash: $10 to $12 of $20 | Every purchase for an agent's own book |
+| A purchase the council makes together | 50% of one agent's starting cash at most, in all: $10 of $20 | Every purchase the council votes for, except a funder's request |
+| Taking the profit | A position that is up 10% is sold, whole. No target stands further away | Every position, those opened before this rule included |
 | The stop follows the price | From a gain equal to the stop's distance, at that distance below the highest price seen, and never below the entry plus 0.2% | Every position in a pool token |
 
 What follows from them:
 
-- **Size comes from the stop.** An agent worth $100 may put $18 into a token with an 8% stop, and $10 into one with a 15% stop. A token that needs a wider stop than that is too wild for it, and is not traded.
+- **The desk sets the size.** An agent that starts with $20 buys $10 to $12 alone. Four agents who back a purchase together put in $3, $3, $2 and $2, and three put in $4, $3 and $3. A token that needs a stop wider than 16% is too wild for a purchase of $10 at the risk limit, and is not traded. An agent with less than $10 free for a purchase holds.
+- **A gain of 10% is taken.** The position is sold whole and its holders look for the next trade. With a stop wider than 10%, a trade can lose more than it can gain, so the desk has to be right more often than wrong. The owner set these sizes and this level on 30 September 2026. The desk's record does not support them: its gains came from a few trades that ran to +27%.
 - **A position that is up by its stop's distance can no longer lose.** Its stop is raised above the entry and follows the price up. A sale at such a stop is on record with the reason `STOP` and books a gain. The pages call it a trailing stop.
 - **Each agent is told, every session,** what it may buy and at what size, what the rules refuse to everyone, and what is barred to it, each with the reason.
 - **A refused purchase becomes a hold,** and the agent's line says which rule kept it out.

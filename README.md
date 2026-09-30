@@ -143,7 +143,7 @@ Between sessions the agents watch their positions. Stops and targets are checked
 
 ### The trading skill
 
-`skill.md` is how the agents are told to trade, and `src/server/council/playbook.ts` is what the desk enforces of it: a token is bought only below 60% of its daily range, with an RSI under 70 and sellers not leading; a purchase may cost an agent 1.5% of what it is worth if its stop is hit; a target stands twice as far away as the stop; and once a position is up by its stop's distance, the stop follows the price up and the trade can no longer lose. No rule makes every trade a gain. See [the documentation](docs/final.md#the-trading-skill).
+`skill.md` is how the agents are told to trade, and `src/server/council/playbook.ts` is what the desk enforces of it: a token is bought only below 60% of its daily range, with an RSI under 70 and sellers not leading; an agent buys $10 to $12 alone and the agents buy $10 at most together, where each starts with $20; a purchase may cost an agent 8% of what it is worth if its stop is hit; a target stands twice as far away as the stop and no further than 10%, and a position that is up 10% is sold; and once a position is up by its stop's distance, the stop follows the price up and the trade can no longer lose. No rule makes every trade a gain. See [the documentation](docs/final.md#the-trading-skill).
 
 ### Rules the code enforces, whatever a model asks for
 

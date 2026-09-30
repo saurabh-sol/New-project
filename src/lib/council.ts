@@ -32,8 +32,6 @@ export const MIN_OWN_HOLD_ROUNDS = 1;
 export const COMMITTED_HOLD_ROUNDS = 12;
 /** The most of its cash an agent may put into one trade for its own book. */
 export const OWN_BOOK_SHARE = 0.6;
-/** What an agent with no position puts on at least, when the desk tells it to open one. */
-export const STARTER_USD = 2 * MIN_ORDER_USD;
 
 export type Stakes = Record<AgentId, number>;
 

@@ -11,7 +11,7 @@ import type { AgentId } from "@/lib/types";
 import { connection } from "./chains/robinhood";
 import { STOP_RANGE, TARGET_RANGE } from "./council/brain";
 import { councilConfig } from "./council/config";
-import { PLAYBOOK } from "./council/playbook";
+import { COUNCIL_USD, PLAYBOOK, SOLO_USD } from "./council/playbook";
 import { NERVE } from "./council/risk";
 import { FUNDING_LEVELS } from "./council/skills";
 import { fundConfig } from "./fund/config";
@@ -43,6 +43,11 @@ export interface DocsFacts {
     fewTrades: number;
     riskPct: number;
     reward: number;
+    takeProfitPct: number;
+    /** What an agent puts into a purchase of its own, in USDG: the least and the most. */
+    soloUsd: readonly [number, number];
+    /** What the agents put into a purchase together: what it aims for, and the most. */
+    councilUsd: readonly [number, number];
     coolRounds: number;
     lockPct: number;
     stop: readonly [number, number];
@@ -83,6 +88,8 @@ export function docsFacts(): DocsFacts {
       ownBookPct: OWN_BOOK_SHARE * 100,
       committedHold: COMMITTED_HOLD_ROUNDS,
       ...PLAYBOOK,
+      soloUsd: SOLO_USD,
+      councilUsd: COUNCIL_USD,
       stop: STOP_RANGE,
       target: TARGET_RANGE,
     },

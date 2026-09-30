@@ -9,8 +9,8 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { AGENTS } from "@/lib/agents";
-import { agentEquity, MIN_ORDER_USD, positionOf, type Fill, type Portfolio, type Position } from "@/lib/council";
+import { AGENT_ORDER, AGENTS } from "@/lib/agents";
+import { agentEquity, positionOf, START_CASH, zeroStakes, type Fill, type Portfolio, type Position, type Stakes } from "@/lib/council";
 import type { TokenStats } from "@/lib/council-types";
 import type { AssetKey, Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
@@ -23,9 +23,15 @@ export const PLAYBOOK = {
   /** Fewer trades than this in five minutes say nothing about who leads. */
   fewTrades: 6,
   /** What an agent may lose on one trade if its stop is hit, in percent of what the agent is worth. */
-  riskPct: 1.5,
-  /** A target stands at least this many times the stop's distance away. */
+  riskPct: 8,
+  /** A target stands this many times the stop's distance away, where that is no further than `takeProfitPct`. */
   reward: 2,
+  /** A position is sold, whole, once it is up by this much, in percent. Its holders then look for the next trade. */
+  takeProfitPct: 10,
+  /** What the agents put into a purchase together, as shares of one agent's starting cash: $8 to $10 where an agent starts with $20. */
+  councilShare: [0.4, 0.5],
+  /** What an agent puts into a purchase of its own, likewise: $10 to $12. */
+  soloShare: [0.5, 0.6],
   /** An agent that sold a token at a loss does not buy it again for this many sessions. */
   coolRounds: 3,
   /** Once the stop has been raised, it stands at least this far above the entry, in percent: the position can no longer lose. */
@@ -100,11 +106,49 @@ export function riskStake(portfolio: Portfolio, agent: AgentId, prices: Prices, 
   if (!(stopPct > 0)) return 0;
   const atRisk = (agentEquity(portfolio, agent, prices) * PLAYBOOK.riskPct) / 100;
   const held = token ? (positionOf(portfolio, token)?.stake[agent] ?? 0) : 0;
-  return Math.max(0, Math.floor(atRisk / (stopPct / 100) - held));
+  // A hair is added so that a division which should come out whole is not rounded down for a rounding error.
+  return Math.max(0, Math.floor(atRisk / (stopPct / 100) - held + 1e-9));
 }
 
-/** Whether a position of that size is worth opening at all. */
-export const worthOpening = (usd: number) => usd >= MIN_ORDER_USD;
+/** The widest stop, in percent and to the half, at which an agent's risk still allows a purchase of its own in `token`. */
+export function widestStop(portfolio: Portfolio, agent: AgentId, prices: Prices, token?: AssetKey): number {
+  const atRisk = (agentEquity(portfolio, agent, prices) * PLAYBOOK.riskPct) / 100;
+  const held = token ? (positionOf(portfolio, token)?.stake[agent] ?? 0) : 0;
+  return Math.floor((atRisk / (SOLO_USD[0] + held)) * 200 + 1e-9) / 2;
+}
+
+const dollars = (share: number) => Math.round(START_CASH * share);
+/** A purchase the agents make together, in whole USDG: what it aims for at least, and the most it may be. */
+export const COUNCIL_USD = [dollars(PLAYBOOK.councilShare[0]), dollars(PLAYBOOK.councilShare[1])] as const;
+/** A purchase an agent makes for its own book, in whole USDG: the least and the most. */
+export const SOLO_USD = [dollars(PLAYBOOK.soloShare[0]), dollars(PLAYBOOK.soloShare[1])] as const;
+
+/** Whether an agent's own purchase of that size is one the desk makes. */
+export const worthOpening = (usd: number) => usd >= SOLO_USD[0];
+
+/**
+ * Shares a purchase the agents make together among its backers: no more than `most` in all, in
+ * whole USDG, as evenly as what each offered allows. The leader is served first.
+ */
+export function shareOut(offers: Stakes, most: number, leader: AgentId): Stakes {
+  if (AGENT_ORDER.reduce((t, a) => t + offers[a], 0) <= most) return offers;
+  const order = [leader, ...AGENT_ORDER.filter((a) => a !== leader)];
+  const out = zeroStakes();
+  let left = Math.floor(most);
+  while (left > 0) {
+    const takers = order.filter((a) => out[a] + 1 <= offers[a]);
+    if (!takers.length) break;
+    for (const a of takers) {
+      if (left === 0) break;
+      out[a] += 1;
+      left--;
+    }
+  }
+  return out;
+}
+
+/** The price at which a position is sold at a gain: its target, or the desk's take-profit if that comes first. */
+export const goalOf = (pos: Position) => Math.min(pos.target, pos.entryPrice * (1 + PLAYBOOK.takeProfitPct / 100));
 
 /** How far below its entry a position's stop was set, in percent. */
 export const trailOf = (pos: Position): number => pos.trail ?? (pos.entryPrice > 0 && pos.stop < pos.entryPrice ? ((pos.entryPrice - pos.stop) / pos.entryPrice) * 100 : 0);
@@ -122,7 +166,7 @@ export function follow(pos: Position, price: number): Position {
   const earned = peak >= pos.entryPrice * (1 + trail / 100);
   const stop = earned ? Math.max(pos.stop, pos.entryPrice * (1 + PLAYBOOK.lockPct / 100), peak * (1 - trail / 100)) : pos.stop;
   // A stop that reached the target would close a position the target closes anyway.
-  const kept = Math.min(stop, pos.target);
+  const kept = Math.min(stop, goalOf(pos));
   if (peak === pos.peak && kept === pos.stop && pos.trail !== undefined) return pos;
   return { ...pos, trail, peak, stop: kept };
 }
@@ -167,8 +211,8 @@ export function section(text: string, title: string): string | null {
 const inShort = () =>
   [
     `- Buy only a token that is below ${PLAYBOOK.maxRangePos}% of its 24-hour range, with RSI under ${PLAYBOOK.maxRsi}, and where sellers do not lead.`,
-    `- Size a purchase so that its stop costs at most ${PLAYBOOK.riskPct}% of what you are worth.`,
-    `- Set the target at least ${PLAYBOOK.reward} times as far away as the stop.`,
+    `- A purchase of your own is $${SOLO_USD[0]} to $${SOLO_USD[1]}, and its stop may cost at most ${PLAYBOOK.riskPct}% of what you are worth. A purchase made together is $${COUNCIL_USD[1]} at most, in all.`,
+    `- A position is sold once it is up ${PLAYBOOK.takeProfitPct}%. Then look for the next trade.`,
     `- Do not add to a position that is losing, and leave a token you lost on alone for ${PLAYBOOK.coolRounds} rounds.`,
     "- When no token passes, hold cash and say so.",
   ].join("\n");

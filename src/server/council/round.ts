@@ -15,7 +15,7 @@ import { nameOf, px, signed, usd, type RoundCtx } from "./context";
 import { jevBrain, oddsFromJev } from "./jev-brain";
 import { llmBrain } from "./llm-brain";
 import { linesAbout, recentLines, saveRound } from "./memory";
-import { barredTokens, refusedTokens, riskStake } from "./playbook";
+import { barredTokens, COUNCIL_USD, refusedTokens, riskStake, shareOut, SOLO_USD, widestStop } from "./playbook";
 import { scriptedBrain } from "./scripted-brain";
 import { fundingLevel, pick, pickLens, type Effort, type Skill } from "./skills";
 import { settleOnChain } from "../chains/desk";
@@ -338,6 +338,8 @@ export async function runRound(
         if (p.action === "BUY") {
           const wanted = zeroStakes();
           wanted[p.agent] = Math.min(p.stakeUsd, Math.floor(book.cash[p.agent] * OWN_BOOK_SHARE), riskStake(book, p.agent, prices, fitted.stopPct, p.token));
+          // A purchase of an agent's own has a least size. With less than that free, it makes none.
+          if (wanted[p.agent] < SOLO_USD[0]) return s;
           const stakes = fitStakes(book, p.token, wanted, prices);
           if (stakes[p.agent] <= 0) return s;
           adding = !!held;
@@ -391,7 +393,9 @@ export async function runRound(
     const leader = proposal.leader;
     // Whatever the agents ask for, a purchase gets a stop that the token's ordinary movement can't set off.
     const noise = stats.find((s) => s.token === proposal!.token)?.atrPct ?? 0;
-    const fitted = (p: Proposal, stopPct: number, targetPct: number): Proposal => (p.action === "BUY" ? { ...p, ...fitTerms(stopPct, targetPct, noise) } : p);
+    // Nor is the stop widened in the debate past what the leader's risk allows for a purchase of its own: that would leave the trade with nobody to make it.
+    const widest = asking ? Infinity : widestStop(before, leader, prices, proposal.token);
+    const fitted = (p: Proposal, stopPct: number, targetPct: number): Proposal => (p.action === "BUY" ? { ...p, ...fitTerms(Math.min(stopPct, widest), targetPct, noise) } : p);
     const first = fitted(proposal, proposal.stopPct, proposal.targetPct);
     if (!asking) await recall(first.token);
     // Adding to a token the desk debated when it bought it: no second debate, only who joins.
@@ -442,11 +446,19 @@ export async function runRound(
       }),
     );
 
-    const wanted = zeroStakes();
+    const offers = zeroStakes();
     // A leader bound to a funder buys what the funder paid for. Any other leader buys what its risk allows with the stop the debate left.
     const led = pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0;
-    wanted[leader] = buying && !asking ? within(leader, led) : led;
-    for (const p of pledges) wanted[p.agent] = p.stakeUsd;
+    offers[leader] = buying && !asking ? within(leader, led) : led;
+    for (const p of pledges) offers[p.agent] = p.stakeUsd;
+    // A purchase the agents make together has a size of its own, which its backers share out. A funder's request is bought as it was asked for.
+    const wanted = buying && !asking ? shareOut(offers, COUNCIL_USD[1], leader) : offers;
+    for (const p of pledges) {
+      if (p.stakeUsd === wanted[p.agent]) continue;
+      // What the agent says names the share it gets.
+      p.say = resized(p.say, p.stakeUsd, wanted[p.agent]);
+      p.stakeUsd = wanted[p.agent];
+    }
     const stakes = buying ? fitStakes(before, final.token, wanted, prices) : zeroStakes();
     const totalUsd = AGENT_ORDER.reduce((t, a) => t + stakes[a], 0);
 
@@ -464,8 +476,8 @@ export async function runRound(
     });
 
     // Without the council's backing the leader still trades its idea, alone: a purchase with its own cash, a sale of its own tokens.
-    const alone = !approved && !asking && (buying ? (pitches.find((p) => p.agent === leader)?.stakeUsd ?? 0) >= MIN_ORDER_USD : canSellOwn(before, final.token, leader, run.id));
     const ownUsd = buying ? Math.min(within(leader, led), Math.floor(before.cash[leader] * OWN_BOOK_SHARE)) : 0;
+    const alone = !approved && !asking && (buying ? ownUsd >= SOLO_USD[0] : canSellOwn(before, final.token, leader, run.id));
     const c = await think(leader, (b) => b.closing(leader, ctx, final, { pledges, approved, yes, totalUsd: alone ? ownUsd : totalUsd, committed: bound, alone }));
     const sure = pitches.find((p) => p.agent === leader)?.conviction ?? 0;
     const closing: Line = { agent: leader, emotion: moodFor({ kind: "closing", approved, alone, conviction: sure, yes }), say: c.say, source: c.source };

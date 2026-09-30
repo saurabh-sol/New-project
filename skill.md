@@ -1,15 +1,15 @@
 ---
 name: council-trading
-description: How the four agents of The Council choose, size, hold and close trades in trending Pons tokens on the testnet. Every agent's model is given the part "For every agent" and its own part to read before it decides or speaks. The desk enforces the numbered rules in code, whatever an agent asks for.
+description: How the four agents of The Council choose, size, hold and close trades in trending Pons tokens on Robinhood Chain. Every agent's model is given the part "For every agent" and its own part to read before it decides or speaks. The desk enforces the numbered rules in code, whatever an agent asks for.
 ---
 
 # The Council's trading skill
 
 ## Aim
 
-Lose little, lose seldom, and let a gain run.
+Lose little, lose seldom, and take a gain when it is made.
 
-No rule makes every trade a gain. These tokens are young and move several percent in minutes. What the rules do is refuse the purchases that lost most often, keep each loss small, and keep a gain once it is made. A desk that does those three things can gain over many trades while losing on some of them.
+No rule makes every trade a gain. These tokens are young and move several percent in minutes. What the rules do is refuse the purchases that lost most often, bound each loss, and take a gain once it is made. A desk that does those three things can gain over many trades while losing on some of them.
 
 ## What the desk's record shows
 
@@ -50,11 +50,11 @@ You trade to keep what you have first, and to gain second.
 
 Among the tokens that pass, prefer in this order: buyers leading by a wide margin, volume above its average, a pool with more liquidity, a price turning up from low in its range. One that has all four is rare. Say which you have and which you lack.
 
-**How much.** Your stop decides your size. If the stop is hit you may lose 1.5% of what you are worth, and no more. What you already hold of the token counts. A token that needs a wide stop gets a small position. A token so wild that the position would be under $10 is not traded. You are told the most you may put into each token.
+**How much.** The desk sets the size. A purchase of your own is between half and six tenths of the cash you started with. A purchase the council makes together is half of one agent's starting cash at most, in all, and its backers share it out, so your share of it is small. You are told the figures in dollars. If the stop is hit you may lose 8% of what you are worth, and no more. What you already hold of the token counts. A token that needs so wide a stop that a purchase of your own would break that limit is not traded, and with less cash free than a purchase takes you make none.
 
-**Stop and target.** The stop stands at least 1.5 times the token's 5-minute volatility away, so that ordinary movement does not set it off. The target stands at least twice as far away as the stop: one gain must pay for two losses.
+**Stop and target.** The stop stands at least 1.5 times the token's 5-minute volatility away, so that ordinary movement does not set it off. The target stands twice as far away as the stop, but no further than 10%.
 
-**Once you are in.** Do nothing clever. Once the position is up by as much as its stop stood below, the desk raises the stop above your entry and lets it follow the price up. From then on the trade cannot lose. Do not sell a winner early to protect it. The stop does that.
+**Once you are in.** Do nothing clever. Once the position is up by as much as its stop stood below, the desk raises the stop above your entry and lets it follow the price up. From then on the trade cannot lose. At a gain of 10% the desk sells the position, whole. Then look for your next trade: do not buy the same token back because it rose.
 
 **When to sell.** Sell what is yours when the reason you bought it is gone: sellers lead, the 5-minute and 15-minute changes are both down, the trend has turned down. Do not wait for the stop, and do not hope. A small loss taken now is the cheapest one.
 
@@ -110,10 +110,12 @@ The numbers that bind are in `src/server/council/playbook.ts` and `src/server/co
 | Sellers may not lead | buys at least equal sells, where 6 or more trades were made | The same |
 | No adding to a losing position | always | Each agent, for the tokens it holds |
 | Rest after a losing sale | 3 rounds | Each agent, for the token it sold |
-| Risk on one token | 1.5% of what the agent is worth, what it already holds of the token included | Every purchase, a co-investment included |
-| Smallest position | $10 of an agent's $100: a tenth of its starting cash | Every purchase |
+| Risk on one token | 8% of what the agent is worth, what it already holds of the token included | Every purchase, a co-investment included |
+| A purchase of an agent's own | 50% to 60% of its starting cash: $10 to $12 of $20 | Every purchase an agent makes alone |
+| A purchase the council makes together | 50% of one agent's starting cash at most, in all: $10 of $20. Shared out in whole dollars among its backers, the leader first | Every purchase the council votes for, except a funder's request |
 | Stop | 3% to 25%, and at least 1.5 times the 5-minute volatility | Every purchase |
-| Target | at least twice the stop, up to 60% | Every purchase |
+| Target | twice the stop, and no further than 10% | Every purchase |
+| Taking the profit | A position that is up 10% is sold, whole | Every position, those opened before this rule included |
 | Stop follows the price | From a gain equal to the stop's distance, at that distance below the highest price, and never below the entry plus 0.2% | Every position in a pool token |
 | Selling into a fall | By each agent's nerve, as before | Every position in a pool token |
 
@@ -123,7 +125,8 @@ A funder's request is the funder's choice. The entry rules do not refuse it. The
 
 - It cannot make every trade a gain, and nothing on the site may say it does.
 - It acts on prices only while a page is open. A stop passed while no page was open is acted on later, at the price the token has then.
-- It is tested on the testnet, where a trade is settled against the treasury at the quoted price. On a market, an order in a young token would move the price against itself.
+- A trade is settled against the treasury at the quoted price. On a market, an order in a young token would move the price against itself.
+- The sizes and the sale at a gain of 10% were set by the desk's owner on 30 September 2026. The record above does not support them. With a stop wider than 10%, a trade can lose more than it can gain, so the desk has to be right more often than wrong. And the record's gains came from a few trades that ran to +27%, which a sale at +10% gives up.
 
 ## Changing this skill
 

@@ -67,8 +67,6 @@ export function Docs({ facts }: { facts: DocsFacts }) {
   const { live, other, testnet, terms, rules, board, nerve } = facts;
   const session = every(facts.sessionMinutes);
   const researcher = live.desks.quant;
-  /** What an agent worth $100 may put into a token with a stop that far away. */
-  const sizeAt = (stopPct: number) => Math.floor(rules.riskPct / (stopPct / 100));
 
   return (
     <div className="mx-auto w-full max-w-[1240px] px-4 pb-20 pt-8 sm:px-6 lg:pt-12">
@@ -428,22 +426,23 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 className="sm:grid-cols-3"
                 items={[
                   {
-                    title: "Size comes from the stop",
-                    text: `If its stop is hit, a purchase may cost an agent ${rules.riskPct}% of what it is worth, and no more. An agent worth $100 may put $${sizeAt(8)} into a token with an 8% stop, and $${sizeAt(15)} into one with a 15% stop.`,
+                    title: "The desk sets the size",
+                    text: `An agent buys ${money(rules.soloUsd[0])} to ${money(rules.soloUsd[1])} alone. What the agents buy together comes to ${money(rules.councilUsd[1])} at most, shared among those who back it. If its stop is hit, a purchase may cost an agent ${rules.riskPct}% of what it is worth, and no more.`,
                   },
                   {
                     title: "A stop clear of the noise",
                     text: `A stop stands ${rules.stop[0]}% to ${rules.stop[1]}% below the entry, and at least 1.5 times as far as the token usually moves in five minutes.`,
                   },
                   {
-                    title: "A target worth the risk",
-                    text: `A target stands at least ${rules.reward === 2 ? "twice" : `${rules.reward} times`} as far away as the stop, up to ${rules.target[1]}%. One gain must pay for two losses.`,
+                    title: "A gain is taken",
+                    text: `A target stands ${rules.reward === 2 ? "twice" : `${rules.reward} times`} as far away as the stop, and no further than ${rules.takeProfitPct}%. A position that is up ${rules.takeProfitPct}% is sold, whole, and its holders look for the next trade.`,
                   },
                 ]}
               />
               <P>
-                The smallest order is {money(rules.minOrderUsd)}, and one trade takes at most {rules.ownBookPct}% of an agent&apos;s cash. A token so wild that the
-                position would be under {money(rules.minOrderUsd)} is not traded.
+                One trade takes at most {rules.ownBookPct}% of an agent&apos;s cash. An agent with less than {money(rules.soloUsd[0])} free for a purchase of its own makes
+                none, and a token that needs so wide a stop that {money(rules.soloUsd[0])} would break the risk limit is not traded. With a stop wider than{" "}
+                {rules.takeProfitPct}%, a trade can lose more than it can gain, so the desk has to be right more often than wrong.
               </P>
             </Topic>
 
