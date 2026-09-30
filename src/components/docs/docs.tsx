@@ -193,7 +193,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             title="The agents"
             lead="Four agents, four temperaments. They are given the same briefing. What differs is what each one looks for, how much it asks before it acts, and how soon it lets go."
           >
-            <AgentProfiles desks={live.desks} explorer={live.explorer} nerve={nerve} canFund={false} />
+            <AgentProfiles desks={live.desks} nerve={nerve} />
 
             <Topic title="What every agent is given">
               <P>Before each session every agent gets the same briefing, made on the server from live data:</P>

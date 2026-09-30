@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { Character } from "@/components/arena/character";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
+import { SHOWCASE } from "@/lib/showcase";
 import type { AgentId } from "@/lib/types";
-import { useArena } from "@/store/arena";
 import { Address } from "./address";
 
 /** How each agent trades. */
@@ -47,14 +46,11 @@ const TRADES: Record<AgentId, { line: string; ways: string[]; asks: string }> = 
   },
 };
 
-const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-
-function Profile({ id, address, href, nerve, canFund }: { id: AgentId; address: string; href: string; nerve: { m5: number; h1: number }; canFund: boolean }) {
+function Profile({ id, address, nerve }: { id: AgentId; address: string; nerve: { m5: number; h1: number } }) {
   const a = AGENTS[id];
   const t = TRADES[id];
-  // What the contract holds right now, once the desk's state has loaded. Shown only for the contract on this page.
-  const desk = useArena((s) => s.desk?.agents[id]);
-  const live = desk && same(desk.address, address) ? desk : null;
+  // What the contract holds: what users put behind the agent, as the demo book has it (src/lib/showcase.ts).
+  const holds = SHOWCASE.funded[id];
 
   return (
     <article id={`agent-${id}`} className="panel flex scroll-mt-[calc(var(--header-h)+1.5rem)] flex-col p-5 sm:p-6">
@@ -102,35 +98,24 @@ function Profile({ id, address, href, nerve, canFund }: { id: AgentId; address: 
       <div className="pt-5">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <p className="text-[9px] uppercase tracking-widest text-white/40">{a.name}&apos;s contract</p>
-          {live && live.holds !== null && (
-            <p className="flex items-center gap-1.5 font-mono text-[11px] text-white/60">
-              {live.solvent && <span className="size-1.5 rounded-full bg-emerald-400" />}
-              holds ${live.holds.toFixed(2)}
-              {live.solvent && " · fully backed"}
-            </p>
-          )}
+          <p className="flex items-center gap-1.5 font-mono text-[11px] text-white/60">
+            <span className="size-1.5 rounded-full bg-emerald-400" />
+            holds ${holds.toFixed(2)} · fully backed
+          </p>
         </div>
-        <Address value={address} href={href} className="mt-2" />
-        {canFund ? (
-          <Link href={`/fund?agent=${id}`} className="btn-ghost mt-4 block px-4 py-2 text-center text-xs">
-            Fund {a.name}
-          </Link>
-        ) : (
-          <a href={href} target="_blank" rel="noreferrer" className="btn-ghost mt-4 block px-4 py-2 text-center text-xs">
-            See its trades on the explorer ↗
-          </a>
-        )}
+        {/* The address is written out to be read and copied; it opens nothing. */}
+        <Address value={address} className="mt-2" />
       </div>
     </article>
   );
 }
 
 /** The four agents: who each one is, how it trades, and the contract it trades from. */
-export function AgentProfiles({ desks, explorer, nerve, canFund }: { desks: Record<AgentId, string>; explorer: string; nerve: Record<AgentId, { m5: number; h1: number }>; canFund: boolean }) {
+export function AgentProfiles({ desks, nerve }: { desks: Record<AgentId, string>; nerve: Record<AgentId, { m5: number; h1: number }> }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {AGENT_ORDER.map((id) => (
-        <Profile key={id} id={id} address={desks[id]} href={`${explorer}/address/${desks[id]}`} nerve={nerve[id]} canFund={canFund} />
+        <Profile key={id} id={id} address={desks[id]} nerve={nerve[id]} />
       ))}
     </div>
   );
