@@ -5,7 +5,6 @@ import { agentPnl, canSell, poolCapital, poolEquity, positionOf, unitsOf, unreal
 import type { Exchange, Pitch, Proposal, TokenStats } from "@/lib/council-types";
 import { priceDecimals, SESSION_LABEL, type AssetKey, type Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
-import { buyable, sizeFor, termsFor } from "./brain";
 import type { Effort, Skill } from "./skills";
 
 export interface RoundCtx {
@@ -36,10 +35,6 @@ export interface RoundCtx {
   sellOnly: AssetKey[];
   /** Tokens each agent holds and may sell this round on its own decision. */
   mine: Record<AgentId, AssetKey[]>;
-  /** Tokens on the board that the desk's entry rules will not let anyone buy this round, each with the reason. */
-  refused: Record<AssetKey, string>;
-  /** Tokens each agent may not buy this round for reasons of its own, each with the reason. */
-  barred: Record<AgentId, Record<AssetKey, string>>;
   /** Whether the board is made of tokens launched on Pons, and of no others. */
   pons?: boolean;
   /** Jev's odds that each token trades higher an hour from now, 0 to 1, for the agents that are given them. */
@@ -131,20 +126,6 @@ function deskReport(ctx: RoundCtx, agent: AgentId): string {
   return lines.join("\n");
 }
 
-/** What the desk's entry rules let this agent buy this round, at what size, and what they refuse. */
-function entryReport(ctx: RoundCtx, agent: AgentId): string {
-  const open = buyable(ctx, agent);
-  const refused = Object.entries(ctx.refused);
-  const barred = Object.entries(ctx.barred[agent]).filter(([t]) => !ctx.refused[t]);
-  return [
-    open.length
-      ? `You may buy: ${open.map((t) => `${t} (stop at least ${termsFor(ctx, t).stopPct}%, your size at most $${sizeFor(ctx, agent, t)})`).join(", ")}. A wider stop means a smaller size.`
-      : "You may buy: nothing this round. No token passes the rules at a size worth opening. Hold your cash, and say why.",
-    ...(refused.length ? [`Refused to everyone: ${refused.map(([t, why]) => `${t} (${why})`).join("; ")}.`] : []),
-    ...(barred.length ? [`Barred to you: ${barred.map(([t, why]) => `${t} (${why})`).join("; ")}.`] : []),
-  ].join("\n");
-}
-
 export function briefing(ctx: RoundCtx, agent: AgentId): string {
   return [
     `ROUND ${ctx.round}`,
@@ -156,7 +137,7 @@ export function briefing(ctx: RoundCtx, agent: AgentId): string {
     ...(ctx.sellOnly.length ? [`Held from before, and no longer bought. They can only be sold: ${ctx.sellOnly.join(", ")}.`] : []),
     ...(ctx.closed.length ? [`Closed now, so they can be neither bought nor sold this round: ${ctx.closed.join(", ")}.`] : []),
     "",
-    ...(ctx.request ? ["A FUNDER'S REQUEST THIS ROUND", describeRequest(ctx), ""] : ["THE DESK'S ENTRY RULES, APPLIED TO THIS ROUND", entryReport(ctx, agent), ""]),
+    ...(ctx.request ? ["A FUNDER'S REQUEST THIS ROUND", describeRequest(ctx), ""] : []),
     ...(ctx.odds?.for.includes(agent) && Object.keys(ctx.odds.up1h).length
       ? [
           "ODDS (from Jev, an evaluation model that reads the same figures. The chance that each token trades higher one hour from now.)",

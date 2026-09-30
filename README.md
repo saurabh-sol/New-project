@@ -133,17 +133,13 @@ Each agent has $100 of the treasury's capital (`NEXT_PUBLIC_START_CASH` changes 
 
 - **A pitch is a decision.** The strongest pitch is put to the council. An agent that pitched the same trade joins it with the cash it named. Every other agent trades the idea it pitched by itself, for its own book.
 - **Without the council's backing the leader trades alone.** A vote that fails means there is no desk trade, not that there is no trade. The exception is a funder's suggestion, which is only bought if the council backs it.
-- **An agent with nothing opens a position,** when the desk's entry rules let it buy a token. When they let nothing through, it holds its cash and says so.
+- **Nobody sits in cash.** An agent that holds nothing must open a position that session, of at least $20. It picks its best idea, and says so plainly when the edge is thin.
 - **The books are spread.** Agents opening a first position choose one after another, and each is told what the others took and picks something else.
 - **Selling.** The tokens an agent holds are its own to sell, from the session after it bought them. Its sale leaves the other holders' tokens where they are. The council can also vote to sell a position for everyone who holds it.
 - **Selling into a fall.** The agents are told to sell a token they hold when it is falling fast, and between sessions a rule does it for them. See below.
 - One trade takes at most 60% of an agent's cash.
 
 Between sessions the agents watch their positions. Stops and targets are checked against the live price.
-
-### The trading skill
-
-`skill.md` is how the agents are told to trade, and `src/server/council/playbook.ts` is what the desk enforces of it: a token is bought only below 60% of its daily range, with an RSI under 70 and sellers not leading; an agent buys $10 to $12 alone and the agents buy $10 at most together, where each starts with $20; a purchase may cost an agent 8% of what it is worth if its stop is hit; a target stands twice as far away as the stop and no further than 10%, and a position that is up 10% is sold; and once a position is up by its stop's distance, the stop follows the price up and the trade can no longer lose. No rule makes every trade a gain. See [the documentation](docs/final.md#the-trading-skill).
 
 ### Rules the code enforces, whatever a model asks for
 

@@ -8,7 +8,6 @@ import { sell, type Fill, type Portfolio, type Position } from "@/lib/council";
 import { isToken } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { nameOf, px, signed } from "./context";
-import { follow, goalOf, locked } from "./playbook";
 import { extremesSince, refreshAssets } from "./stats";
 import type { CouncilState } from "./store";
 
@@ -78,21 +77,11 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
     const done = sell(portfolio, { token: pos.token, price, fraction: 1, reason, round: state.round, leader: pos.leader, ts, id });
     if (!done) return;
     portfolio = done.portfolio;
-    // A stop that had followed the price up above the entry closes the position at a gain.
-    const trailed = reason === "STOP" && locked(pos);
-    const what = trailed ? "Trailing stop" : reason === "STOP" ? "Stop-loss" : "Profit target";
-    fills.push(trailed ? { ...done.fill, note: `The stop on ${pos.token} had followed the price up to ${px(pos.stop)}, from a high of ${px(pos.peak ?? pos.stop)}. Realized ${signed(done.fill.realized ?? 0, "")} USDG.` } : done.fill);
-    recent.push(`${what} hit on ${pos.token} at ${px(done.fill.price)}: ${signed(done.fill.realized ?? 0, "")} USDG (position led by ${nameOf(pos.leader)}).`);
+    fills.push(done.fill);
+    recent.push(`${reason === "STOP" ? "Stop-loss" : "Profit target"} hit on ${pos.token} at ${px(done.fill.price)}: ${signed(done.fill.realized ?? 0, "")} USDG (position led by ${nameOf(pos.leader)}).`);
   };
 
-  for (const held of state.portfolio.positions) {
-    let pos = held;
-    // The desk takes its profit at a set gain. A position opened with a target further away is given that one.
-    const goal = goalOf(held);
-    if (goal < held.target) {
-      pos = { ...held, target: goal };
-      portfolio = { ...portfolio, positions: portfolio.positions.map((p) => (p.token === held.token ? { ...p, target: goal } : p)) };
-    }
+  for (const pos of state.portfolio.positions) {
     const asset = assets[pos.token];
     if (asset && !isToken(pos.token) && asset.kind === "pool") {
       // A quote that could not be refreshed is an old one. Better to look again than to act on it.
@@ -101,14 +90,6 @@ export async function applyRisk(state: CouncilState, now = Date.now()): Promise<
         continue;
       }
       const { quote } = asset;
-      // The stop is judged where it stood before this price was seen, and raised afterwards if the price has earned it.
-      if (quote.price > pos.stop && quote.price < pos.target) {
-        const raised = follow(pos, quote.price);
-        if (raised !== pos) {
-          pos = raised;
-          portfolio = { ...portfolio, positions: portfolio.positions.map((p) => (p.token === raised.token ? { ...p, trail: raised.trail, peak: raised.peak, stop: raised.stop } : p)) };
-        }
-      }
       if (quote.price <= pos.stop) close(pos, quote.price, "STOP", now, `stop-${pos.token}-${now}`);
       else if (quote.price >= pos.target) close(pos, quote.price, "TARGET", now, `target-${pos.token}-${now}`);
       else if (now - pos.openedAt >= SETTLE_MS && state.round >= (pos.lockedUntil ?? 0)) {

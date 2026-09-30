@@ -13,7 +13,6 @@ import { cleanSay, enforcePitch, presents, weighs, type Brain } from "./brain";
 import { effortFor, type CouncilConfig } from "./config";
 import { describeProposal, describeRequest, marketTable, nameOf, type RoundCtx } from "./context";
 import { extractJson, PERSONA } from "./llm-brain";
-import { skillFor } from "./playbook";
 import { repeats } from "./skills";
 
 /** Wording a line is quick work. A speaker that takes longer is not waited for. */
@@ -37,11 +36,7 @@ Rules for what you say:
 - Professional and courteous. No slang, no jokes, no hype, no emojis, no markdown.
 - Do not repeat yourself. You are shown what you said recently: open differently.
 - Do not call the trades paper trades.
-- Reply with one JSON object and nothing else: {"say": "your line"}
-
-THE DESK'S TRADING SKILL
-The desk has already applied these rules to the decision. They are here so that you speak as a trader who keeps them.
-${skillFor(agent)}`;
+- Reply with one JSON object and nothing else: {"say": "your line"}`;
 
 const shape = z.object({ say: z.string().min(1) });
 

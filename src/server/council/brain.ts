@@ -1,5 +1,4 @@
-import { EMOTIONS, MIN_ORDER_USD, OWN_BOOK_SHARE, type Emotion } from "@/lib/council";
-import { PLAYBOOK, riskStake, SOLO_USD, worthOpening } from "./playbook";
+import { EMOTIONS, MIN_ORDER_USD, OWN_BOOK_SHARE, STARTER_USD, type Emotion } from "@/lib/council";
 import type { Exchange, Line, Pitch, Pledge, Proposal } from "@/lib/council-types";
 import type { AssetKey } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
@@ -51,14 +50,12 @@ const STOP_CLEARANCE = 1.5;
 
 /**
  * The stop and target the desk will accept for a purchase of a token that usually moves
- * `atrPct` percent in five minutes: the stop clear of the noise, and the target twice the
- * stop's distance away, but no further than the gain at which the desk takes its profit.
+ * `atrPct` percent in five minutes: the stop clear of the noise, the target no nearer than the stop.
  */
 export function fitTerms(stopPct: number, targetPct: number, atrPct: number): { stopPct: number; targetPct: number } {
   const floor = Math.ceil(clamp(atrPct * STOP_CLEARANCE, ...STOP_RANGE) * 2) / 2;
   const stop = Math.max(clamp(stopPct, ...STOP_RANGE), floor);
-  const least = Math.min(stop * PLAYBOOK.reward, TARGET_RANGE[1]);
-  return { stopPct: stop, targetPct: Math.min(Math.max(clamp(targetPct, ...TARGET_RANGE), least), PLAYBOOK.takeProfitPct) };
+  return { stopPct: stop, targetPct: Math.max(clamp(targetPct, ...TARGET_RANGE), stop) };
 }
 
 /** Desk talk is short. Anything longer is cut at the last full sentence that fits. */
@@ -86,29 +83,18 @@ export const asToken = (v: unknown, ctx: RoundCtx): AssetKey => {
 /** The most an agent may put behind its own pitch this round. */
 export const mostStake = (ctx: RoundCtx, agent: AgentId) => Math.floor(ctx.portfolio.cash[agent] * OWN_BOOK_SHARE);
 
-/** What an agent with no position opens one with: the smallest purchase of its own. Less, if it has less, and then it opens none. */
-export const starterStake = (ctx: RoundCtx, agent: AgentId) => Math.min(SOLO_USD[0], mostStake(ctx, agent));
+/** The smallest position an agent with none may open. Less, if it has less. */
+export const starterStake = (ctx: RoundCtx, agent: AgentId) => Math.min(STARTER_USD, mostStake(ctx, agent));
 
-/** Tokens that can be bought this round: open, still traded by the desk, and let through by its entry rules. */
-export const openTokens = (ctx: RoundCtx) => ctx.stats.map((s) => s.token).filter((t) => !ctx.closed.includes(t) && !ctx.sellOnly.includes(t) && !ctx.refused[t]);
-
-/** The stop and target the desk would set on a purchase of this token, whatever was asked for. */
-export const termsFor = (ctx: RoundCtx, token: AssetKey, stopPct: number = STOP_RANGE[0], targetPct: number = TARGET_RANGE[0]) =>
-  fitTerms(stopPct, targetPct, ctx.stats.find((s) => s.token === token)?.atrPct ?? 0);
-
-/** The most this agent may put into this token, with a stop that far below: the desk's size for a purchase of its own, its share of cash, and no more than its risk allows. */
-export const sizeFor = (ctx: RoundCtx, agent: AgentId, token: AssetKey, stopPct?: number) =>
-  Math.min(SOLO_USD[1], mostStake(ctx, agent), riskStake(ctx.portfolio, agent, ctx.prices, termsFor(ctx, token, stopPct).stopPct, token));
-
-/** Tokens this agent can buy this round: let through by the desk, not barred to it, and tradable at a size worth opening. */
-export const buyable = (ctx: RoundCtx, agent: AgentId) => openTokens(ctx).filter((t) => !ctx.barred[agent][t] && worthOpening(sizeFor(ctx, agent, t)));
+/** Tokens that can be bought this round. */
+export const openTokens = (ctx: RoundCtx) => ctx.stats.map((s) => s.token).filter((t) => !ctx.closed.includes(t) && !ctx.sellOnly.includes(t));
 
 /** Tokens this agent may pitch a sale of: its own, and those the council may sell. */
 export const saleTokens = (ctx: RoundCtx, agent: AgentId) => [...new Set([...ctx.mine[agent], ...ctx.sellable])];
 
-/** Tokens for a starter position: those no colleague has picked this round, or any the agent can buy if all are picked. */
-export function starterTokens(ctx: RoundCtx, agent: AgentId): AssetKey[] {
-  const open = buyable(ctx, agent);
+/** Tokens for a starter position: those no colleague has picked this round, or any open one if all are picked. */
+export function starterTokens(ctx: RoundCtx): AssetKey[] {
+  const open = openTokens(ctx);
   const free = open.filter((t) => !ctx.taken.includes(t));
   return free.length ? free : open;
 }
@@ -133,8 +119,7 @@ export function requestStake(ctx: RoundCtx, agent: AgentId, chosen: number): num
 
 /**
  * Forces a pitch to obey the desk's rules, whatever the model asked for:
- * no selling what isn't held (or is too new), no staking more than the agent's cash,
- * no purchase the desk's entry rules refuse, and none larger than the agent's risk allows.
+ * no selling what isn't held (or is too new), no staking more than the agent's cash.
  */
 export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): PitchOut {
   const cash = ctx.portfolio.cash[agent];
@@ -156,49 +141,19 @@ export function enforcePitch(agent: AgentId, ctx: RoundCtx, out: PitchOut): Pitc
   if (p.action !== "HOLD" && ctx.closed.includes(p.token)) p.action = "HOLD";
   if (p.action === "BUY" && ctx.sellOnly.includes(p.token) && !presents(agent, ctx) && !weighs(agent, ctx)) p.action = "HOLD";
   if (p.action === "SELL" && !saleTokens(ctx, agent).includes(p.token)) p.action = "HOLD";
-
-  // A funder's request is the funder's choice. Everything else the agents buy passes the desk's entry rules.
-  const forFunder = weighs(agent, ctx);
-  if (p.action === "BUY" && !forFunder) {
-    const why = ctx.refused[p.token] ?? ctx.barred[agent][p.token];
-    if (why) {
-      p.action = "HOLD";
-      p.say = cleanSay(`Desk rule: no ${p.token} for me: ${why}. I hold.`);
-    }
-  }
-  // An agent with no position opens one, if there is a token it can buy. If it named one, that is the one.
+  // An agent with no position opens one. If it named a token that can be bought, that is the one.
   if (ctx.mustTrade[agent] && p.action !== "BUY") {
-    const open = starterTokens(ctx, agent);
+    const open = starterTokens(ctx);
     if (open.length && starterStake(ctx, agent) >= MIN_ORDER_USD) {
       p.action = "BUY";
       p.token = open.includes(p.token) ? p.token : open[0];
       p.stakeUsd = starterStake(ctx, agent);
-      p.say = cleanSay(`Desk rule: I hold nothing, so I open a starter in ${p.token}.`);
+      p.say = cleanSay(`Desk rule: I hold nothing, so I open a starter. $${p.stakeUsd} of ${p.token}.`);
     }
   }
   if (p.action === "BUY") {
-    const most = forFunder ? cash : mostStake(ctx, agent);
-    const named = Math.floor(clamp(p.stakeUsd, 0, Number.MAX_SAFE_INTEGER));
-    // A purchase of the desk's own has a set size: no less than the smaller figure, no more than the larger.
-    const asked = forFunder ? Math.floor(clamp(p.stakeUsd, 0, most)) : Math.floor(clamp(p.stakeUsd, ...SOLO_USD));
-    p.stakeUsd = asked;
-    if (!forFunder) {
-      // The stop and target are the ones the desk will set, and the size is what the agent's cash and risk allow with that stop.
-      const terms = termsFor(ctx, p.token, p.stopPct, p.targetPct);
-      p.stopPct = terms.stopPct;
-      p.targetPct = terms.targetPct;
-      p.stakeUsd = Math.min(asked, sizeFor(ctx, agent, p.token, terms.stopPct));
-      // What the agent says names the size it gets.
-      if (p.stakeUsd !== named) p.say = cleanSay(p.say.replace(new RegExp(`\\$${named}(?!\\d|\\.\\d)`, "g"), () => `$${p.stakeUsd}`));
-      if (!worthOpening(p.stakeUsd)) {
-        p.action = "HOLD";
-        p.say = cleanSay(
-          most < SOLO_USD[0]
-            ? `Desk rule: a purchase of my own takes $${SOLO_USD[0]}, and I have $${most} free for one. I hold.`
-            : `Desk rule: ${p.token} needs a ${terms.stopPct}% stop. At my risk limit that is under $${SOLO_USD[0]}. I hold.`,
-        );
-      }
-    }
+    const most = weighs(agent, ctx) ? cash : mostStake(ctx, agent);
+    p.stakeUsd = Math.floor(clamp(p.stakeUsd, ctx.mustTrade[agent] ? starterStake(ctx, agent) : 0, most));
     // A purchase for a funder may be smaller than the desk's own, but not a crumb.
     if (p.stakeUsd < MIN_ORDER_USD / 2) p.action = "HOLD";
   }

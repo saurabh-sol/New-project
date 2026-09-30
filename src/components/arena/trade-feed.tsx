@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
-import { trailed, type Fill } from "@/lib/council";
+import type { Fill } from "@/lib/council";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -112,7 +112,7 @@ export function TradeFeed() {
                     <td className="px-4 py-2.5 font-mono text-white">{f.token}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-white/80">${f.usd.toFixed(2)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-white/60">${fmtPrice(f.price)}</td>
-                    <td className="px-4 py-2.5 text-white/60">{trailed(f) ? "Trailing stop" : TRIGGER[f.reason]}</td>
+                    <td className="px-4 py-2.5 text-white/60">{TRIGGER[f.reason]}</td>
                     <td
                       className={cn(
                         "px-4 py-2.5 text-right font-mono",

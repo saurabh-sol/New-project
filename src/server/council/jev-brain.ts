@@ -10,7 +10,7 @@ import { experimental_evaluate as evaluate, type Experimental_EvaluationQuestion
 import type { Emotion } from "@/lib/council";
 import type { Proposal } from "@/lib/council-types";
 import type { AgentId } from "@/lib/types";
-import { backers, buyable, clamp, mostStake, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
+import { backers, clamp, mostStake, openTokens, presents, requestStake, saleTokens, starterStake, starterTokens, STOP_RANGE, weighs, type Brain } from "./brain";
 import type { CouncilConfig } from "./config";
 import { briefingState, describeDebate, describePitches, describeProposal, nameOf, px, type RoundCtx } from "./context";
 import { fundingLevel, pick } from "./skills";
@@ -30,7 +30,7 @@ interface Temper {
   sellBelow: number;
   /** Backs a purchase when its expected value clears this many percent. */
   minEdgePct: number;
-  /** Share of its cash it names per point of conviction. The desk's risk rule still caps the size. */
+  /** Share of its cash it names per point of conviction. */
   sizing: number;
 }
 
@@ -243,7 +243,7 @@ export function jevBrain(cfg: CouncilConfig): Brain {
       }
 
       // The best odds among tokens that can be bought. An agent that must open a position takes the best there is.
-      const starters = odds.filter((o) => starterTokens(ctx, agent).includes(o.token)).sort((x, y) => y.p - x.p);
+      const starters = odds.filter((o) => starterTokens(ctx).includes(o.token)).sort((x, y) => y.p - x.p);
       if (ctx.mustTrade[agent] && starters.length) {
         const top = starters[0];
         const c = conviction(top.p);
@@ -263,8 +263,8 @@ export function jevBrain(cfg: CouncilConfig): Brain {
         };
       }
 
-      // The best odds among the tokens the desk lets this agent buy, if they clear its bar.
-      const open = buyable(ctx, agent);
+      // The best odds among the tokens that can be bought, if they clear its bar.
+      const open = openTokens(ctx);
       const lead = odds.filter((o) => open.includes(o.token)).sort((x, y) => y.p - x.p)[0];
       if (lead && lead.p >= temper.buyAbove && cash >= MIN_ORDER_USD) {
         const c = conviction(lead.p);
