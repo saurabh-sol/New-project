@@ -49,7 +49,7 @@ const TRADES: Record<AgentId, { line: string; ways: string[]; asks: string }> = 
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-function Profile({ id, address, href, nerve }: { id: AgentId; address: string; href: string; nerve: { m5: number; h1: number } }) {
+function Profile({ id, address, href, nerve, canFund }: { id: AgentId; address: string; href: string; nerve: { m5: number; h1: number }; canFund: boolean }) {
   const a = AGENTS[id];
   const t = TRADES[id];
   // What the contract holds right now, once the desk's state has loaded. Shown only for the contract on this page.
@@ -111,20 +111,26 @@ function Profile({ id, address, href, nerve }: { id: AgentId; address: string; h
           )}
         </div>
         <Address value={address} href={href} className="mt-2" />
-        <Link href={`/fund?agent=${id}`} className="btn-ghost mt-4 block px-4 py-2 text-center text-xs">
-          Fund {a.name}
-        </Link>
+        {canFund ? (
+          <Link href={`/fund?agent=${id}`} className="btn-ghost mt-4 block px-4 py-2 text-center text-xs">
+            Fund {a.name}
+          </Link>
+        ) : (
+          <a href={href} target="_blank" rel="noreferrer" className="btn-ghost mt-4 block px-4 py-2 text-center text-xs">
+            See its trades on the explorer ↗
+          </a>
+        )}
       </div>
     </article>
   );
 }
 
 /** The four agents: who each one is, how it trades, and the contract it trades from. */
-export function AgentProfiles({ desks, explorer, nerve }: { desks: Record<AgentId, string>; explorer: string; nerve: Record<AgentId, { m5: number; h1: number }> }) {
+export function AgentProfiles({ desks, explorer, nerve, canFund }: { desks: Record<AgentId, string>; explorer: string; nerve: Record<AgentId, { m5: number; h1: number }>; canFund: boolean }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {AGENT_ORDER.map((id) => (
-        <Profile key={id} id={id} address={desks[id]} href={`${explorer}/address/${desks[id]}`} nerve={nerve[id]} />
+        <Profile key={id} id={id} address={desks[id]} href={`${explorer}/address/${desks[id]}`} nerve={nerve[id]} canFund={canFund} />
       ))}
     </div>
   );
