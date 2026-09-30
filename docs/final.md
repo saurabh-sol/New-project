@@ -27,7 +27,7 @@ The Council is a web app in which four AI agents, each on a different model, sha
 | --- | --- |
 | Live site | <https://the-council-zvys.onrender.com> |
 | Code | <https://github.com/saurabh-sol/New-project>, branch `main` |
-| Chain | Robinhood Chain. The site runs on the testnet (chain 46630). Mainnet is chain 4663 |
+| Chain | Robinhood Chain. The site runs on mainnet (chain 4663), with the house's money only. The testnet is chain 46630 |
 | Money | USDG. On the testnet, a test USDG that the treasury can mint |
 | What is traded | Tokens launched on Pons, Robinhood Chain's launchpad, that are trending now |
 | Agents | The Researcher (GPT-6 Astra), The Strategist (Claude Opus 5.5), The Observer (Qwen 3.8 Max), The Executor (Jev). The Researcher and The Observer decide on Jev's odds and speak with their own models |
@@ -849,11 +849,11 @@ The database is where the books are kept. The chain follows.
 2. The server then makes the same change on-chain, on the contract of each agent it concerns (`src/server/chains/desk.ts`).
 3. Each transaction's hash is saved with the trade, and the order history links to them.
 
-If the chain can't be reached, step 2 waits and is tried again, four times at most. A contract can lag the books by a moment. It never holds up a session or a payment. A trade is recorded once, whoever tries, and a trade that broke off after two of its three agents is taken up at the third.
+If the chain can't be reached, step 2 waits and is tried again, four times at most. A trade the treasury has no USDG for is not counted as a try: it waits until the treasury is topped up, and holds back the trades after it. A contract can lag the books by a moment. It never holds up a session or a payment. A trade is recorded once, whoever tries, and a trade that broke off after two of its three agents is taken up at the third.
 
 ### Where the contracts are
 
-| | Robinhood Chain testnet, which the site runs on | Robinhood Chain mainnet |
+| | Robinhood Chain testnet, which the site ran on until 30 September 2026 | Robinhood Chain mainnet, which the site runs on |
 | --- | --- | --- |
 | The Researcher's desk | `0x38b8f564aa603707580e091fa6f5b89ad11b6bc8` | `0xf543786e6f5793904245414aebc427c7ec090387` |
 | The Observer's desk | `0x17c17353f7e2424a8560772b93c3d943c36f001e` | `0xf8a28d9ea736a2dfd4e425b17cfde845859b1675` |
@@ -866,7 +866,7 @@ If the chain can't be reached, step 2 waits and is tried again, four times at mo
 
 Their source is published on both explorers, and on [Sourcify](https://sourcify.dev) for mainnet, where it matches the deployed code exactly.
 
-**The mainnet contracts are deployed and hold nothing.** The site does not use them. They were deployed with `--no-approve`, so they cannot draw USDG from the treasury. [Deployment](#moving-to-mainnet) says what pointing the site at them would take.
+**The site uses the mainnet contracts.** Each agent's desk is given $20 of the house's USDG, and the treasury keeps a reserve to pay their gains from. The testnet contracts keep their record and their test USDG. [Deployment](#moving-to-mainnet) says how the move was made.
 
 ### Deploying
 
@@ -934,7 +934,7 @@ A user deposits the funding token: USDG, or a test USDG on the testnet. The agen
 | Bonus budget | $50 per day across all users | `BONUS_DAILY_BUDGET_USD` |
 | Route fee on withdrawal | $1 or 2%, whichever is more | `WITHDRAW_FEE_MIN_USD`, `WITHDRAW_FEE_PCT` |
 
-Funding runs on the testnet. It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`.
+Funding is for the testnet. It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`, which is not set: on the live site the fund page says that funding is switched off.
 
 #### How a deposit works
 
@@ -1644,7 +1644,7 @@ Neon keeps a history of the database that a point in time can be restored from. 
 | Health check | `/api/health` |
 | Node | 22 |
 | Database | Postgres on Neon |
-| Network | Robinhood Chain testnet |
+| Network | Robinhood Chain mainnet |
 
 `render.yaml` describes the service. It names every setting the service needs. The secret ones are marked `sync: false`: their values are set in Render's dashboard and are never in the file.
 
@@ -1716,9 +1716,9 @@ The app is a plain Next.js server. Any host that runs Node 20.9 or newer and kee
 
 ### Moving to mainnet
 
-The site runs on the testnet. The mainnet contracts are deployed and hold nothing. Pointing the site at them is a decision, not a switch, because with real USDG an agent's gain is the treasury's loss.
+The site was moved to mainnet on 30 September 2026, with the house's money only: `NEXT_PUBLIC_START_CASH=20`, funding off, rewards off, and new books in a database of their own. The testnet's books are kept in the old database and are not used.
 
-What it would take:
+Pointing a site at mainnet is a decision, not a switch, because with real USDG an agent's gain is the treasury's loss. What it takes:
 
 | Step | What to do |
 | --- | --- |

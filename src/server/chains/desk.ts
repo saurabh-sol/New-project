@@ -95,6 +95,12 @@ async function read(s: Setup): Promise<OnChain> {
 
 const cents = (usd: number, cent: bigint) => BigInt(Math.round(usd * 100)) * cent;
 
+/** USDG the treasury holds. The agents' capital comes from it, and the gains of their trades. */
+async function treasuryHolds(s: Setup, cent: bigint): Promise<number> {
+  const units = await s.pub.readContract({ address: s.token, abi: erc20, functionName: "balanceOf", args: [s.account.address] });
+  return Number(units / cent) / 100;
+}
+
 /** Funds or releases an agent's cash on its contract until it holds `target`. */
 async function setCash(s: Setup, chain: OnChain, agent: AgentId, target: number) {
   const gap = round2(target - chain.cash[agent]);
@@ -217,9 +223,11 @@ async function settle(s: Setup): Promise<void> {
       else givenUp.add(fill.id);
     } catch (e) {
       done[fill.id] = txs;
-      const tries = (m.tries.get(fill.id) ?? 0) + 1;
+      // A trade the treasury has no USDG for is not given up on. It waits for the money.
+      const unfunded = (await treasuryHolds(s, chain.cent).catch(() => Infinity)) < fill.usd;
+      const tries = unfunded ? 0 : (m.tries.get(fill.id) ?? 0) + 1;
       m.tries.set(fill.id, tries);
-      console.error(`[desk] could not record ${fill.side} ${fill.token}:`, e instanceof Error ? e.message.split("\n")[0] : e);
+      console.error(`[desk] could not record ${fill.side} ${fill.token}${unfunded ? ", which waits for USDG in the treasury" : ""}:`, e instanceof Error ? e.message.split("\n")[0] : e);
       if (tries >= MAX_TRIES) givenUp.add(fill.id);
       // Trades are recorded in order. One that fails holds back those after it.
       else break;

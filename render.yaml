@@ -14,11 +14,17 @@ services:
       - key: NODE_VERSION
         value: 22
       - key: ROBINHOOD_NETWORK
-        value: testnet
+        value: mainnet
       - key: NEXT_PUBLIC_ROBINHOOD_NETWORK
-        value: testnet
+        value: mainnet
+      # Each agent starts with $20 of the house's USDG.
+      - key: NEXT_PUBLIC_START_CASH
+        value: "20"
       - key: FAUCET_ENABLED
-        value: "true"
+        value: "false"
+      # No rewards are paid on mainnet.
+      - key: DAILY_CLAIM_CAP
+        value: "0"
       - key: AI_GATEWAY_API_KEY
         sync: false
       - key: DATABASE_URL
