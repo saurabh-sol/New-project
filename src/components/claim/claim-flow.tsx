@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Character } from "@/components/arena/character";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
+import { BRAND } from "@/lib/brand";
 import { explorerLink, type ChainStatus } from "@/lib/chains";
 import type { ChallengeResponse, ClaimRecord, ClaimResponse, RewardsStatus } from "@/lib/rewards-types";
 import type { AgentId } from "@/lib/types";
@@ -234,7 +235,7 @@ export function ClaimFlow() {
       </div>
 
       <p className="mt-5 text-center text-xs leading-relaxed text-white/35">
-        Arena Rewards are a thank-you paid from a pool funded by The Council team. They are not trading profit and not investment returns.
+        Arena Rewards are a thank-you paid from a pool funded by the {BRAND} team. They are not trading profit and not investment returns.
       </p>
     </div>
   );

@@ -65,7 +65,7 @@ const settings = [
 
 const out = value("--out");
 if (out) {
-  writeFileSync(out, [`# The admin account of The Council. Made ${new Date().toISOString()}. Keep this file out of git.`, `# Sign in at /admin with the username below and this password:`, `# ${password}`, ...settings, ""].join("\n"), { mode: 0o600 });
+  writeFileSync(out, [`# The admin account of Fourcast. Made ${new Date().toISOString()}. Keep this file out of git.`, `# Sign in at /admin with the username below and this password:`, `# ${password}`, ...settings, ""].join("\n"), { mode: 0o600 });
   console.log(`Written to ${out}. The password is on its third line.`);
 } else {
   if (!flag("--ask")) console.log(`Password (keep it safe, it is not stored anywhere):\n  ${password}\n`);

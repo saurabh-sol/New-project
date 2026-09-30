@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { X_HANDLE, X_URL } from "@/lib/brand";
 
 export function SiteFooter() {
   return (
@@ -9,7 +10,7 @@ export function SiteFooter() {
           as up, and funding an agent can lose money. Funding gives an agent more capital and more thinking time; it does not guarantee a better
           result. Nothing here is financial advice.
         </p>
-        <nav className="flex shrink-0 gap-4" aria-label="Footer">
+        <nav className="flex shrink-0 flex-wrap gap-x-4 gap-y-1.5 whitespace-nowrap" aria-label="Footer">
           <Link href="/" className="hover:text-white">
             Trading floor
           </Link>
@@ -25,6 +26,9 @@ export function SiteFooter() {
           <Link href="/kiosk" className="hover:text-white">
             Display mode
           </Link>
+          <a href={X_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white">
+            X {X_HANDLE}
+          </a>
         </nav>
       </div>
     </footer>

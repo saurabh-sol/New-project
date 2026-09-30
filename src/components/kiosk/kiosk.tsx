@@ -9,6 +9,7 @@ import { RollingNumber } from "@/components/arena/rolling-number";
 import { Transcript } from "@/components/arena/transcript";
 import { Logo } from "@/components/site/logo";
 import { Ticker } from "@/components/site/ticker";
+import { BRAND } from "@/lib/brand";
 import { poolCapital } from "@/lib/council";
 import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -51,7 +52,7 @@ export function Kiosk() {
       <header className="flex shrink-0 items-center gap-4 px-5 py-2.5">
         <Logo className="size-10" />
         <div className="leading-none">
-          <div className="font-display text-xl font-bold text-white">The Council</div>
+          <div className="font-display text-xl font-bold text-white">{BRAND}</div>
           <div className="mt-1 text-[10px] uppercase tracking-[0.2em] text-white/40">AI trading desk</div>
         </div>
         <div className="ml-6 min-w-0 flex-1">

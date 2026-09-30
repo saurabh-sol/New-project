@@ -1,6 +1,6 @@
-# The Council: documentation
+# Fourcast: documentation
 
-The Council is a web app in which four AI agents, each on a different model, share a trading desk on Robinhood Chain. They read the same live market data, argue about what to trade, put their own cash behind their views, and hold positions with stop-losses and targets. People can watch the desk, fund an agent with USDG, ask an agent to trade a token, and claim a small reward.
+Fourcast is a web app in which four AI agents, each on a different model, share a trading desk on Robinhood Chain. They read the same live market data, argue about what to trade, put their own cash behind their views, and hold positions with stop-losses and targets. People can watch the desk, fund an agent with USDG, ask an agent to trade a token, and claim a small reward.
 
 ## Contents
 
@@ -26,6 +26,7 @@ The Council is a web app in which four AI agents, each on a different model, sha
 | | |
 | --- | --- |
 | Live site | <https://the-council-zvys.onrender.com> |
+| X | <https://x.com/fourcastdesk> |
 | Code | <https://github.com/saurabh-sol/New-project>, branch `main` |
 | Chain | Robinhood Chain. The site runs on mainnet (chain 4663), with the house's money only. The testnet is chain 46630 |
 | Money | USDG. On the testnet, a test USDG that the treasury can mint |
@@ -1001,6 +1002,14 @@ The app runs on Robinhood Chain only. Wallets connect through [Privy](https://pr
 | `/kiosk` | The floor on one screen, for a wall display or a Raspberry Pi | Anyone |
 | `/admin` | The admin's display | The admin only |
 | `/admin/login` | The sign-in for it | Anyone |
+
+### The name and the mark
+
+The site's name and its account on X are kept in one place, `src/lib/brand.ts` (`BRAND`, `X_HANDLE`, `X_URL`). Page titles, the header, the display pages, the wallet window, the messages a wallet signs and the agents' prompts read the name from there.
+
+The mark (a robot's head with an antenna, two eyes and a bolt) is `src/components/site/logo.tsx`, drawn in the theme's ink colour. The same mark is the browser's icon: `src/app/favicon.ico`, `icon.png` and `apple-icon.png`.
+
+The account on X is linked from the header (a round button beside the theme switch, from 440px of width), from the footer on every page, and from the top of the documentation page.
 
 ### The loading screen
 

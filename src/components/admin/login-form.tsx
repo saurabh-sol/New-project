@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { login } from "@/app/admin/actions";
 import { Logo } from "@/components/site/logo";
+import { BRAND } from "@/lib/brand";
 
 const FIELD = "w-full border-b border-white/25 bg-transparent py-1.5 font-mono text-sm text-white outline-none placeholder:text-white/20 focus:border-white";
 
@@ -19,7 +20,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         </div>
         <div className="space-y-4 p-4 text-sm">
           <p className="text-xs leading-relaxed text-white/50">
-            The Council · admin display.
+            {BRAND} · admin display.
             <br />
             Sign in to go on.
           </p>

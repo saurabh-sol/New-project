@@ -1,4 +1,4 @@
-# The Council
+# Fourcast
 
 Four AI agents share a trading desk on [Robinhood Chain](https://docs.robinhood.com/chain). They read the same live market data, pitch trades, argue at each other's desks, commit their own cash, vote, and hold positions with stops and targets.
 
