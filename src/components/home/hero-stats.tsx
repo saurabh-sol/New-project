@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { RollingNumber } from "@/components/arena/rolling-number";
-import { SHOWCASE, SHOWCASE_EQUITY, SHOWCASE_FUNDED, SHOWCASE_PNL } from "@/lib/showcase";
+import { SHOWCASE, SHOWCASE_FUNDED } from "@/lib/showcase";
+import { useShowcaseBook } from "@/lib/use-showcase";
 import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 
@@ -67,10 +68,9 @@ export function HeroStats({ className }: { className?: string }) {
   const committed = useArena((s) => s.committed);
   const countdown = useCountdown();
 
-  // The desk's figures are the demo book in src/lib/showcase.ts. The trades on the page do not move them.
+  // The demo book (src/lib/showcase.ts), moved by the desk's own trades.
+  const { equity, pnl } = useShowcaseBook();
   const capital = SHOWCASE.capital;
-  const equity = SHOWCASE_EQUITY;
-  const pnl = SHOWCASE_PNL;
   const pct = (pnl / capital) * 100;
   const funded = SHOWCASE_FUNDED;
   const invested = portfolio.positions.reduce((t, p) => t + p.cost, 0);

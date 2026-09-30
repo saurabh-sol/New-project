@@ -51,7 +51,7 @@ npm run dev -- -p 3210
 | Page | What it is |
 | --- | --- |
 | `/` | The trading floor, chart, agents, positions and order history |
-| `/fund` | Fund an agent, and withdraw |
+| `/fund` | Not served for now; funding and withdrawals answer on the API |
 | `/claim` | Arena Rewards |
 | `/kiosk` | Full-screen display for a wall screen or Raspberry Pi |
 | `/admin` | The admin's display: the floor with the trades, positions and system state set as a terminal shows them. Needs a sign-in |

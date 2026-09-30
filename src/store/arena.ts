@@ -2,10 +2,10 @@ import { create } from "zustand";
 import { AGENT_ORDER, withPresentNames } from "@/lib/agents";
 import type { DeskAsset } from "@/lib/assets";
 import type { DeskInfo } from "@/lib/chains";
-import { newPortfolio, type Emotion, type Fill, type Portfolio } from "@/lib/council";
+import { agentPnl, newPortfolio, type Emotion, type Fill, type Portfolio } from "@/lib/council";
 import type { CouncilMode, ModelInfo } from "@/lib/council-types";
 import { pointOf, sameSpot } from "@/lib/layout";
-import type { AssetKey } from "@/lib/market";
+import type { AssetKey, Prices } from "@/lib/market";
 import { showcaseResult } from "@/lib/showcase";
 import type { AgentId, AgentState, ArenaEvent, ChatMessage, Phase, Pt, Spot } from "@/lib/types";
 
@@ -58,7 +58,7 @@ interface ArenaStore {
   tickets: Ticket[];
   apply: (e: ArenaEvent) => void;
   arrive: (id: AgentId) => void;
-  samplePnl: () => void;
+  samplePnl: (prices: Prices) => void;
   removeCoin: (id: string) => void;
   removeTicket: (id: string) => void;
 }
@@ -214,11 +214,12 @@ export const useArena = create<ArenaStore>((set) => ({
 
   arrive: (id) => set((s) => ({ agents: { ...s.agents, [id]: { ...s.agents[id], walking: false } } })),
 
-  samplePnl: () =>
+  samplePnl: (prices) =>
     set((s) => {
       const agents = { ...s.agents };
       for (const id of AGENT_ORDER) {
-        agents[id] = { ...agents[id], history: [...agents[id].history, showcaseResult(id)].slice(-MAX_HISTORY) };
+        // The demo book's result for the agent, moved by its own trades.
+        agents[id] = { ...agents[id], history: [...agents[id].history, showcaseResult(id) + agentPnl(s.portfolio, id, prices)].slice(-MAX_HISTORY) };
       }
       return { agents };
     }),

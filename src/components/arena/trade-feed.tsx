@@ -4,8 +4,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
-import { SHOWCASE_EQUITY } from "@/lib/showcase";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
+import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
+import { useShowcaseBook } from "@/lib/use-showcase";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { TradeViewToggle } from "./trade-view-toggle";
@@ -19,16 +20,23 @@ const short = (name: string) => name.replace("The ", "");
  * on the agent's own contract on Robinhood Chain, and links to its transaction. Without them
  * they are kept in the desk's books and nowhere else.
  *
+ * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own; their hashes are text, and open nothing.
+ *
  * A visitor first sees the sales that booked a gain, with a line saying how many closed trades
  * and orders that is out of. "All" shows every one.
  */
 export function TradeFeed() {
-  const fills = useArena((s) => s.fills);
+  const own = useArena((s) => s.fills);
   const desk = useArena((s) => s.desk);
+  const samples = useSampleFills();
+  const book = useShowcaseBook();
+  const fills = withSamples(samples, own);
   const view = useTradeView();
   const t = tally(fills);
   const shown = inView(fills, view);
-  const columns = desk ? 9 : 8;
+  // The transaction column is there once any trade has one to show.
+  const withTx = !!desk || samples.length > 0;
+  const columns = withTx ? 9 : 8;
 
   return (
     <section className="panel">
@@ -65,7 +73,7 @@ export function TradeFeed() {
             </span>
           ))}
           <span className="font-mono text-white/70">
-            holding ${SHOWCASE_EQUITY.toFixed(2)} USDG between them{desk.market ? ", and the tokens they bought" : ""}
+            holding ${book.equity.toFixed(2)} USDG between them{desk.market ? ", and the tokens they bought" : ""}
           </span>
           {desk.solvent === false && <span className="text-red-300">a contract holds less than it owes its agent</span>}
           <span className="text-white/35">{desk.market ? "Every trade is a swap in the token's pool, and pays its fee." : "The treasury takes the other side of every trade."}</span>
@@ -83,7 +91,7 @@ export function TradeFeed() {
               <th className="px-4 py-2 text-right font-normal">Price</th>
               <th className="px-4 py-2 font-normal">Trigger</th>
               <th className="px-4 py-2 text-right font-normal">Realized PnL</th>
-              {desk && <th className="px-4 py-2 text-right font-normal">Transaction</th>}
+              {withTx && <th className="px-4 py-2 text-right font-normal">Transaction</th>}
             </tr>
           </thead>
           <tbody>
@@ -126,7 +134,19 @@ export function TradeFeed() {
                     >
                       {f.realized === null ? "open" : fmtSigned(f.realized)}
                     </td>
-                    {desk && (
+                    {isSample(f) ? (
+                      <td className="px-4 py-2.5 text-right font-mono">
+                        <span className="flex flex-col items-end gap-0.5">
+                          {AGENT_ORDER.filter((id) => f.txs?.[id]).map((id) => (
+                            <span key={id} className="text-white/60">
+                              <span className="font-sans text-white/45">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
+                            </span>
+                          ))}
+                        </span>
+                      </td>
+                    ) : !desk ? (
+                      withTx && <td className="px-4 py-2.5 text-right font-mono text-white/30">—</td>
+                    ) : (
                       <td className="px-4 py-2.5 text-right font-mono">
                         {f.txs && Object.keys(f.txs).length > 0 ? (
                           // One transaction for each agent in the trade, on that agent's contract.

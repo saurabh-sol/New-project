@@ -6,7 +6,7 @@ import { DESKS, homePoint } from "@/lib/layout";
 import type { AgentId } from "@/lib/types";
 import { cn, fmtSigned, MIN_SPARK_SPAN } from "@/lib/utils";
 import { useArena } from "@/store/arena";
-import { showcaseResult } from "@/lib/showcase";
+import { useShowcaseBook } from "@/lib/use-showcase";
 import { useModelName } from "@/store/selectors";
 import { RollingNumber } from "./rolling-number";
 
@@ -29,7 +29,7 @@ export function Desk({ id }: { id: AgentId }) {
   const agent = AGENTS[id];
   const desk = DESKS[id];
   const rt = useArena((s) => s.agents[id]);
-  const pnl = showcaseResult(id);
+  const pnl = useShowcaseBook().result(id);
   const model = useModelName(id);
   const atDesk = rt.spot.kind === "home" && !rt.walking;
   const busy = atDesk && (rt.state === "thinking" || rt.state === "executing");

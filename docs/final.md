@@ -53,8 +53,8 @@ People can do four things:
 | What | Where |
 | --- | --- |
 | Watch the desk: the floor, the conversation, the chart, the trades | `/` |
-| Fund an agent with USDG, and withdraw | `/fund` |
-| Ask the agent they fund to trade a token | `/fund`, with a deposit |
+| Fund an agent with USDG, and withdraw | the funding API; the `/fund` page is not on the site for now |
+| Ask the agent they fund to trade a token | the funding API, with a deposit |
 | Claim a small reward | `/claim` |
 
 The person who runs the desk has a display of their own at `/admin`.
@@ -197,7 +197,7 @@ The header's badge now reads "LIVE AI MODELS". A session costs roughly $0.10 to 
    It deploys a test USDG the treasury can mint, gives the treasury a starting balance, and writes `USDG_ADDRESS` to `.env.local`.
 6. Restart the server.
 
-Users can now press "Get free test USDG" on `/fund`, fund an agent, and claim a reward on `/claim`. The faucet also sends a little ETH, so a new wallet can pay its first network fees.
+Users can now claim a reward on `/claim`. The fund page (`/fund`) is not on the site for now (removed 2026-10-01, at the owner's word); funding, withdrawals and the faucet still answer on their API routes, and the faucet also sends a little ETH, so a new wallet can pay its first network fees.
 
 ### Stage 4: record trades on-chain
 
@@ -904,7 +904,7 @@ A user deposits the funding token: USDG, or a test USDG on the testnet. The agen
 | Bonus budget | $50 per day across all users | `BONUS_DAILY_BUDGET_USD` |
 | Route fee on withdrawal | $1 or 2%, whichever is more | `WITHDRAW_FEE_MIN_USD`, `WITHDRAW_FEE_PCT` |
 
-Funding is for the testnet. It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`, which is not set: on the live site the fund page says that funding is switched off.
+Funding is for the testnet. It refuses to run on mainnet unless `ALLOW_MAINNET_FUNDING=true`. **The fund page is not on the site for now** (removed 2026-10-01): there is no link to it in the header, the footer or the agents' cards, and `/fund` answers 404. The funding API routes below still work, so this chapter still applies to them; the page comes back by restoring `src/app/fund/page.tsx` and `src/components/fund/fund-desk.tsx` from git.
 
 #### How a deposit works
 
@@ -1037,7 +1037,7 @@ The app runs on Robinhood Chain only. Wallets connect through [Privy](https://pr
 | Page | What it is | Who can open it |
 | --- | --- | --- |
 | `/` | The trading floor, the chart, the agents, positions, the conversation and the order history | Anyone |
-| `/fund` | Fund an agent, ask for a trade, withdraw | Anyone with a wallet |
+| `/fund` | Not served for now (removed 2026-10-01). Funding, withdrawals and the faucet answer on the API | |
 | `/claim` | Rewards | Anyone with a wallet |
 | `/docs` | The documentation for visitors: the council, the agents, the rules, and each agent's contract | Anyone |
 | `/kiosk` | The floor on one screen, for a wall display or a Raspberry Pi | Anyone |
@@ -1094,11 +1094,11 @@ On a phone the same parts follow one another: the floor first, then the conversa
 
 #### The figures on the page are a demo book
 
-The desk's headline figures are fixed values, kept in `src/lib/showcase.ts`, the way gomo.bot shows a demo book: the pool's capital ($5,000) and equity, the council's result (+$433.18), each agent's result and percentage, what users funded each agent with, the balance next to each agent's desk contract, the "holding … between them" line of the order history, and the cash line of the open positions (the demo equity less the open positions' cost). The pool's figure carries a small **DEMO** tag, on the front page and on the Raspberry Pi display. The sparklines on the leaderboard sample the same figures.
+The desk's headline figures come from `src/lib/showcase.ts`, the way gomo.bot shows a demo book: the pool's capital ($5,000) and equity, the council's result (+$433.18, the sum of the sample trades below), each agent's result and percentage, what users funded each agent with, the balance next to each agent's desk contract, the "holding … between them" line of the order history, and the cash line of the open positions (the demo equity less the open positions' cost). The pool's figure carries a small **DEMO** tag, on the front page and on the Raspberry Pi display. The sparklines on the leaderboard sample the same figures.
 
-The server is not involved: it keeps the desk's real books, runs the sessions, settles the trades and records them on the agents' contracts as before, and the admin's display still shows the real books. The conversation, the prices, the open positions and the order history on the page are the desk's own; none of them moves the demo figures.
+The desk's own trades move these figures (`src/lib/use-showcase.ts`): when an agent buys, the cost comes off the pool's figure; when it sells, the money comes back with what it made; and the council's result and each agent's result are the demo figures plus what the desk's own trades have made or lost, the open positions at live prices. The server keeps the desk's real books, runs the sessions, settles the trades and records them on the agents' contracts as before, and the admin's display still shows the real books. The conversation, the prices, the open positions and the order history on the page are the desk's own.
 
-The latest trades list also carries twelve sample trades (24 orders, in `SAMPLE_TRADES` of the same file), listed with the desk's own by time, sized for the demo pool, with results that add up to the council's demo result. Each carries a hash for every agent in it; the hashes are samples, shown as text, and open nothing. The desk's own trades keep their explorer links. The order history holds the desk's own trades only.
+The trade lists also carry sample trades: 210 closed trades (420 orders), made by `sampleTrades()` in the same file from a fixed seed, so they are the same on every visit. They are spread over the last three weeks, timed from when the page opened, sized for the demo pool, nine in ten closed at a gain, with results that add up to $433.18. Each agent's result on the page is its share of what these trades made, and the council's result is the four added up, so trades added by hand in `MORE_TRADES` raise both, and the pool's equity with them. They are listed with the desk's own by time in the latest trades, the order history and the admin's `trades.log`. Each carries a hash for every agent in it; the hashes are samples, shown as text, and open nothing. The desk's own trades keep their explorer links.
 
 #### An agent's card
 
@@ -1251,7 +1251,6 @@ src/
   components/
     arena/             the floor: characters, desks, table, speech, transcript
     market/            the price chart
-    fund/              the fund page
     claim/             the rewards page
     docs/              the documentation page
     kiosk/             the full-screen display

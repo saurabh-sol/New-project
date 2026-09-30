@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { startShow } from "@/lib/director";
 import { useArena } from "@/store/arena";
-import { startQuotes, useMarket } from "@/store/market";
+import { livePrices, startQuotes, useMarket } from "@/store/market";
 
 /**
  * Runs the live prices and the council's show for as long as the site is open.
@@ -25,7 +25,7 @@ export function ShowRunner() {
   // Sample each agent's result for the sparklines.
   useEffect(() => {
     if (!feedSettled) return;
-    const id = setInterval(() => samplePnl(), 10_000);
+    const id = setInterval(() => samplePnl(livePrices()), 10_000);
     return () => clearInterval(id);
   }, [feedSettled, samplePnl]);
 

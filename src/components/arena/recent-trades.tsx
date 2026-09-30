@@ -1,12 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useSyncExternalStore } from "react";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import { explorerLink } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
-import { sampleFills } from "@/lib/showcase";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
+import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { cn, fmtPrice, fmtSigned, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { TradeViewToggle } from "./trade-view-toggle";
@@ -22,14 +21,6 @@ function who(f: Fill): string {
   return `${short(AGENTS[f.leader].name)} +${parties.length - 1}`;
 }
 
-/** The sample trades, timed from when the page opened. The server renders none, so the page is the same on the server and in the browser; they come in right after. */
-let samples: Fill[] | null = null;
-const NO_SAMPLES: Fill[] = [];
-const never = () => () => {};
-const useSampleFills = (): Fill[] => useSyncExternalStore(never, () => (samples ??= sampleFills(Date.now())), () => NO_SAMPLES);
-
-const isSample = (f: Fill) => f.id.startsWith("sample-");
-
 /**
  * The latest trades, newest first, each with its transactions. The full order history is further down the page.
  * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own; their hashes are text, and open nothing.
@@ -40,7 +31,7 @@ export function RecentTrades({ className }: { className?: string }) {
   const own = useArena((s) => s.fills);
   const desk = useArena((s) => s.desk);
   const samples = useSampleFills();
-  const fills = [...samples, ...own].sort((a, b) => b.ts - a.ts);
+  const fills = withSamples(samples, own);
   const view = useTradeView();
   const t = tally(fills);
   const latest = inView(fills, view).slice(0, 30);

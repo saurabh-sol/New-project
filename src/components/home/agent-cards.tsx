@@ -1,13 +1,13 @@
 "use client";
 
 import { motion } from "motion/react";
-import Link from "next/link";
 import { Character } from "@/components/arena/character";
 import { RollingNumber } from "@/components/arena/rolling-number";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import type { AgentFunding } from "@/lib/funding-types";
 import type { AgentId, AgentState } from "@/lib/types";
-import { SHOWCASE, SHOWCASE_AGENT_CAPITAL, showcasePct, showcaseResult } from "@/lib/showcase";
+import { SHOWCASE, SHOWCASE_AGENT_CAPITAL } from "@/lib/showcase";
+import { useShowcaseBook } from "@/lib/use-showcase";
 import { useFundStatus } from "@/lib/use-fund";
 import { cn, fmtSigned, shortAddress } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -24,16 +24,17 @@ const DOING: Record<AgentState, string> = {
   loss: "Booked a loss",
 };
 
-function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; funding: AgentFunding | undefined; canFund: boolean }) {
+function Card({ id, rank, funding }: { id: AgentId; rank: number; funding: AgentFunding | undefined }) {
   const a = AGENTS[id];
   const model = useModelName(id);
   const rt = useArena((s) => s.agents[id]);
   const portfolio = useArena((s) => s.portfolio);
   const desk = useArena((s) => s.desk?.agents[id]);
 
-  // The agent's result, its funding and what its desk holds are the demo book's (src/lib/showcase.ts).
-  const pnl = showcaseResult(id);
-  const pct = showcasePct(id);
+  // The agent's result, its funding and what its desk holds are the demo book's (src/lib/showcase.ts), moved by its own trades.
+  const book = useShowcaseBook();
+  const pnl = book.result(id);
+  const pct = book.pct(id);
   const funded = SHOWCASE.funded[id];
   const holds = SHOWCASE_AGENT_CAPITAL + pnl;
   const inTrades = portfolio.positions.reduce((t, p) => t + p.stake[id], 0);
@@ -91,9 +92,6 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
             <motion.div className="h-full rounded-full bg-white" animate={{ width: `${Math.max(toNext * 100, 3)}%` }} transition={{ type: "spring", stiffness: 80, damping: 18 }} />
           </div>
         </dl>
-        <Link href={`/fund?agent=${id}`} className={cn("shrink-0 px-3 py-1 text-xs", canFund ? "btn-primary" : "btn-ghost")}>
-          {canFund ? "Fund" : "Funding"}
-        </Link>
       </div>
 
       {/* The agent's own contract, where its money is held and its trades are on record. */}
@@ -112,13 +110,14 @@ function Card({ id, rank, funding, canFund }: { id: AgentId; rank: number; fundi
 /** One card per agent, ranked by result. `className` lays the cards out: a column beside the floor, a grid elsewhere. */
 export function AgentCards({ className }: { className?: string }) {
   const { status } = useFundStatus(null);
-  const ranked = [...AGENT_ORDER].sort((x, y) => showcaseResult(y) - showcaseResult(x));
+  const book = useShowcaseBook();
+  const ranked = [...AGENT_ORDER].sort((x, y) => book.result(y) - book.result(x));
 
   return (
     <section aria-label="The agents" className={cn("flex min-w-0 flex-col gap-3", className)}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:flex-col xl:gap-2">
         {ranked.map((id, i) => (
-          <Card key={id} id={id} rank={i + 1} funding={status?.agents.find((f) => f.agent === id)} canFund={!!status?.chain.enabled} />
+          <Card key={id} id={id} rank={i + 1} funding={status?.agents.find((f) => f.agent === id)} />
         ))}
       </div>
       {/* On a wide screen this is said in the footer, to leave the room to the desk. */}

@@ -14,9 +14,6 @@ export function SiteFooter() {
           <Link href="/" className="hover:text-white">
             Trading floor
           </Link>
-          <Link href="/fund" className="hover:text-white">
-            Fund an agent
-          </Link>
           <Link href="/claim" className="hover:text-white">
             Rewards
           </Link>

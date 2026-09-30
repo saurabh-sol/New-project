@@ -8,6 +8,7 @@ import { Ticker } from "@/components/site/ticker";
 import { BRAND } from "@/lib/brand";
 import { poolCapital } from "@/lib/council";
 import type { Phase } from "@/lib/types";
+import { RealBook } from "@/lib/use-showcase";
 import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { usePoolEquity } from "@/store/selectors";
@@ -135,7 +136,10 @@ export function AdminDisplay({ user }: { user: string }) {
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-[minmax(0,1fr)_minmax(34rem,36vw)]">
         <div className="flex min-h-0 flex-col gap-2">
           <div className="flex min-h-0 flex-1 items-center justify-center lg:[container-type:size]">
-            <Floor className="!rounded-none lg:!aspect-auto lg:!h-[min(100cqh,calc(100cqw*11/16))] lg:!w-[min(100cqw,calc(100cqh*16/11))]" />
+            {/* The admin's floor shows the real books, not the demo book the public floor shows. */}
+            <RealBook.Provider value={true}>
+              <Floor className="!rounded-none lg:!aspect-auto lg:!h-[min(100cqh,calc(100cqw*11/16))] lg:!w-[min(100cqw,calc(100cqh*16/11))]" />
+            </RealBook.Provider>
           </div>
           <AgentsStrip />
         </div>

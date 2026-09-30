@@ -5,11 +5,12 @@ import { AGENTS, AGENT_ORDER, withPresentNames } from "@/lib/agents";
 import { explorerLink, type DeskInfo } from "@/lib/chains";
 import type { Fill } from "@/lib/council";
 import { cn, fmtPrice, fmtSigned } from "@/lib/utils";
+import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { useArena } from "@/store/arena";
 import { Pane } from "./pane";
 
 /** As many trades as a screen can show at once, and then some to scroll back through. */
-const SHOWN = 80;
+const SHOWN = 400;
 
 const TRIGGER: Record<Fill["reason"], string> = { COUNCIL: "council", OWN: "own", STOP: "stop", TARGET: "target", FALLING: "falling" };
 
@@ -30,8 +31,14 @@ function onChain(f: Fill, desk: DeskInfo | null): { text: string; href: string |
   return { text: `${Math.min(done, parts)}/${parts}`, href: first ? explorerLink(desk, first) : null, bad: false };
 }
 
-function Line({ f, desk }: { f: Fill; desk: DeskInfo | null }) {
-  const chain = onChain(f, desk);
+/** A sample trade has every agent's part on record, and nowhere to open. */
+function sampleChain(f: Fill): { text: string; href: null; bad: false } {
+  const parts = AGENT_ORDER.filter((a) => f.stake[a] > 0.005).length || 1;
+  return { text: `${parts}/${parts}`, href: null, bad: false };
+}
+
+function Line({ f, desk, withChain }: { f: Fill; desk: DeskInfo | null; withChain: boolean }) {
+  const chain = isSample(f) ? sampleChain(f) : (onChain(f, desk) ?? (withChain ? { text: "—", href: null, bad: false } : null));
   return (
     <li>
       <div className={cn(COLUMNS, "whitespace-nowrap")}>
@@ -57,10 +64,16 @@ function Line({ f, desk }: { f: Fill; desk: DeskInfo | null }) {
   );
 }
 
-/** The desk's trades as a terminal shows a log: oldest at the top, the newest written at the bottom. */
+/**
+ * The desk's trades as a terminal shows a log: oldest at the top, the newest written at the bottom.
+ * The sample trades of the demo book (src/lib/showcase.ts) are on the log with the desk's own.
+ */
 export function TradeLog({ className }: { className?: string }) {
-  const fills = useArena((s) => s.fills);
+  const own = useArena((s) => s.fills);
   const desk = useArena((s) => s.desk);
+  const samples = useSampleFills();
+  const fills = withSamples(samples, own);
+  const withChain = !!desk || samples.length > 0;
   const ready = useArena((s) => s.ready);
   const end = useRef<HTMLDivElement>(null);
 
@@ -86,12 +99,12 @@ export function TradeLog({ className }: { className?: string }) {
             <span>led by</span>
             <span>why</span>
             <span className="text-right">result</span>
-            {desk && <span className="text-right">chain</span>}
+            {withChain && <span className="text-right">chain</span>}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto pt-1 [scrollbar-width:none]">
             <ul className="flex min-h-full flex-col justify-end">
               {lines.map((f) => (
-                <Line key={f.id} f={f} desk={desk} />
+                <Line key={f.id} f={f} desk={desk} withChain={withChain} />
               ))}
               <li className="text-white/40">
                 {ready && fills.length === 0 ? "no trades yet. the council trades when three of four agree. " : ""}

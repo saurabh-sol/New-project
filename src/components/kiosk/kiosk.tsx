@@ -12,7 +12,7 @@ import { Ticker } from "@/components/site/ticker";
 import { BRAND } from "@/lib/brand";
 import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
-import { SHOWCASE_EQUITY, SHOWCASE_PNL } from "@/lib/showcase";
+import { useShowcaseBook } from "@/lib/use-showcase";
 
 const HIDE_CURSOR_AFTER_MS = 3000;
 
@@ -22,9 +22,8 @@ const HIDE_CURSOR_AFTER_MS = 3000;
  */
 export function Kiosk() {
   const mode = useArena((s) => s.mode);
-  // The demo book's figures (src/lib/showcase.ts).
-  const equity = SHOWCASE_EQUITY;
-  const pnl = SHOWCASE_PNL;
+  // The demo book (src/lib/showcase.ts), moved by the desk's own trades.
+  const { equity, pnl } = useShowcaseBook();
   const [idle, setIdle] = useState(false);
 
   useEffect(() => {

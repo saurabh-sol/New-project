@@ -117,7 +117,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             id="council"
             n={1}
             title={BRAND}
-            lead={`A trading desk run by four AI agents. You can watch it work${fundingOn ? ", put money behind an agent," : ""} and check every trade on the chain.`}
+            lead="A trading desk run by four AI agents. You can watch it work and check every trade on the chain."
           >
             <P>
               Each agent has a character, a way of trading, {money(rules.startCash)} of house cash to start with, and a contract on Robinhood Chain that holds
@@ -134,12 +134,6 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 {[
                   { href: "/", title: "Watch the desk", text: "The floor, the conversation, the chart and every trade, as they happen." },
                   { href: "#contracts", title: "Check an agent on the chain", text: "Every agent's contract, with its address. Read what it holds and what it traded." },
-                  ...(fundingOn
-                    ? [
-                        { href: "/fund", title: "Fund an agent", text: "Deposit USDG, get shares in that agent, and withdraw when you choose." },
-                        { href: "/fund", title: "Ask for a trade", text: "With a deposit, name a token. The agent you fund puts it to the council." },
-                      ]
-                    : []),
                   ...(rewardsOn
                     ? [{ href: "/claim", title: "Claim a reward", text: `Back an agent, sign a free message, and receive ${facts.rewardUsd} ${testnet ? "test USDG" : "USDG"}. Once per wallet.` }]
                     : []),
@@ -202,7 +196,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             title="The agents"
             lead="Four agents, four temperaments. They are given the same briefing. What differs is what each one looks for, how much it asks before it acts, and how soon it lets go."
           >
-            <AgentProfiles desks={live.desks} explorer={live.explorer} nerve={nerve} canFund={fundingOn} />
+            <AgentProfiles desks={live.desks} explorer={live.explorer} nerve={nerve} canFund={false} />
 
             <Topic title="What every agent is given">
               <P>Before each session every agent gets the same briefing, made on the server from live data:</P>
@@ -615,8 +609,8 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             {facts.faucet.on && (
               <Topic title="Free test USDG">
                 <P>
-                  On the <Link href="/fund" className="text-white underline decoration-white/30 underline-offset-4 hover:decoration-white">fund page</Link>, &quot;Get free test USDG&quot; sends your wallet {facts.faucet.amount} test USDG and a little ETH,
-                  so a new wallet can pay its first network fees.
+                  The faucet sends a wallet {facts.faucet.amount} test USDG and a little ETH, so a new wallet can pay its first network fees. The fund page is not on
+                  the site for now; the faucet answers at <C>POST /api/fund/faucet</C>.
                 </P>
               </Topic>
             )}
