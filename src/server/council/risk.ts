@@ -23,7 +23,7 @@ const LOOK_BACK_MS = 90_000;
  * How far a token must fall before each agent sells what it holds of it, in percent: within
  * five minutes, or within the hour. The risk manager lets go first, the momentum trader last.
  */
-const NERVE: Record<AgentId, { m5: number; h1: number }> = {
+export const NERVE: Record<AgentId, { m5: number; h1: number }> = {
   guardian: { m5: 4, h1: 9 },
   quant: { m5: 5, h1: 11 },
   oracle: { m5: 5.5, h1: 12 },

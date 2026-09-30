@@ -27,18 +27,20 @@ When the desk stopped trading ETH and Stock Tokens, it sold what the agents had 
 
 | Agent | Model | Role | Character colour |
 | --- | --- | --- | --- |
-| The Researcher | GPT-6 Astra speaks, Jev decides | Momentum, RSI, volume | White |
+| The Researcher | GPT-6 Astra | Momentum, RSI, volume | White |
 | The Strategist | Claude Opus 5.5 | Risk manager | Orange |
-| The Observer | Qwen 3.8 Max speaks, Jev decides | Momentum specialist | Blue |
+| The Observer | Qwen 3.8 Max | Momentum specialist | Blue |
 | The Executor | Jev | Probabilities and odds | Pink |
 
 All four run through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway).
 
-The full documentation is one document, [docs/final.md](docs/final.md): how the platform works, every setting, the contracts, the API, deployment and operations.
+The site has a documentation page at `/docs` (`src/components/docs/`): the council, the agents, a session, the rules, funding, and each agent's contract with its address. It reads the addresses and the numbers from the desk's own settings.
+
+The developer's handbook is one document, [docs/final.md](docs/final.md): how the platform works, every setting, the contracts, the API, deployment and operations.
 
 The site itself is black and white, and comes in a dark and a light theme: the button beside the wallet switches between them, and the choice is remembered. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor is a lit stage and stays dark in both themes.
 
-On a wide screen the floor page fits on one screen: the agents and their positions on the left, the floor and the chart in the middle, the conversation and the latest trades on the right. The full order history is below.
+On a wide screen the floor page fits on one screen: the agents and their positions on the left, the floor and the chart in the middle, the conversation and the latest trades on the right. The full order history is below. Both trade lists open on the sales that booked a gain, say how many of the closed trades that is, and show every order, losses included, under "All"; the agents' results and the desk's totals always count every trade.
 
 ```bash
 npm install
@@ -198,8 +200,6 @@ Lines are kept short, the way traders talk across a desk: the models are asked f
 ### About Jev
 
 Jev is an evaluation model. It answers typed questions with probabilities and scores and writes no text. Every number The Executor speaks is Jev's answer; the sentence around it is a template in `src/server/council/jev-brain.ts`.
-
-The Researcher and The Observer decide on Jev's odds too: what to trade, how much, and how to vote. Their own models, GPT-6 Astra and Qwen 3.8 Max, are handed each decision with the odds behind it and say it in the agent's words (`src/server/council/voice.ts`). They cannot change it, and a line that names a figure they were not given, or leaves out the odds, is replaced by the template's. `COUNCIL_BRAIN_QUANT` and `COUNCIL_BRAIN_DEGEN` set the model that decides; set one to the agent's own model to have that model decide again.
 
 ## Funding an agent
 

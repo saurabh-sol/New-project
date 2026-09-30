@@ -19,6 +19,9 @@ export function SiteFooter() {
           <Link href="/claim" className="hover:text-white">
             Rewards
           </Link>
+          <Link href="/docs" className="hover:text-white">
+            Docs
+          </Link>
           <Link href="/kiosk" className="hover:text-white">
             Display mode
           </Link>
