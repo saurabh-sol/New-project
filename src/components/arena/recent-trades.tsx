@@ -1,10 +1,10 @@
 "use client";
 
 import { memo, useDeferredValue, useMemo, useState } from "react";
-import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
+import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import type { Fill } from "@/lib/council";
 import { inView, tally, useTradeView } from "@/lib/trade-view";
-import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
+import { hashesOf, isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { cn, fmtPrice, fmtSigned, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
 import { useFreshTrades } from "./trade-rows";
@@ -26,6 +26,7 @@ function who(f: Fill): string {
 /**
  * The latest trades, newest first, each with its transactions. The full order history is further down the page.
  * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own; their hashes are text, and open nothing.
+ * Without desk contracts the desk's own trades are shown the same way, a hash per agent made from the order (hashesOf).
  * A visitor first sees the sales that booked a gain. The line under the title says how many of the
  * closed trades that is, and "All" shows the rest.
  *
@@ -78,7 +79,8 @@ interface LineProps {
 const Line = memo(function Line({ f, onChain, since, fresh }: LineProps) {
   // Decided when the line first appears, and not taken back when the list renders again.
   const [slide] = useState(fresh);
-  const txs = f.txs && Object.keys(f.txs).length ? leaderFirst(f.leader).flatMap((a) => (f.txs?.[a] ? [{ agent: a, hash: f.txs[a]! }] : [])) : f.tx ? [{ agent: f.leader, hash: f.tx }] : [];
+  // A hash for each agent in the trade: from the agent's contract, or made from the order.
+  const txs = hashesOf(f);
   const hashes = txs.map((t) => (
     <span key={t.agent}>
       {txs.length > 1 ? `${short(AGENTS[t.agent].name)} ` : ""}
@@ -101,14 +103,12 @@ const Line = memo(function Line({ f, onChain, since, fresh }: LineProps) {
           {who(f)} · {WHY[f.reason]} · at ${fmtPrice(f.price)}
         </span>
       </div>
-      {isSample(f) ? (
+      {isSample(f) || !onChain ? (
         <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">{hashes}</div>
       ) : (
-        onChain && (
-          <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
-            {txs.length > 0 ? hashes : f.unrecorded || (since !== undefined && f.ts < since) ? "not recorded on-chain" : "recording…"}
-          </div>
-        )
+        <div className="mt-0.5 flex flex-wrap gap-x-2.5 font-mono text-[10px] text-white/35">
+          {f.txs && Object.keys(f.txs).length > 0 ? hashes : f.tx ? hashes : f.unrecorded || (since !== undefined && f.ts < since) ? "not recorded on-chain" : "recording…"}
+        </div>
       )}
     </li>
   );

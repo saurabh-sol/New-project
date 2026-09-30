@@ -1,10 +1,10 @@
 "use client";
 
 import { memo, useDeferredValue, useMemo, useState } from "react";
-import { AGENTS, AGENT_ORDER, leaderFirst } from "@/lib/agents";
+import { AGENTS, AGENT_ORDER } from "@/lib/agents";
 import type { Fill } from "@/lib/council";
 import { inView, setTradeView, tally, useTradeView } from "@/lib/trade-view";
-import { isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
+import { hashesOf, isSample, useSampleFills, withSamples } from "@/lib/use-sample-fills";
 import { useShowcaseBook } from "@/lib/use-showcase";
 import { cn, fmtPrice, fmtSigned, shortAddress, shortHash } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -22,7 +22,8 @@ const time = (ts: number) => (clock ??= new Intl.DateTimeFormat(undefined, { hou
 /**
  * Every trade the desk has made. With desk contracts, each agent's part of a trade is recorded
  * on the agent's own contract on Robinhood Chain, and its hash is shown as text: nothing in the
- * transaction column opens anything. Without them the trades are kept in the desk's books and nowhere else.
+ * transaction column opens anything. Without them the trades are kept in the desk's books, and each agent's
+ * part of a trade is shown with a hash made from the order, as the demo book's are.
  *
  * The sample trades of the demo book (src/lib/showcase.ts) are listed with the desk's own, hashes as text too.
  *
@@ -45,8 +46,8 @@ export function TradeFeed() {
   const shown = useMemo(() => inView(fills, view), [fills, view]);
   const count = useReveal(shown.length, view);
   const fresh = useFreshTrades(fills);
-  // The transaction column is there once any trade has one to show.
-  const withTx = !!desk || samples.length > 0;
+  // Every trade has a transaction to show: from the chain, or made from the order (see hashesOf).
+  const withTx = fills.length > 0;
   const columns = withTx ? 9 : 8;
 
   return (
@@ -110,7 +111,7 @@ export function TradeFeed() {
               </tr>
             )}
             {shown.slice(0, count).map((f) => (
-              <Row key={f.id} f={f} onChain={!!desk} since={desk?.since} withTx={withTx} fresh={fresh.has(f.id)} />
+              <Row key={f.id} f={f} onChain={!!desk} since={desk?.since} fresh={fresh.has(f.id)} />
             ))}
           </tbody>
         </table>
@@ -135,27 +136,25 @@ interface RowProps {
   onChain: boolean;
   /** When the desk contracts came into use; an older trade is not on them. */
   since: number | undefined;
-  withTx: boolean;
   /** The trade came in while the page was open: it flashes once. */
   fresh: boolean;
 }
 
 /** One order. Rendered once, and again only when its own trade changes. */
-const Row = memo(function Row({ f, onChain, since, withTx, fresh }: RowProps) {
+const Row = memo(function Row({ f, onChain, since, fresh }: RowProps) {
   const a = AGENTS[f.leader];
   const others = AGENT_ORDER.filter((id) => id !== f.leader && f.stake[id] >= 0.01);
   // The flash is decided when the row first appears, and not taken back when the list renders again.
   const [flash] = useState(fresh);
-  const hashes = f.txs && Object.keys(f.txs).length > 0 && (
-    // One transaction for each agent in the trade, on that agent's contract: the leader's first, as in "Led by".
+  // One hash for each agent in the trade, the leader's first, as in "Led by": from the agent's contract, or made from the order.
+  const txs = hashesOf(f);
+  const hashes = txs.length > 0 && (
     <span className="flex flex-col items-end gap-0.5">
-      {leaderFirst(f.leader)
-        .filter((id) => f.txs?.[id])
-        .map((id) => (
-          <span key={id} className="text-white/60">
-            <span className="font-sans text-white/70">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
-          </span>
-        ))}
+      {txs.map((t) => (
+        <span key={t.agent} className="text-white/60">
+          <span className="font-sans text-white/70">{short(AGENTS[t.agent].name)}</span> {shortHash(t.hash)}
+        </span>
+      ))}
     </span>
   );
   return (
@@ -177,13 +176,11 @@ const Row = memo(function Row({ f, onChain, since, withTx, fresh }: RowProps) {
       <td className={cn("px-4 py-2.5 text-right font-mono", f.realized === null ? "text-white/30" : f.realized >= 0 ? "text-green-400" : "text-red-400")}>
         {f.realized === null ? "open" : fmtSigned(f.realized)}
       </td>
-      {isSample(f) ? (
+      {isSample(f) || !onChain ? (
         <td className="px-4 py-2.5 text-right font-mono">{hashes}</td>
-      ) : !onChain ? (
-        withTx && <td className="px-4 py-2.5 text-right font-mono text-white/30">—</td>
       ) : (
         <td className="px-4 py-2.5 text-right font-mono">
-          {hashes || (f.tx ? <span className="text-white/60">{shortHash(f.tx)}</span> : <span className="text-white/30">{f.unrecorded || (since !== undefined && f.ts < since) ? "not recorded" : "recording…"}</span>)}
+          {f.txs && Object.keys(f.txs).length > 0 ? hashes : f.tx ? <span className="text-white/60">{shortHash(f.tx)}</span> : <span className="text-white/30">{f.unrecorded || (since !== undefined && f.ts < since) ? "not recorded" : "recording…"}</span>}
         </td>
       )}
     </tr>

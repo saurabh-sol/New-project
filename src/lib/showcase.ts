@@ -65,6 +65,23 @@ function seeded(seed: number) {
 }
 
 const hashOf = (next: () => number) => "0x" + Array.from({ length: 64 }, () => Math.floor(next() * 16).toString(16)).join("");
+
+/** A seed from a string: the same string always gives the same seed. */
+function seedOf(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/**
+ * A hash for each agent in one of the desk's own trades, when there are no contracts to record it on.
+ * Made from the order's id the way the sample trades' are, so an order keeps its hashes across visits.
+ * They are shown as text, like the samples', and open nothing.
+ */
+export function bookHashes(id: string, agents: readonly AgentId[]): Partial<Record<AgentId, string>> {
+  const next = seeded(seedOf(id));
+  return Object.fromEntries(agents.map((a) => [a, hashOf(next)])) as Partial<Record<AgentId, string>>;
+}
 const between = (next: () => number, lo: number, hi: number) => lo + next() * (hi - lo);
 const pick = <T,>(next: () => number, from: readonly T[]) => from[Math.floor(next() * from.length)];
 const cents = (n: number) => Math.round(n * 100) / 100;
