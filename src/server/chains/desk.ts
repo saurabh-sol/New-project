@@ -109,6 +109,27 @@ async function setCash(s: Setup, chain: OnChain, agent: AgentId, target: number)
   chain.cash[agent] = round2(chain.cash[agent] + gap);
 }
 
+/**
+ * Releases cash from an agent's contract to the treasury ahead of the books, so the treasury can pay
+ * a withdrawal it is short of. The books lower the agent's cash straight after, and `settle` closes
+ * whatever gap is left, in either direction.
+ * Must run while the treasury's queue is held: it sends as the treasury, outside the queue.
+ * Returns the USDG released, which is less than asked for if the contract has less in cash.
+ */
+export async function releaseForPayment(agent: AgentId, usd: number): Promise<number> {
+  const s = setup();
+  if (!s) return 0;
+  const desk = s.desks[agent];
+  const [cent, cash] = (await Promise.all([s.pub.readContract({ address: desk, abi, functionName: "cent" }), s.pub.readContract({ address: desk, abi, functionName: "cash" })])) as [bigint, bigint];
+  const amount = Math.min(Math.ceil(usd * 100 - 1e-6) / 100, Number(cash / cent) / 100);
+  if (amount < ONE_CENT) return 0;
+  const hash = await s.wallet.writeContract({ address: desk, abi, functionName: "release", args: [cents(amount, cent)] });
+  const receipt = await s.pub.waitForTransactionReceipt({ hash, timeout: 90_000 });
+  if (receipt.status !== "success") throw new Error(`release failed on ${agent}'s desk`);
+  memo().info = null;
+  return amount;
+}
+
 /** The transaction that recorded an agent's part of a trade, looked up by its id. */
 async function findRecord(s: Setup, agent: AgentId, id: Hex, side: Fill["side"]): Promise<Hex | null> {
   const event = abi.find((x) => x.type === "event" && x.name === (side === "BUY" ? "Bought" : "Sold"));

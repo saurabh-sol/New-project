@@ -16,7 +16,7 @@ import type { AgentFunding, FundBonus, FundEvent, FundPosition, FundResult, Fund
 import type { Prices } from "@/lib/market";
 import type { AgentId } from "@/lib/types";
 import { chain as network, chainFor, type Chain } from "../chains";
-import { settleOnChain } from "../chains/desk";
+import { releaseForPayment, settleOnChain } from "../chains/desk";
 import { FUNDING_LEVELS, fundingLevel } from "../council/skills";
 import { deskPrices } from "../council/stats";
 import { inTurn, readVersioned, trimmed, type CouncilState } from "../council/store";
@@ -332,7 +332,13 @@ export async function withdraw(
       const fee = withdrawFee(terms, out.usd);
       const received = cents(out.usd - fee);
       if (received <= 0) return { done: true, value: fail(`After the $${fee.toFixed(2)} route fee there would be nothing left to send.`) };
-      if ((await chain.treasuryBalance()) < received) return { done: true, value: fail("The treasury can't cover this withdrawal right now. Try again later.") };
+      // The agent's cash is held on its contract. What the treasury is short of is released from there first.
+      let inTreasury = await chain.treasuryBalance();
+      if (inTreasury < received) {
+        await releaseForPayment(agent, received - inTreasury).catch((e) => console.error("[fund] could not release cash for a withdrawal:", e instanceof Error ? e.message.split("\n")[0] : e));
+        inTreasury = await chain.treasuryBalance();
+      }
+      if (inTreasury < received) return { done: true, value: fail("The treasury can't cover this withdrawal right now. Try again later.") };
 
       const signed = await chain.signPayment(address, received);
       const next = trimmed({ ...state, portfolio: out.portfolio });
