@@ -1099,6 +1099,15 @@ The browser plays each session like a short scene (`src/lib/director.ts`).
 - Each agent's face follows what is happening to it. See [Agents and sessions](#the-agents-faces).
 - The chart follows whichever token the council is debating, and marks the desk's trades with arrows.
 
+#### The trade lists: gains first, everything on request
+
+The latest trades and the order history have a switch, **Gains** or **All**, and both lists follow it.
+
+- **Gains**, what a visitor sees first: only the sales that booked a gain. The list on the desk is headed "Winning trades" and says how many of the closed trades that is ("16 of 52 closed trades"). The order history says the same in a sentence, with a link to show all.
+- **All**: every order, purchases and losing sales included, with the count of orders, gains and losses.
+
+The choice is kept in the browser (`council:trades`). It changes what the two lists show and nothing else: an agent's result, the desk's totals, the positions, the chart's arrows, the conversation and the admin's `trades.log` are worked out from every trade, whichever view is on. The view is a filter in the page (`src/lib/trade-view.ts`); the server sends every order either way.
+
 #### The conversation is kept, and shown to everyone
 
 Every session is saved in the database. When anyone opens the site, on any device, the last six sessions' conversation is put on the page at once, and "Show earlier sessions" reads further back.

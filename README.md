@@ -38,7 +38,7 @@ The full documentation is one document, [docs/final.md](docs/final.md): how the 
 
 The site itself is black and white, and comes in a dark and a light theme: the button beside the wallet switches between them, and the choice is remembered. Colour is used only on the agents' characters, and green and red on gains and losses. The trading floor is a lit stage and stays dark in both themes.
 
-On a wide screen the floor page fits on one screen: the agents and their positions on the left, the floor and the chart in the middle, the conversation and the latest trades on the right. The full order history is below.
+On a wide screen the floor page fits on one screen: the agents and their positions on the left, the floor and the chart in the middle, the conversation and the latest trades on the right. The full order history is below. Both trade lists open on the sales that booked a gain, say how many of the closed trades that is, and show every order, losses included, under "All"; the agents' results and the desk's totals always count every trade.
 
 ```bash
 npm install
