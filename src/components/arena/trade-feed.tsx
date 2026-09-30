@@ -105,6 +105,7 @@ export function TradeFeed() {
               )}
               {shown.map((f) => {
                 const a = AGENTS[f.leader];
+                const others = AGENT_ORDER.filter((id) => id !== f.leader && f.stake[id] >= 0.01);
                 return (
                   <motion.tr
                     key={f.id}
@@ -120,6 +121,8 @@ export function TradeFeed() {
                         <span className="size-2 rounded-full bg-white/60" />
                         <span className="text-white/85">{a.name}</span>
                       </span>
+                      {/* who else was in the trade */}
+                      {others.length > 0 && <span className="mt-0.5 block pl-4 text-[11px] text-white/55">with {others.map((id) => short(AGENTS[id].name)).join(", ")}</span>}
                     </td>
                     <td className={cn("px-4 py-2.5 font-mono font-bold", f.side === "BUY" ? "text-green-400" : "text-red-400")}>{f.side}</td>
                     <td className="px-4 py-2.5 font-mono text-white">{f.token}</td>
@@ -139,7 +142,7 @@ export function TradeFeed() {
                         <span className="flex flex-col items-end gap-0.5">
                           {AGENT_ORDER.filter((id) => f.txs?.[id]).map((id) => (
                             <span key={id} className="text-white/60">
-                              <span className="font-sans text-white/45">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
+                              <span className="font-sans text-white/70">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)}
                             </span>
                           ))}
                         </span>
@@ -153,7 +156,7 @@ export function TradeFeed() {
                           <span className="flex flex-col items-end gap-0.5">
                             {AGENT_ORDER.filter((id) => f.txs?.[id]).map((id) => (
                               <a key={id} href={explorerLink(desk, f.txs![id]!)} target="_blank" rel="noreferrer" className="text-white/80 underline underline-offset-2 hover:text-white">
-                                <span className="font-sans text-white/45 no-underline">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)} ↗
+                                <span className="font-sans text-white/70 no-underline">{short(AGENTS[id].name)}</span> {shortHash(f.txs![id]!)} ↗
                               </a>
                             ))}
                           </span>

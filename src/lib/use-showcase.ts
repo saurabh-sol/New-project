@@ -1,6 +1,5 @@
 "use client";
 
-import { createContext, useContext } from "react";
 import { useArena } from "@/store/arena";
 import { usePrices } from "@/store/selectors";
 import { agentPnl, poolCapital, poolCash, poolEquity } from "./council";
@@ -18,27 +17,16 @@ export interface ShowcaseBook {
   pct: (id: AgentId) => number;
 }
 
-/** True inside the admin's display, where the floor shows the desk's real books instead of the demo book. */
-export const RealBook = createContext(false);
-
 /**
  * The demo book (src/lib/showcase.ts), moved by the desk's own trades: when an agent buys, the cost comes off
  * the pool; when it sells, the money comes back with what it made; and the result follows every trade, the open
- * ones at live prices. Before the desk's books arrive, it is the demo book as it stands.
- *
- * Inside RealBook it is the desk's real books: equity and results as they are, on the real capital.
+ * ones at live prices. Before the desk's books arrive, it is the demo book as it stands. The admin's display
+ * shows the same book.
  */
 export function useShowcaseBook(): ShowcaseBook {
-  const real = useContext(RealBook);
   const portfolio = useArena((s) => s.portfolio);
   const prices = usePrices();
   const capital = poolCapital(portfolio);
-  if (real) {
-    const equity = poolEquity(portfolio, prices);
-    const result = (id: AgentId) => agentPnl(portfolio, id, prices);
-    const pct = (id: AgentId) => (portfolio.capital[id] > 0 ? (result(id) / portfolio.capital[id]) * 100 : 0);
-    return { equity, pnl: equity - capital, result, pct };
-  }
   const equity = SHOWCASE_EQUITY + poolCash(portfolio) - capital;
   const pnl = SHOWCASE_PNL + poolEquity(portfolio, prices) - capital;
   const result = (id: AgentId) => showcaseResult(id) + agentPnl(portfolio, id, prices);

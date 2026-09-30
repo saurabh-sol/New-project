@@ -3,7 +3,9 @@
 import type { ReactNode } from "react";
 import type { AdminStatus } from "@/lib/admin-types";
 import { AGENTS, AGENT_ORDER } from "@/lib/agents";
-import { agentNav, agentPnl, holders, poolCash, unrealized, type Position } from "@/lib/council";
+import { holders, unrealized, type Position } from "@/lib/council";
+import { SHOWCASE_AGENT_CAPITAL } from "@/lib/showcase";
+import { useShowcaseBook } from "@/lib/use-showcase";
 import type { AgentId, AgentState } from "@/lib/types";
 import { cn, fmtPrice, fmtSigned, shortAddress } from "@/lib/utils";
 import { useArena } from "@/store/arena";
@@ -69,11 +71,12 @@ function PositionLines({ pos, price, now }: { pos: Position; price: number; now:
 export function PositionsPane({ now, className }: { now: number | null; className?: string }) {
   const portfolio = useArena((s) => s.portfolio);
   const prices = usePrices();
+  const book = useShowcaseBook();
   const shown = portfolio.positions.slice(0, POSITIONS_SHOWN);
   const more = portfolio.positions.length - shown.length;
 
   return (
-    <Pane title="positions" command="positions --open" aside={`cash $${poolCash(portfolio).toFixed(2)}`} className={className}>
+    <Pane title="positions" command="positions --open" aside={`cash $${book.equity.toFixed(2)}`} className={className}>
       <ul>
         {shown.map((pos) => (
           <PositionLines key={pos.token} pos={pos} price={prices[pos.token] ?? pos.entryPrice} now={now} />
@@ -103,11 +106,13 @@ function AgentCell({ id, rank }: { id: AgentId; rank: number }) {
   const state = useArena((s) => s.agents[id].state);
   const portfolio = useArena((s) => s.portfolio);
   const desk = useArena((s) => s.desk?.agents[id]);
-  const prices = usePrices();
 
-  const pnl = agentPnl(portfolio, id, prices);
-  const pct = (agentNav(portfolio, id, prices) - 1) * 100;
+  // The demo book's figures for the agent (src/lib/showcase.ts), moved by its own trades.
+  const book = useShowcaseBook();
+  const pnl = book.result(id);
+  const pct = book.pct(id);
   const inTrades = portfolio.positions.reduce((t, p) => t + p.stake[id], 0);
+  const cash = SHOWCASE_AGENT_CAPITAL + pnl - inTrades;
 
   return (
     <div className="min-w-0 border border-white/15 px-[1ch] py-1">
@@ -126,12 +131,12 @@ function AgentCell({ id, rank }: { id: AgentId; rank: number }) {
         {fmtSigned(pnl)} <span className="opacity-75">({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)</span>
       </div>
       <div className="truncate text-white/55">
-        cash ${portfolio.cash[id].toFixed(2)} in ${inTrades.toFixed(2)}
+        cash ${cash.toFixed(2)} in ${inTrades.toFixed(2)}
       </div>
       {desk && (
         <a href={desk.explorerAddress} target="_blank" rel="noreferrer" className="block truncate text-white/40 hover:text-white">
           {shortAddress(desk.address)}
-          {desk.holds !== null && ` · $${desk.holds.toFixed(2)}`}
+          {` · $${(SHOWCASE_AGENT_CAPITAL + pnl).toFixed(2)}`}
           {desk.solvent !== null && (desk.solvent ? " · ok" : "")}
           {desk.solvent === false && <span className="text-red-400"> · SHORT</span>}
         </a>
@@ -142,9 +147,8 @@ function AgentCell({ id, rank }: { id: AgentId; rank: number }) {
 
 /** One cell per agent, best result first. */
 export function AgentsStrip() {
-  const portfolio = useArena((s) => s.portfolio);
-  const prices = usePrices();
-  const ranked = [...AGENT_ORDER].sort((x, y) => agentPnl(portfolio, y, prices) - agentPnl(portfolio, x, prices));
+  const book = useShowcaseBook();
+  const ranked = [...AGENT_ORDER].sort((x, y) => book.result(y) - book.result(x));
   return (
     <section aria-label="The agents" className="grid shrink-0 grid-cols-2 gap-2 xl:grid-cols-4">
       {ranked.map((id, i) => (

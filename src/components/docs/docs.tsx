@@ -66,7 +66,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function Docs({ facts }: { facts: DocsFacts }) {
-  const { live, other, testnet, terms, rules, board, nerve, fundingOn, rewardsOn } = facts;
+  const { live, testnet, terms, rules, board, nerve, fundingOn, rewardsOn } = facts;
   const session = every(facts.sessionMinutes);
   const researcher = live.desks.quant;
 
@@ -277,15 +277,6 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             <Topic id="addresses" title={`Where they are: ${live.name}`}>
               <P>These are the contracts the site uses. Each address opens on the block explorer, where its balance, its transactions and its source can be read.</P>
               <Addresses on={live} rows={deskRows(live)} />
-            </Topic>
-
-            <Topic title={`Also deployed: ${testnet ? "Robinhood Chain mainnet" : other.name}`}>
-              <P>
-                {testnet
-                  ? "The same contracts are deployed on Robinhood Chain mainnet, one for each agent. They hold nothing, and the site does not use them."
-                  : "The testnet desk, where the contracts were first run. It holds test USDG only."}
-              </P>
-              <Addresses on={other} rows={deskRows(other)} />
             </Topic>
 
             <Topic title="What an agent's desk does">
@@ -645,7 +636,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
           <Chapter id="network" n={9} title="Network and wallets" lead={`${BRAND} runs on Robinhood Chain only, an Ethereum layer 2. Fees are paid in ETH and are a small fraction of a cent.`}>
             <Table
               head={["Network", "Chain ID", "RPC", "Explorer"]}
-              rows={[live, other].map((d) => [
+              rows={[live].map((d) => [
                 <>
                   {d.name}
                   {d === live && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-white/70">The site runs here</span>}

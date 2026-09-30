@@ -64,30 +64,35 @@ const asAddress = (raw: string | undefined) => (raw && isAddress(raw, { strict: 
 export function docsFacts(): DocsFacts {
   const env = process.env;
   const c = connection();
-  const known = DEPLOYED[c.network];
-  const live: Deployment = {
-    ...known,
-    desks: c.desks ?? known.desks,
-    shares: asAddress(env.DESK_SHARES) ?? known.shares,
-    treasury: c.account?.address ?? known.treasury,
-    usdg: c.token ?? known.usdg,
-    usdgSymbol: env.TOKEN_SYMBOL || known.usdgSymbol,
-  };
+  // The page describes Robinhood Chain mainnet only, whatever network the server runs on. The server's own
+  // settings come over the deployed addresses only when it runs there.
+  const known = DEPLOYED.mainnet;
+  const live: Deployment =
+    c.network === "mainnet"
+      ? {
+          ...known,
+          desks: c.desks ?? known.desks,
+          shares: asAddress(env.DESK_SHARES) ?? known.shares,
+          treasury: c.account?.address ?? known.treasury,
+          usdg: c.token ?? known.usdg,
+          usdgSymbol: env.TOKEN_SYMBOL || known.usdgSymbol,
+        }
+      : known;
   const limits = boardLimits();
   const rewards = rewardsConfig();
 
   return {
     live,
-    other: DEPLOYED[c.testnet ? "mainnet" : "testnet"],
-    testnet: c.testnet,
+    other: DEPLOYED.testnet,
+    testnet: false,
     wallets: realTrading() ? (Object.fromEntries(AGENT_ORDER.map((a) => [a, getAddress(env[`WALLET_${a.toUpperCase()}`]!)])) as Record<AgentId, string>) : null,
     maxCostPct: maxCostPct(),
     sessionMinutes: Math.round(councilConfig().intervalMs / 60_000),
     terms: fundConfig().terms,
-    fundingOn: c.testnet || env.ALLOW_MAINNET_FUNDING === "true",
+    fundingOn: env.ALLOW_MAINNET_FUNDING === "true",
     rewardUsd: rewards.amount,
     rewardsOn: rewards.dailyCap > 0,
-    faucet: { on: c.testnet && env.FAUCET_ENABLED === "true", amount: Number(env.FAUCET_AMOUNT) > 0 ? Number(env.FAUCET_AMOUNT) : 100 },
+    faucet: { on: false, amount: Number(env.FAUCET_AMOUNT) > 0 ? Number(env.FAUCET_AMOUNT) : 100 },
     board: { ...limits, ponsOnly: boardSource() === "pons" },
     levels: FUNDING_LEVELS.map(({ from, label }) => ({ from, label })),
     nerve: NERVE,

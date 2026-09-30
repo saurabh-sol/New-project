@@ -6,12 +6,10 @@ import { Floor } from "@/components/arena/arena";
 import { Logo } from "@/components/site/logo";
 import { Ticker } from "@/components/site/ticker";
 import { BRAND } from "@/lib/brand";
-import { poolCapital } from "@/lib/council";
 import type { Phase } from "@/lib/types";
-import { RealBook } from "@/lib/use-showcase";
+import { useShowcaseBook } from "@/lib/use-showcase";
 import { cn, fmtSigned } from "@/lib/utils";
 import { useArena } from "@/store/arena";
-import { usePoolEquity } from "@/store/selectors";
 import { AgentsStrip, PositionsPane, SystemPane } from "./panes";
 import { TradeLog } from "./trade-log";
 import { useAdminStatus, useNow } from "./use-status";
@@ -40,9 +38,8 @@ function TopBar({ user, now }: { user: string; now: number | null }) {
   const mode = useArena((s) => s.mode);
   const nextRoundAt = useArena((s) => s.nextRoundAt);
   const skew = useArena((s) => s.clockSkew);
-  const portfolio = useArena((s) => s.portfolio);
-  const equity = usePoolEquity();
-  const pnl = equity - poolCapital(portfolio);
+  // The demo book (src/lib/showcase.ts), moved by the desk's own trades: the same figures as the public page.
+  const { equity, pnl } = useShowcaseBook();
 
   const left = nextRoundAt && now ? Math.max(0, Math.round((nextRoundAt - (now + skew)) / 1000)) : null;
   const active = PHASES.indexOf(phase);
@@ -136,10 +133,7 @@ export function AdminDisplay({ user }: { user: string }) {
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 p-2 lg:grid-cols-[minmax(0,1fr)_minmax(34rem,36vw)]">
         <div className="flex min-h-0 flex-col gap-2">
           <div className="flex min-h-0 flex-1 items-center justify-center lg:[container-type:size]">
-            {/* The admin's floor shows the real books, not the demo book the public floor shows. */}
-            <RealBook.Provider value={true}>
-              <Floor className="!rounded-none lg:!aspect-auto lg:!h-[min(100cqh,calc(100cqw*11/16))] lg:!w-[min(100cqw,calc(100cqh*16/11))]" />
-            </RealBook.Provider>
+            <Floor className="!rounded-none lg:!aspect-auto lg:!h-[min(100cqh,calc(100cqw*11/16))] lg:!w-[min(100cqw,calc(100cqh*16/11))]" />
           </div>
           <AgentsStrip />
         </div>
