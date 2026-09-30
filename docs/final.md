@@ -920,6 +920,8 @@ Funding is for the testnet. It refuses to run on mainnet unless `ALLOW_MAINNET_F
 
 Withdrawals are paid from the agent's free cash. Cash inside an open position becomes free when that position closes.
 
+The payment itself leaves the treasury. The agent's cash is held on its desk contract, so when the treasury holds less than the payment, the contract releases the difference to the treasury first, and then the payment is sent.
+
 #### The faucet
 
 On the testnet, with `FAUCET_ENABLED=true`, "Get free test USDG" sends a wallet 100 test USDG (`FAUCET_AMOUNT`) and a little ETH, so a new wallet can pay its first network fees.
@@ -1069,6 +1071,7 @@ The page states the desk's own numbers and does not keep a copy of them. `src/se
 | Stops and targets | `STOP_RANGE` and `TARGET_RANGE` in `brain.ts` |
 | How far a token falls before each agent sells | `NERVE` in `risk.ts` |
 | The board's limits, the session interval, the reward, the faucet | Their own settings |
+| Whether funding and rewards are on | `ALLOW_MAINNET_FUNDING` on mainnet, and `DAILY_CLAIM_CAP`. Where one is off the page says so, and leaves out what cannot be done |
 
 What each contract holds, and whether it is fully backed, is added in the browser from the desk's state, the same figures the agents' cards show.
 

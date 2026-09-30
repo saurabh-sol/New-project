@@ -31,7 +31,11 @@ export interface DocsFacts {
   maxCostPct: number;
   sessionMinutes: number;
   terms: FundingTerms;
+  /** Whether people can fund an agent. On mainnet that is off unless the desk's owner has switched it on. */
+  fundingOn: boolean;
   rewardUsd: number;
+  /** Whether rewards are being paid. */
+  rewardsOn: boolean;
   faucet: { on: boolean; amount: number };
   board: { size: number; minLiquidityUsd: number; minVolumeUsd: number; minAgeHours: number; ponsOnly: boolean };
   /** Users' funding from which an agent is given each level of analysis. */
@@ -70,6 +74,7 @@ export function docsFacts(): DocsFacts {
     usdgSymbol: env.TOKEN_SYMBOL || known.usdgSymbol,
   };
   const limits = boardLimits();
+  const rewards = rewardsConfig();
 
   return {
     live,
@@ -79,7 +84,9 @@ export function docsFacts(): DocsFacts {
     maxCostPct: maxCostPct(),
     sessionMinutes: Math.round(councilConfig().intervalMs / 60_000),
     terms: fundConfig().terms,
-    rewardUsd: rewardsConfig().amount,
+    fundingOn: c.testnet || env.ALLOW_MAINNET_FUNDING === "true",
+    rewardUsd: rewards.amount,
+    rewardsOn: rewards.dailyCap > 0,
     faucet: { on: c.testnet && env.FAUCET_ENABLED === "true", amount: Number(env.FAUCET_AMOUNT) > 0 ? Number(env.FAUCET_AMOUNT) : 100 },
     board: { ...limits, ponsOnly: boardSource() === "pons" },
     levels: FUNDING_LEVELS.map(({ from, label }) => ({ from, label })),
