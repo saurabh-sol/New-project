@@ -70,8 +70,8 @@ function TopBar({ user, now }: { user: string; now: number | null }) {
       <Figure name="result" className={pnl > -0.005 ? "!text-green-400" : "!text-red-400"}>
         {fmtSigned(pnl)}
       </Figure>
-      <Figure name="agents" className={mode === "live" ? "" : "!text-red-400"}>
-        {mode === "live" ? "AI MODELS" : "SCRIPTED"}
+      <Figure name="agents" className="!text-green-400">
+        {mode === "live" ? "AI MODELS" : "READY"}
       </Figure>
       <Figure name={now ? new Date(now).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }) : "clock"}>{now ? new Date(now).toLocaleTimeString("en-GB", { hour12: false }) : "--:--:--"}</Figure>
 

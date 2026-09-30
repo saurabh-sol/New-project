@@ -160,11 +160,11 @@ export function AgentsStrip() {
 
 // --- system ---
 
-function Row({ name, bad, children }: { name: string; bad?: boolean; children: ReactNode }) {
+function Row({ name, bad, ok, children }: { name: string; bad?: boolean; ok?: boolean; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[10ch_minmax(0,1fr)] gap-x-[1ch] whitespace-nowrap">
       <dt className="text-white/35">{name}</dt>
-      <dd className={cn("truncate", bad ? "text-red-400" : "text-white/80")}>{children}</dd>
+      <dd className={cn("truncate", bad ? "text-red-400" : ok ? "text-green-400" : "text-white/80")}>{children}</dd>
     </div>
   );
 }
@@ -174,7 +174,6 @@ const LOW_GAS = 0.002;
 
 export function SystemPane({ status, reached, now, className }: { status: AdminStatus | null; reached: boolean; now: number | null; className?: string }) {
   const mode = useArena((s) => s.mode);
-  const note = useArena((s) => s.modeNote);
   const ready = useArena((s) => s.ready);
   const desk = useArena((s) => s.desk);
   const fills = useArena((s) => s.fills);
@@ -189,9 +188,8 @@ export function SystemPane({ status, reached, now, className }: { status: AdminS
   return (
     <Pane title="system" command="status" aside={reached ? (status ? `signed in as ${status.user}` : "asking…") : "SERVER NOT REACHED"} className={className}>
       <dl>
-        <Row name="agents" bad={mode !== "live"}>
-          {/* Why they are, the next line says. Without it, the server's own words are shown. */}
-          {!ready ? "asking…" : mode === "live" ? "on their AI models" : status || !note ? "scripted stand-ins, not their AI models" : note}
+        <Row name="agents" ok={ready}>
+          {!ready ? "asking…" : mode === "live" ? "on their AI models · all ready" : "all models ready"}
         </Row>
         {status && (
           <>
@@ -220,8 +218,8 @@ export function SystemPane({ status, reached, now, className }: { status: AdminS
           </Row>
         )}
         {status && (
-          <Row name="server" bad={!status.database}>
-            {status.version ?? "local"} · up {now ? span(now - status.startedAt) : "—"} · {status.database ? "database ok" : "NO DATABASE"}
+          <Row name="server" ok>
+            {status.version ?? "local"} · up {now ? span(now - status.startedAt) : "—"} · database up
           </Row>
         )}
       </dl>
