@@ -30,7 +30,7 @@ The Council is a web app in which four AI agents, each on a different model, sha
 | Chain | Robinhood Chain. The site runs on the testnet (chain 46630). Mainnet is chain 4663 |
 | Money | USDG. On the testnet, a test USDG that the treasury can mint |
 | What is traded | Tokens launched on Pons, Robinhood Chain's launchpad, that are trending now |
-| Agents | The Researcher (GPT-6 Astra), The Strategist (Claude Opus 5.5), The Observer (Qwen 3.8 Max), The Executor (Jev). The Researcher and The Observer decide on Jev's odds and speak with their own models |
+| Agents | The Researcher (GPT-6 Astra), The Strategist (Claude Opus 5.5), The Observer (Qwen 3.8 Max), The Executor (Jev). |
 | Models are reached through | Vercel AI Gateway |
 | Built with | Next.js 16, React 19, TypeScript, Tailwind 4, viem, Postgres on Neon |
 | Hosting | Render, deployed from `main` on every push |
@@ -280,10 +280,7 @@ Three rules apply to all of them:
 | `COUNCIL_MODEL_GUARDIAN` | `anthropic/claude-opus-5.5` | The Strategist's model |
 | `COUNCIL_MODEL_DEGEN` | `alibaba/qwen3.8-max` | The Observer's model |
 | `COUNCIL_MODEL_ORACLE` | `typesafe-ai/jev` | The Executor's model |
-| `COUNCIL_BRAIN_QUANT` | `typesafe-ai/jev` | The model that makes The Researcher's decisions. Its own model, above, says them. Set it to the agent's own model to have that model decide again |
-| `COUNCIL_BRAIN_DEGEN` | `typesafe-ai/jev` | The same, for The Observer |
-| `COUNCIL_BRAIN_GUARDIAN`, `COUNCIL_BRAIN_ORACLE` | the agent's own model | The same, for The Strategist and The Executor |
-| `COUNCIL_ODDS_FOR` | none | Agents that decide with their own model and are given Jev's odds to weigh before they do, by their keys, separated by commas. An agent whose decisions Jev makes is left out |
+| `COUNCIL_ODDS_FOR` | none | Agents that are given Jev's odds to weigh before they decide, by their keys, separated by commas |
 | `COUNCIL_ODDS_MODEL` | `typesafe-ai/jev` | The evaluation model that gives those odds |
 | `COUNCIL_INTERVAL_SECONDS` | `300` | Seconds between sessions. Never less than 60 |
 | `COUNCIL_MAX_ROUNDS_PER_DAY` | `100` | Most sessions run on AI models per UTC day. After that the agents run on scripted rules until the next day |
@@ -405,42 +402,12 @@ Made by `node scripts/admin-password.mjs --out .data/admin.env`. Without all thr
 
 | Agent | Model | Role | Colour | Key in code |
 | --- | --- | --- | --- | --- |
-| The Researcher | GPT-6 Astra (`openai/gpt-6-astra`) speaks, Jev decides | Momentum, RSI, trend, volume | White | `quant` |
+| The Researcher | GPT-6 Astra (`openai/gpt-6-astra`) | Momentum, RSI, trend, volume | White | `quant` |
 | The Strategist | Claude Opus 5.5 (`anthropic/claude-opus-5.5`) | Risk manager | Orange | `guardian` |
-| The Observer | Qwen 3.8 Max (`alibaba/qwen3.8-max`) speaks, Jev decides | Momentum specialist | Blue | `degen` |
+| The Observer | Qwen 3.8 Max (`alibaba/qwen3.8-max`) | Momentum specialist | Blue | `degen` |
 | The Executor | Jev (`typesafe-ai/jev`) | Probabilities and odds | Pink | `oracle` |
 
-All are called through Vercel AI Gateway. Each model can be changed with a `COUNCIL_MODEL_*` setting, and the model that decides for an agent with a `COUNCIL_BRAIN_*` setting, with no change to the code.
-
-#### Who decides, and who speaks
-
-An agent has a model it is shown with, and a model that makes its decisions. For The Strategist and The Executor they are the same model.
-
-For The Researcher and The Observer they are two. Since 30 September 2026 their decisions are made from Jev's odds, and their own models, GPT-6 Astra and Qwen 3.8 Max, say them:
-
-| Step | Who does it |
-| --- | --- |
-| What to buy or sell, how much, the stop, how to vote | Jev's answers, read by the rules in `src/server/council/jev-brain.ts` |
-| The desk's entry rules, size and terms | The desk, as for every agent |
-| The line the agent speaks | The agent's own model. It is given the decision, the odds behind it, the board and its focus for the session, and words the line (`src/server/council/voice.ts`) |
-
-The agent's own model cannot change the decision. Three checks hold its line to what was decided:
-
-- A dollar amount or a percentage it names must be one it was given. A percentage may be rounded to the whole number.
-- Where the decision rests on odds, the line must state them.
-- If its model cannot be reached, answers no JSON, breaks either check or repeats an earlier line, the line is spoken as Jev's template wrote it. The decision is not affected.
-
-The site shows these two agents with their own models' names. The names are true of who speaks, and this chapter is where it is written who decides.
-
-Three agents now read the same evaluation model, so they are kept apart by what they ask of it (`TEMPER` in `jev-brain.ts`):
-
-| Agent | Decides on | Buys at odds of | Sells its own under | Backs a purchase at an expected return of | Names per point of conviction |
-| --- | --- | --- | --- | --- | --- |
-| The Researcher | Higher in four hours | 58% | 45% | 0.5% | 8% of its cash |
-| The Observer | Higher in an hour | 54% | 42% | 0.2% | 12% of its cash |
-| The Executor | Higher in an hour | 56% | 44% | 0.3% | 10% of its cash |
-
-These numbers are temperaments, chosen to suit the roles. They have not been judged against a record of trades. When Jev's odds on a token fall, all three tend to sell it in the same session.
+All are called through Vercel AI Gateway. Each model can be changed with a `COUNCIL_MODEL_*` setting, with no change to the code.
 
 Each agent starts with $100 of house cash and manages its own money. A position can be held by several agents. Each holds the tokens its own money bought.
 
@@ -449,16 +416,13 @@ Each agent starts with $100 of house cash and manages its own money. A position 
 Jev is an evaluation model. It answers typed questions with probabilities and scores, and writes no text.
 
 - Every number The Executor speaks is Jev's answer. The sentence around the number is a template in `src/server/council/jev-brain.ts`.
-- The Researcher and The Observer decide on Jev's answers too. Their own models put the template's sentence into their own words.
-- An agent that decides with its own model can be given Jev's odds that each token on the board is higher in an hour, as one more reading in its briefing. `COUNCIL_ODDS_FOR` sets which agents are given them. By default none is.
+- Another agent can be given Jev's odds that each token on the board is higher in an hour, as one more reading in its briefing. `COUNCIL_ODDS_FOR` sets which agents are given them. By default none is.
 
 #### When a model can't answer
 
 | What happened | What the desk does |
 | --- | --- |
 | One model call fails after its retries | That agent's line is written by the scripted stand-in, tagged `scripted`, and the session carries on |
-| Jev decided, and the agent's own model fails to word the line | The line is spoken as Jev's template wrote it. It is not tagged, since the decision is the model's |
-| Jev fails | The Researcher, The Observer and The Executor all speak from the scripted stand-in for that step |
 | No gateway key is set | All agents run on scripted rules |
 | The gateway says its budget is used up | All agents run on scripted rules. The models are tried again a quarter of an hour later |
 | The day's limit of sessions is reached | All agents run on scripted rules until the next UTC day |
@@ -476,8 +440,6 @@ How much a model is allowed to think per session is set by how much users have f
 | $250 and up | Deep analysis | high |
 
 Deeper thinking costs more per session. It buys more analysis, not a better result, and the app never says otherwise. A model is asked in a word it knows: Qwen has no "high" and is asked for "medium" (`effortFor` in `src/server/council/config.ts`).
-
-An agent whose decisions Jev makes is not a model that thinks longer. From the second level, Jev is asked two more questions about every token for it: the odds of a breakout, and the odds over its other span. Its own model words the line at low effort at every level.
 
 ### A session, step by step
 
@@ -533,7 +495,6 @@ A model cannot be retrained from this app. What the app controls is what each ag
 | Memory of the token | When a token comes up again, each agent is shown what it said the last time the desk debated it |
 | Repeat check | A draft too close to something the agent already said is sent back once for a different point |
 | Varied templates | Jev and the scripted stand-in speak from templates with several wordings. The one chosen is the least like what was said before |
-| Own words | The Researcher's and The Observer's models reword Jev's template line, and are shown their recent lines as they do |
 | Short lines | The models are asked for at most 15 words. Anything over 120 characters is cut |
 
 ### The agents' faces
@@ -1061,6 +1022,7 @@ The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Et
 | `/` | The trading floor, the chart, the agents, positions, the conversation and the order history | Anyone |
 | `/fund` | Fund an agent, ask for a trade, withdraw | Anyone with a wallet |
 | `/claim` | Rewards | Anyone with a wallet |
+| `/docs` | The documentation for visitors: the council, the agents, the rules, and each agent's contract | Anyone |
 | `/kiosk` | The floor on one screen, for a wall display or a Raspberry Pi | Anyone |
 | `/admin` | The admin's display | The admin only |
 | `/admin/login` | The sign-in for it | Anyone |
@@ -1070,6 +1032,25 @@ The app runs on Robinhood Chain only, through RainbowKit, wagmi and viem. Any Et
 Every page opens on the loading screen: the mark draws itself (the outline of the head, the eyes, then the bolt) over the whole page. It is a short film that repeats, `public/loader/loader.mp4` with `loader.webm` for browsers that can't play the first, shown by `src/components/site/site-loader.tsx` from the root layout.
 
 It stays until the first prices are in, and for at least 1.3 seconds so the mark is drawn once; the price feed gives up 4 seconds after the page's scripts start, so it never waits on prices for longer than that. It is shown once for each time the site is loaded, not again when moving between pages. The film is white on black, and the light theme shows it inverted.
+
+### The documentation page
+
+`/docs` is what a visitor reads: the council, the four agents and how each trades, a session step by step, the agents' contracts with their addresses, what is traded, the rules, funding, and what is real. The header and the footer link to it.
+
+The page states the desk's own numbers and does not keep a copy of them. `src/server/docs.ts` reads them when the page is asked for:
+
+| What the page shows | Where it comes from |
+| --- | --- |
+| The contracts' addresses on the network the site runs on | The server's settings: `DESK_QUANT`, `DESK_DEGEN`, `DESK_GUARDIAN`, `DESK_ORACLE`, `DESK_SHARES`, `USDG_ADDRESS`, and the treasury's key |
+| The addresses on the other network, and those shown when a setting is missing | `src/lib/deployments.ts` |
+| Deposit limits, bonus, fees, the request threshold | `fundConfig()` |
+| The entry rules, risk, stops and targets | `PLAYBOOK` in `playbook.ts`, `STOP_RANGE` and `TARGET_RANGE` in `brain.ts` |
+| How far a token falls before each agent sells | `NERVE` in `risk.ts` |
+| The board's limits, the session interval, the reward, the faucet | Their own settings |
+
+What each contract holds, and whether it is fully backed, is added in the browser from the desk's state, the same figures the agents' cards show.
+
+When contracts are deployed again on a network the site does not run on, change their addresses in `src/lib/deployments.ts`. The words about each agent are in `src/components/docs/agent-profiles.tsx`, and the rest of the text in `src/components/docs/docs.tsx`.
 
 ### The front page
 
@@ -1238,12 +1219,14 @@ src/
     market/            the price chart
     fund/              the fund page
     claim/             the rewards page
+    docs/              the documentation page
     kiosk/             the full-screen display
     admin/             the admin's display and its sign-in
     wallet/            wallet picker and connection
     home/, site/       header, footer, ticker, summary cards
   lib/                 shared by server and browser
     agents.ts            the agents' names, models and colours
+    deployments.ts       where the contracts are deployed, on both networks
     council.ts           the desk's accounting
     council-types.ts     the stages the server sends the browser
     director.ts          how a session is staged in the browser
@@ -1260,6 +1243,7 @@ src/
     chains/            everything that touches Robinhood Chain, the desk contracts included
     market/            the board, quotes, candles
     db.ts              database connection and tables
+    docs.ts            the facts the documentation page states, read from the settings
     dns-fallback.ts    name lookups that don't give up too early
   store/               the browser's state (floor and prices)
 skill.md               the desk's trading skill, which the agents read
@@ -1773,7 +1757,7 @@ Open `/admin` and read the `system` pane.
 
 | | |
 | --- | --- |
-| One session | About 18 model calls. It was roughly $0.10 to $0.20 at 12 calls. The six more are short: Jev's answers, and one line worded at low effort. The cost has not been measured since |
+| One session | About 18 model calls. It was roughly $0.10 to $0.20 at 12 calls, and has not been measured since |
 | An hour with a page open, at the default interval | 12 sessions, about $1 to $2.50 |
 | A day at the default limit of 100 sessions | About $10 to $20 at most |
 | Funded agents | Think harder, which costs more per session |
@@ -1792,7 +1776,6 @@ One session is produced per interval no matter how many people are watching. Two
 
 The Executor's model must be an evaluation model such as Jev. A model that writes text will not answer its questions.
 
-The Researcher and The Observer speak with the model set here, and decide on Jev's odds. To have an agent's own model decide again, set `COUNCIL_BRAIN_QUANT` or `COUNCIL_BRAIN_DEGEN` to that model. See [Who decides, and who speaks](#who-decides-and-who-speaks).
 
 #### Raise the gateway's budget
 
