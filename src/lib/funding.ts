@@ -11,7 +11,7 @@ export interface FundingTerms {
   /** Route fee on withdrawal: the larger of a flat minimum and a percentage. */
   feeMin: number;
   feePct: number;
-  /** Hours the deposit must stay in before the bonus is paid. Withdrawing earlier forfeits it. */
+  /** Hours the deposit must stay in before the bonus is paid. 0 pays it straight after the deposit. */
   bonusLockHours: number;
   /** A trade request that comes with at least this much funding binds the agent to take the trade. */
   commitFrom: number;
@@ -28,7 +28,7 @@ export const DEFAULT_TERMS: FundingTerms = {
   ],
   feeMin: 1,
   feePct: 2,
-  bonusLockHours: 168,
+  bonusLockHours: 0,
   commitFrom: 20,
 };
 

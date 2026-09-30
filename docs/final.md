@@ -349,7 +349,7 @@ Written by `scripts/deploy-desks.mjs`. Trades are recorded on-chain only when al
 | --- | --- | --- |
 | `FUND_MIN_DEPOSIT` | `5` | Smallest deposit, in USD |
 | `FUND_MAX_DEPOSIT` | `500` | Largest deposit per agent, in USD |
-| `BONUS_LOCK_HOURS` | `168` | Hours a first deposit must stay in before its bonus is paid. `0` pays at once, which lets anyone farm the bonus with new wallets |
+| `BONUS_LOCK_HOURS` | `0` | Hours a first deposit must stay in before its bonus is paid. `0` pays at once |
 | `BONUS_DAILY_BUDGET_USD` | `50` | Most bonus money promised per UTC day |
 | `WITHDRAW_FEE_MIN_USD` | `1` | The route fee on withdrawal is the larger of this |
 | `WITHDRAW_FEE_PCT` | `2` | and this percentage |

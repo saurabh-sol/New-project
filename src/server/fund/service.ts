@@ -257,9 +257,10 @@ async function grantBonus(chain: Chain, cfg: FundConfig, address: string, agent:
   return row ? toBonus(row) : null;
 }
 
-/** Pays the bonus once its lock has passed, provided the deposit that earned it is still in. */
+/** Pays the bonus once its lock has passed, provided the deposit that earned it is still in. With no lock, a bonus promised under an earlier lock is due now. */
 async function payBonus(chain: Chain, address: string): Promise<void> {
   const sql = await db();
+  if (fundConfig().terms.bonusLockHours === 0) await sql`update fund_bonuses set unlock_at = now() where wallet = ${address} and status = 'locked' and unlock_at > now()`;
   const [bonus] = await sql`select * from fund_bonuses where wallet = ${address} and status = 'locked' and unlock_at <= now()`;
   if (!bonus) return;
   const [pos] = await sql`select principal from fund_positions where wallet = ${address} and agent = ${bonus.agent}`;
