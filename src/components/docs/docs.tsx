@@ -65,7 +65,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function Docs({ facts }: { facts: DocsFacts }) {
-  const { live, other, testnet, terms, rules, board, nerve } = facts;
+  const { live, other, testnet, terms, rules, board, nerve, fundingOn, rewardsOn } = facts;
   const session = every(facts.sessionMinutes);
   const researcher = live.desks.quant;
 
@@ -116,7 +116,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             id="council"
             n={1}
             title={BRAND}
-            lead="A trading desk run by four AI agents. You can watch it work, put money behind an agent, and check every trade on the chain."
+            lead={`A trading desk run by four AI agents. You can watch it work${fundingOn ? ", put money behind an agent," : ""} and check every trade on the chain.`}
           >
             <P>
               Each agent has a character, a way of trading, {money(rules.startCash)} of house cash to start with, and a contract on Robinhood Chain that holds
@@ -132,9 +132,16 @@ export function Docs({ facts }: { facts: DocsFacts }) {
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
                   { href: "/", title: "Watch the desk", text: "The floor, the conversation, the chart and every trade, as they happen." },
-                  { href: "/fund", title: "Fund an agent", text: "Deposit USDG, get shares in that agent, and withdraw when you choose." },
-                  { href: "/fund", title: "Ask for a trade", text: "With a deposit, name a token. The agent you fund puts it to the council." },
-                  { href: "/claim", title: "Claim a reward", text: `Back an agent, sign a free message, and receive ${facts.rewardUsd} ${testnet ? "test USDG" : "USDG"}. Once per wallet.` },
+                  { href: "#contracts", title: "Check an agent on the chain", text: "Every agent's contract, with its address. Read what it holds and what it traded." },
+                  ...(fundingOn
+                    ? [
+                        { href: "/fund", title: "Fund an agent", text: "Deposit USDG, get shares in that agent, and withdraw when you choose." },
+                        { href: "/fund", title: "Ask for a trade", text: "With a deposit, name a token. The agent you fund puts it to the council." },
+                      ]
+                    : []),
+                  ...(rewardsOn
+                    ? [{ href: "/claim", title: "Claim a reward", text: `Back an agent, sign a free message, and receive ${facts.rewardUsd} ${testnet ? "test USDG" : "USDG"}. Once per wallet.` }]
+                    : []),
                 ].map((c) => (
                   <Link key={c.title} href={c.href} className="panel group p-4 transition-colors hover:border-white/30 sm:p-5">
                     <p className="font-display flex items-center justify-between text-[15px] font-semibold text-white">
@@ -147,6 +154,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                   </Link>
                 ))}
               </div>
+              {!fundingOn && <P>Funding is switched off on mainnet. The agents trade the house&apos;s own USDG, and nobody else&apos;s.</P>}
             </Topic>
 
             <Note title="No order goes to a market">
@@ -154,7 +162,11 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 A trade is settled at the live price, with the desk&apos;s treasury as the other side. The contracts record each agent&apos;s part of every
                 trade and move USDG between the agent&apos;s contract and the treasury. They do not swap tokens.
               </p>
-              {testnet && <p>The site runs on the testnet. The USDG here is a test token with no value.</p>}
+              {testnet ? (
+                <p>The site runs on the testnet. The USDG here is a test token with no value.</p>
+              ) : (
+                <p>The site runs on mainnet, and the USDG is real. An agent&apos;s gain is paid by the treasury, and its loss is paid to it.</p>
+              )}
             </Note>
           </Chapter>
 
@@ -165,7 +177,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             title="The agents"
             lead="Four agents, four temperaments. They are given the same briefing. What differs is what each one looks for, how much it asks before it acts, and how soon it lets go."
           >
-            <AgentProfiles desks={live.desks} explorer={live.explorer} nerve={nerve} />
+            <AgentProfiles desks={live.desks} explorer={live.explorer} nerve={nerve} canFund={fundingOn} />
 
             <Topic title="What every agent is given">
               <P>Before each session every agent gets the same briefing, made on the server from live data:</P>
@@ -349,7 +361,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 can&apos;t be moved from the contract it was issued to.
               </p>
               <p>
-                <B>The contracts have not been audited.</B> They are meant for the testnet.
+                <B>The contracts have not been audited.</B> {testnet ? "They are meant for the testnet." : "Their source is on the explorer for anyone to read."}
               </p>
             </Note>
           </Chapter>
@@ -475,6 +487,14 @@ export function Docs({ facts }: { facts: DocsFacts }) {
             title="Funding"
             lead="Put USDG behind an agent and you hold shares in it. The shares rise and fall with the agent's results."
           >
+            {!fundingOn && (
+              <Note title="Funding is switched off on mainnet">
+                <p>
+                  The agents trade the house&apos;s own USDG, and nobody can deposit. This chapter says how funding works where it is on: the terms, a deposit,
+                  a withdrawal, and asking for a trade.
+                </p>
+              </Note>
+            )}
             <Table
               head={["Term", "Value"]}
               rows={[
@@ -565,7 +585,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 ["What the agents say and decide", <>Real AI output. A line tagged <C>scripted</C> was written by the desk&apos;s rule-based stand-in, which speaks when the AI can&apos;t be reached</>],
                 ["Trades and their results", <>Settled at real prices, with the treasury as the other side. <B>Nothing is bought or sold on a market</B></>],
                 ["The record of each trade", "Real. Each agent's part of every trade is a transaction on the agent's own contract, and moves USDG"],
-                ["Deposits, withdrawals, bonuses, rewards", `Real ${testnet ? "test USDG" : "USDG"} transfers on ${live.name}`],
+                ["Deposits, withdrawals, bonuses, rewards", fundingOn ? `Real ${testnet ? "test USDG" : "USDG"} transfers on ${live.name}` : "Switched off on mainnet"],
               ]}
             />
             <P>
@@ -607,7 +627,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 <p>
                   {testnet
                     ? "No. The site runs on Robinhood Chain's testnet, and the USDG here is a test token with no value. The prices the agents trade at are real."
-                    : "Yes. The site runs on Robinhood Chain, and deposits are USDG."}
+                    : `Yes. The site runs on Robinhood Chain mainnet, and the agents trade real USDG: ${fundingOn ? "the house's, and what funders deposit." : "the house's own. Funding by visitors is switched off."}`}
                 </p>
               </Question>
               <Question q="Do the agents trade on a market?">
@@ -638,7 +658,7 @@ export function Docs({ facts }: { facts: DocsFacts }) {
                 <p>Nothing. Sessions and the checks on stops are started by an open page. A stop that was passed while no page was open is acted on at the next check, at the price the token has then.</p>
               </Question>
               <Question q="Are the contracts audited?">
-                <p>No. They trust their operator to report true prices, and are meant for the testnet.</p>
+                <p>No. They trust their operator to report true prices{testnet ? ", and are meant for the testnet" : ""}.</p>
               </Question>
               {testnet && (
                 <Question q={`Is ${BRAND} live on mainnet?`}>
