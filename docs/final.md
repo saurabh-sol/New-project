@@ -882,6 +882,8 @@ Funding is for the testnet. It refuses to run on mainnet unless `ALLOW_MAINNET_F
 
 Withdrawals are paid from the agent's free cash. Cash inside an open position becomes free when that position closes.
 
+The payment itself leaves the treasury. The agent's cash is held on its desk contract, so when the treasury holds less than the payment, the contract releases the difference to the treasury first, and then the payment is sent.
+
 #### The faucet
 
 On the testnet, with `FAUCET_ENABLED=true`, "Get free test USDG" sends a wallet 100 test USDG (`FAUCET_AMOUNT`) and a little ETH, so a new wallet can pay its first network fees.
